@@ -2,7 +2,7 @@
 
 **Status:** implementation guidance for an open-source pre-alpha extension. This document describes product design decisions and a staged delivery strategy; it **does not** change SCAP-NG 0.4 normative grammar or prescribe a future OVAL Board outcome.
 
-See [AGENTS.md](../AGENTS.md) for operating rules and [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology. Canonical schema and behavior remain in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/main/schema/v0.4.0) at an explicitly pinned source SHA.
+See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 native source/sample downloads](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md) for reproducible editor fixtures. The [optional local normalizer/index CLI contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md) is delivered separately; do not reimplement its semantic checks in TypeScript. Canonical schema and behavior remain in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/main/schema/v0.4.0) at an explicitly pinned source SHA.
 
 ## Product goal and audience
 

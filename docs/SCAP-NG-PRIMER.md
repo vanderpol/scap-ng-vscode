@@ -14,6 +14,8 @@ SCAP-NG is an evolving pre-alpha replacement for parts of the SCAP 1.4 ecosystem
 - [Package identity and integrity](https://github.com/vanderpol/scap-ng/blob/main/specification/package/package-and-integrity.md)
 - [Assessment method and standalone role](https://github.com/vanderpol/scap-ng/blob/main/specification/assessment/assessment-method.md)
 - [Pre-alpha 0.4 release-candidate guide](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-rc.md)
+- [Current 0.4 native YAML downloads and source-backed Assessment examples](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md)
+- [Exact offline library-check/index CLI and JSON integration contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md)
 
 At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After the official 0.4.0 release, explicitly upgrade from the pinned candidate to the tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The schema README itself contains historical dated paragraphs; its topmost current-candidate status and version-local files take priority.
 

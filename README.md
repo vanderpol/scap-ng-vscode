@@ -2,6 +2,8 @@
 
 An open-source, offline-first VS Code extension for drafting and reviewing **SCAP-NG** security Assessments, Rules and STIG content.
 
+**[Current 0.4.0 native YAML downloads and small Assessment examples](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md)** include the normalized all-65 review library, original DRAFT and exact standalone Python maintenance toolchain. [The CLI/editor integration contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md) is available for [implementation issue #3](https://github.com/vanderpol/scap-ng-vscode/issues/3); this **does not** mean the extension or its backend integration is already implemented.
+
 **Status:** pre-alpha design/bootstrap. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
