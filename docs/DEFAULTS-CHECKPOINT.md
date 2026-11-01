@@ -4,7 +4,7 @@ Implements the adapter fallback explicitly authorized in [upstream #269](https:/
 
 ## Exact external profile
 
-`schema-profile.json` pins SCAP-NG0.4.0 source `a8a9db7039399610cb8af654ab9e880d69cffa04`, manifest SHA256 `7213cada1ac15a221e74e83aa4d6b5b6b2a178467033c0d65badf37ad17a50ee`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
+`schema-profile.json` pins SCAP-NG0.4.0 source `fecb541f9c226706738fd3d113ef1047f37faaaf`, manifest SHA256 `7c75a0dcdd97398395e407a5f5368c0f2b9e653b9b0aaf9f1e80407a438a6161`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python /path/to/scap-ng/tools/build_v04_editor_metadata_pack.py --output /path/to/metadata-pack
@@ -16,6 +16,7 @@ The pack is generated externally from all100 capability schemas/mappings, shared
 ## Implemented and tested
 
 - One immutable adapter reads the same schema help/defaults/enums for Source/Structured/Guided consumers; mode cannot select a different registry. Vocabulary/mappings are available from the same pinned pack.
+- The #268 conformance-remediation pin supplies resolved descriptions for all610 Object property occurrences. A fresh external integration checks every location through the actual adapter; no competing help registry or upstream assets are vendored. This does not supply the still-missing extension host.
 - All264 newly annotated locations resolve, every scalar/object suggestion validates, every key default is present in the schema-derived alternatives, and38 distinct controls are accounted for across100 contracts.
 - Show All, Hide Defaults and separate aggressive-preview **view models** have counts/group summaries and a reveal path (`show-all`). Hidden values stay serialized. Explicit overrides, non-defaults, diagnostics, absent values and unknown context remain visible. Operator hiding affects the dropdown only; operands/predicates remain visible. No full Assessment evaluation is provided.
 - New authoring is an explicit API operation with supplied seeds/operands. It does not create optional branches. Conditional matching follows schema pointers; schema validation never inserts defaults. Shell suggestions false/false are preserved as Booleans. Present Windows and Unix traversal suggestions remain distinct.

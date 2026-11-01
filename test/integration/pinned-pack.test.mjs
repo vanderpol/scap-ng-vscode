@@ -75,3 +75,17 @@ test('Show All / safe / aggressive retain explicit YAML and visible overrides',(
  assert.equal(pack.newObjectDefaults(unix,{},context).recurse,'symlinks_and_directories');
  assert.equal(pack.newObjectDefaults(windows,{},context).max_depth,'unlimited');
 });
+
+// Upstream audit regression: every Object control must expose resolved help.
+test('all capability Object controls expose pinned schema descriptions',()=>{
+ let count=0;
+ for(const cap of Object.values(pack.manifest.capabilities)){
+  const properties=pack.resource(cap.schema_uri).$defs?.object?.properties ?? {};
+  for(const name of Object.keys(properties)){
+   const pointer=name.replace(/~/g,'~0').replace(/\//g,'~1');
+   const help=pack.describe(cap.schema_uri+'#/$defs/object/properties/'+pointer,context);
+   assert.ok(help.description.trim(),cap.schema_uri+':'+name);count++;
+  }
+ }
+ assert.equal(count,610);
+});
