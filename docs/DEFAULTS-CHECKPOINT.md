@@ -4,7 +4,7 @@ Implements the adapter fallback explicitly authorized in [upstream #269](https:/
 
 ## Exact external profile
 
-`schema-profile.json` pins SCAP-NG0.4.0 source `fecb541f9c226706738fd3d113ef1047f37faaaf`, manifest SHA256 `7c75a0dcdd97398395e407a5f5368c0f2b9e653b9b0aaf9f1e80407a438a6161`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
+`schema-profile.json` pins SCAP-NG0.4.0 source `d3ccc8f7d4613e214dbccfe801a12531c5aa021c`, manifest SHA256 `5d736b1c82fcb6ea3ee4f7af6704dd1a9b630d25ec8f28e2064645a1500c48dc`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python /path/to/scap-ng/tools/build_v04_editor_metadata_pack.py --output /path/to/metadata-pack
@@ -33,3 +33,14 @@ The practical offline regex tester and sample-evidence playground remain require
 ## Maintenance
 
 `npm ci`, `npm run lint`, `npm test`, `npm run package` are the bounded CI gate. Integration uses the external source/pack paths above and never downloads source at runtime. The package tarball is not a VSIX. Dependency versions/integrity are locked; licenses are in THIRD-PARTY-NOTICES.md. Schemas are supplied separately under owner control. Updating the supported pin is deliberate; a newer compatible metadata pack changes help/enums without changing consumer code, but never bypasses version/hash checks.
+
+## Recovered conformance handoff — reproducible export
+
+Recovery found that the prior external pack exporter serialized selector maps in
+Python set order: identical source trees produced different byte hashes. The
+adapter correctly rejected the mismatched digest; its integrity checks remain
+unchanged. Upstream now sorts JSON object keys and tests whole-pack equality
+across separate processes/hash seeds. The profile above selects that new exact
+source, with no grammar, help, default or enum changes. Two fresh clean exports
+must be byte-identical before repinning. This is still an offline adapter; all
+extension-host, UI and playground dependencies above remain open under #7/#1/#2.
