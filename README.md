@@ -4,7 +4,7 @@ An open-source, offline-first VS Code extension for drafting and reviewing **SCA
 
 **[Current 0.4.0 native YAML downloads and small Assessment examples](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md)** include the normalized all-65 review library, original DRAFT and exact standalone Python maintenance toolchain. [The CLI/editor integration contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md) is available for [implementation issue #3](https://github.com/vanderpol/scap-ng-vscode/issues/3); this **does not** mean the extension or its backend integration is already implemented.
 
-**Status:** pre-alpha design/bootstrap. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
+**Status:** pre-alpha metadata/source-edit foundation implemented; no extension host, graphical UI or VSIX yet. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
 
@@ -38,3 +38,15 @@ The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in 
 ## License
 
 This editor repository is licensed under **Apache License 2.0** (see [LICENSE](LICENSE)). That license does not automatically grant rights to redistribute upstream content, schema assets or third-party code.
+
+## Runnable metadata checkpoint (#7)
+
+[Implementation, exact pin and remaining UI dependency](docs/DEFAULTS-CHECKPOINT.md).
+
+```sh
+npm ci
+npm run lint
+npm test
+```
+
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins the exact upstream source and manifest digest. `npm run package` produces a library tarball, **not a VSIX**. Full Assessment evaluation is unavailable.

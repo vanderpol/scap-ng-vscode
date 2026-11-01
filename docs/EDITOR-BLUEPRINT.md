@@ -17,7 +17,7 @@ Primary activity container: **SCAP-NG Assessment Studio**.
 Child sections/views:
 
 - **STIG Library:** Search/browse Benchmarks (RHEL 8/9, Oracle Linux, Windows, UNIX, applications and future platforms), their Rules, Profiles and selected Assessments. Designed for ~100 STIGs; lazy expand, filter and quick search instead of a single expanded hierarchy.
-- **Assessment Library:** All automated/manual and standalone Assessments; filter by platform authoring context, capability, class/purpose, schema version, references and diagnostics.
+- **Assessment Library:** All automated/manual and standalone Assessments; filter by platform authoring context, capability, class and optional Rule binding role, schema version, references and diagnostics.
 - **Shared/Used By:** Reverse reference view; show exact Rule and Benchmark consumers, duplicate IDs and candidate exact-duplicate fingerprints. Do not silently merge source content.
 - **Problems/Validation:** Group parse/schema/reference/compile issues and draft warnings, each linking to exact source location.
 - **Authoring:** Open document editor has tabs/toggles **Source / Structured / Guided**, retaining a single canonical TextDocument.
@@ -53,7 +53,7 @@ Step 1 — Platform authoring context (Windows/Linux/UNIX initially, extensible,
 
 Step 2 — Standalone Assessment or attach/reference from an existing Rule/Benchmark.
 
-Step 3 — Title, class/purpose, manual vs automated.
+Step 3 — Title, class and optional Rule binding role, manual vs automated.
 
 Step 4 — For each automated Test, choose capability; show available acquisition/Source/Object prompts dynamically from pinned capability contract.
 

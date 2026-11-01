@@ -24,7 +24,7 @@ At initial implementation, record the exact upstream SHA and verify hashes of sc
 - **STIG:** A set of security policy requirements for a target product, generally represented by a Benchmark.
 - **Benchmark:** Policy container with Rules and profiles/applicability.
 - **Rule:** Human-readable requirement, severity, rationale, identifiers and a selected Assessment. It has named `assessment_choices` and an optional/default choice; manual and automated alternatives can coexist.
-- **Assessment:** Standalone, potentially reusable method of checking a condition. It has a stable logical ID, version, title, mode, class/purpose and (if automated) Tests. It can exist without a Rule or Benchmark. **A Rule is policy; an Assessment is a check.**
+- **Assessment:** Standalone, potentially reusable method of checking a condition. It has a stable logical ID, version, title, mode, class and optional Rule binding role and (if automated) Tests. It can exist without a Rule or Benchmark. **A Rule is policy; an Assessment is a check.**
 - **Test:** One acquisition/evaluation operation inside an automated Assessment. It declares a technical `capability`, an Object or other supported source and a `require` predicate.
 - **Object:** Describes what to collect. May be inline under a Test or a named reusable `shared_objects` entry within the Assessment. It is not itself a pass/fail condition.
 - **require:** Describes existence, matching and field/record conditions on collected Items. It replaces older named-State authoring.
@@ -43,15 +43,14 @@ Authoring files are YAML/JSON with a single document root such as `assessment:` 
 ```yaml
 assessment:
   id: example-linux-file-assessment
-  version: "1"
+  version: 1
   assessment_title: Check a file condition
   mode: automated
   class: compliance
-  purpose: assessment
   tests:
     example-file-test:
       capability: unix.file
-      object: {filepath: /etc/ssh/sshd_config}
+      object: {full_path: /etc/ssh/sshd_config}
       require:
         items_found: one_or_more
 ```
@@ -66,11 +65,11 @@ Important 0.4 details:
 - Existence and satisfaction are **independent**: `items_found` is not `items_satisfying`; field `values_found` is distinct from `values_matching`; record `records_found` is distinct from `records_matching`.
 - Source-given data types and quantifiers must remain explicit. Absence-only requirements must use the sanctioned version-local grammar and must not carry meaningless comparisons.
 - Boolean `and`, `or`, `one` and `xor` apply at their defined logical scope. `one` = exactly one true; `xor` = odd number of true branches. Never conflate with one Item or with `one_or_more`.
-- Flow-style YAML (`{filepath: /etc/passwd}`) and equivalent block-style YAML must remain usable; format is an author preference, not an Assessment semantic.
+- Flow-style YAML (`{full_path: /etc/passwd}`) and equivalent block-style YAML must remain usable; format is an author preference, not an Assessment semantic.
 - Records and dynamic record-member keys may need specialized UI. All field names and keys must remain editable; there is no fixed collection of "Field 1/Field 2" labels.
 - `reported_elements` and evidence/provenance can matter to results even when they are not convenient for a generic form. Do not discard unknown but schema-permitted metadata.
 - For `shellcommand`, source interpreter is explicit where required. Do not turn ordinary file traversal into shell commands as an editor convenience.
-- Defaults that appear in the current mapping/schema are a contract; do not invent hidden defaults from older SCAP 1.4 conventions.
+- Schema defaults are explicit new-authoring suggestions, never validation/runtime fallbacks; do not invent hidden defaults from older SCAP 1.4 conventions.
 
 ## 4. A unique ID is not a filesystem path
 
