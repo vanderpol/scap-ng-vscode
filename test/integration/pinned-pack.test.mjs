@@ -13,6 +13,22 @@ const pin=JSON.parse(readFileSync(new URL('../../schema-profile.json',import.met
 const pack=new MetadataPack(directory,pin);
 const base='https://scap-ng.dev/schema/v0.4.0/';
 
+test('adopted optional Input guard shape preserves source without inventing bindings or defaults',()=>{
+ const raw=readFileSync(join(source,'docs/examples/input-presence-20261101/optional-lock-screen.assessment.yaml'),'utf8');
+ const buffer=new SourceBuffer(raw);const doc=buffer.json();
+ assert.equal(buffer.openOrSave(),raw);
+ assert.deepEqual(pack.validate(base+'assessment.schema.json',doc),[]);
+ assert.deepEqual(doc.assessment.evaluate.if,{input_provided:'slideshow-value-input'});
+ assert.equal(doc.assessment.inputs['slideshow-value-input'].required,false);
+ assert.equal(Object.hasOwn(doc.assessment.inputs['slideshow-value-input'],'default'),false);
+ const missing=structuredClone(doc);delete missing.assessment.inputs['slideshow-value-input'].required;
+ assert.ok(pack.validate(base+'assessment.schema.json',missing).length>0);
+ const hidden=structuredClone(doc);hidden.assessment.inputs['slideshow-value-input'].default=1;
+ assert.ok(pack.validate(base+'assessment.schema.json',hidden).length>0);
+ // The compiler, not the shape adapter, proves transitive use dominance and
+ // invocation binding states. No Test evaluation or host UI is claimed here.
+});
+
 test('all 100 mappings and every annotated location resolve offline with valid suggestions',()=>{
  assert.equal(Object.keys(pack.manifest.capabilities).length,100);
  const ids=new Set();let count=0;

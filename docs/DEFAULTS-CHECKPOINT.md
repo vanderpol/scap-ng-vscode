@@ -4,7 +4,7 @@ Implements the adapter fallback explicitly authorized in [upstream #269](https:/
 
 ## Exact external profile
 
-`schema-profile.json` pins SCAP-NG0.4.0 source `d3ccc8f7d4613e214dbccfe801a12531c5aa021c`, manifest SHA256 `5d736b1c82fcb6ea3ee4f7af6704dd1a9b630d25ec8f28e2064645a1500c48dc`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
+`schema-profile.json` pins SCAP-NG0.4.0 source `5ecc8f74eb44d9a1b935de4d1fc6f0f74d16c63a`, manifest SHA256 `02383db2e10c4735f2aa4efd64477f379f78f6fcda2b7e817c39d6e200e1a439`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python /path/to/scap-ng/tools/build_v04_editor_metadata_pack.py --output /path/to/metadata-pack
@@ -44,3 +44,16 @@ across separate processes/hash seeds. The profile above selects that new exact
 source, with no grammar, help, default or enum changes. Two fresh clean exports
 must be byte-identical before repinning. This is still an offline adapter; all
 extension-host, UI and playground dependencies above remain open under #7/#1/#2.
+
+## Adopted optional Input guard profile
+
+The selected upstream draft now includes the owner-adopted explicit
+input_provided conditional and closed Input declaration controls. External
+integration opens its distinct source-derived example without inserting
+bindings/defaults, validates shape, preserves no-op bytes and rejects missing
+required declaration fields. Static transitive guard dominance, supplied binding
+states and program0.2 verification belong to the upstream compiler/tests; JSON
+Schema-only adapter checks do not claim those semantic or runtime guarantees.
+The original host/UI/playground dependencies remain open. Full schema-family
+freeze remains NO-GO pending the upstream Result/case-contract audit; this pin is
+not a release or approval to merge/freeze.
