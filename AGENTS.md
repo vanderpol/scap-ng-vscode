@@ -6,6 +6,8 @@ Build a **standalone, open-source, offline-first VS Code editor** for drafting, 
 
 Before coding, read this file, [SCAP-NG primer](docs/SCAP-NG-PRIMER.md), [editor blueprint](docs/EDITOR-BLUEPRINT.md) and the numbered GitHub implementation issues. Use the acceptance criteria in those issues to make incremental working deliveries.
 
+**Owner direction recorded 2026-10-31:** [Schema-driven authoring help, explicit hideable defaults, and offline regex/sample-data playground](docs/SCHEMA-DRIVEN-HELP-AND-PLAYGROUND.md) is now a required product acceptance contract; track implementation in [issue #7](https://github.com/vanderpol/scap-ng-vscode/issues/7). It supersedes older scheduling of regex/sample-data UI as optional future polish, **but not** the requirement that full Assessment PASS/FAIL requires a genuine qualified evaluator. Do not hard-code a competing documentation/default/enum registry; do not fabricate scanner results.
+
 ## Canonical contracts and version pinning
 
 - Canonical source: [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng), especially [0.4.0 schema directory](https://github.com/vanderpol/scap-ng/tree/main/schema/v0.4.0), [schema README](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/README.md), [authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/authoring-vocabulary.en.json), and [release-candidate guide](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-rc.md).
@@ -33,7 +35,7 @@ Before coding, read this file, [SCAP-NG primer](docs/SCAP-NG-PRIMER.md), [editor
 3. Schema adapter: version-pinned JSON Schema validation, capability enums, vocabulary prompts; no hand-maintained duplicate enum registry.
 4. UI: searchable Assessment Studio tree + graphical Structured view + Guided wizard + native YAML Source view, all desktop/keyboard/theme accessible.
 5. Local validation adapter: call the version-compatible SCAP-NG compiler/verifier when available; report clear unavailable state instead of guessing.
-6. Optional future sample evaluator and configurable AI provider: opt-in and separate from scanner truth.
+6. Required offline regex tester and staged sample-Item playground: editor regex/value previews must declare their dialect/qualification; full Assessment evaluation is unavailable until a qualified local evaluator exists. Optional configurable AI provider stays opt-in.
 
 No telemetry or network by default. Do not upload STIGs, source, credentials, evidence or sample data without explicit consent. Support offline installation, no mandatory login, restrictive webview CSP, safe rendering, user-approved external provider configuration and secrets stored through VS Code secret storage where relevant.
 
@@ -55,4 +57,4 @@ No telemetry or network by default. Do not upload STIGs, source, credentials, ev
 
 ## MVP definition of done
 
-A user can install an offline VSIX, open a folder containing valid 0.4 content or a standalone Assessment, browse a searchable STIG/Assessment index, switch Source/Structured/Guided, edit all applicable fields, follow Rule→Assessment links, validate accurately, save without unrelated formatting changes and see clear warning/proof boundaries. A sample-data evaluation feature may wait for a real local evaluator, but must never fabricate results.
+A user can install an offline VSIX, open a folder containing valid 0.4 content or a standalone Assessment, browse a searchable STIG/Assessment index, switch Source/Structured/Guided, edit all applicable fields, follow Rule→Assessment links, validate accurately, save without unrelated formatting changes and see clear warning/proof boundaries. A practical offline regex tester, schema-driven help and safe sample-data input are MVP requirements; full sample-data Assessment evaluation must wait for a qualified real local evaluator and must never fabricate results.
