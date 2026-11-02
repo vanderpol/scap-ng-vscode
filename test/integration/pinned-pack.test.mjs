@@ -211,11 +211,11 @@ test('existing optional branches and multi-Test evaluation remain visible withou
  const optional=readFileSync(join(source,'examples/windows-optional-organizational-input.assessment.yaml'),'utf8');
  const optionalModel=assessmentEditorModel({getText:()=>optional,version:4},pack);
  assert.match(optionalModel.assessment.tests[0].explanation,/optional Input branch/);
- assert.match(optionalModel.assessment.tests[0].explanation,/not_evaluated/);
+ assert.match(optionalModel.assessment.tests[0].explanation,/not_evaluated/); assert.equal(optionalModel.assessment.inputControls.length,1); assert.equal(optionalModel.assessment.evaluationControl,undefined);
  const multi={assessment:{id:'multi-assessment',version:1,assessment_title:'Multi',mode:'automated',class:'compliance',tests:{one:{test_title:'One',capability:'windows.registry',object:{hive:{equals:'local_machine'}},require:{item_requirement:{items_found:'one_or_more'}}},two:{test_title:'Two',capability:'windows.registry',object:{hive:{equals:'local_machine'}},require:{item_requirement:{items_found:'one_or_more'}}}},evaluate:{xor:[{test:'one'},{test:'two'}]}}};
  const multiYaml=new SourceBuffer(JSON.stringify(multi)).text;
  const multiModel=assessmentEditorModel({getText:()=>multiYaml,version:5},pack);
  assert.equal(multiModel.assessment.tests.length,2);
  assert.match(multiModel.assessment.evaluationExplanation,/XOR/);
- assert.match(multiModel.assessment.evaluationExplanation,/no Test has been executed/);
+ assert.match(multiModel.assessment.evaluationExplanation,/no Test has been executed/); assert.deepEqual(multiModel.assessment.evaluationControl.operations,['and','or','one','xor']); assert.equal(multiModel.assessment.evaluationControl.operation,'xor');
 });

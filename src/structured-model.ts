@@ -82,6 +82,11 @@ function evaluationText(value: any): string {
   if (typeof value.test === 'string') return value.test;
   return Object.entries(value).map(([operator, branch]) => `${operator.toUpperCase()} (${evaluationText(branch)})`).join(' ');
 }
+function evaluationControl(value: any) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.if) return undefined;
+  const operation = Object.keys(value).find(key => ['and', 'or', 'one', 'xor'].includes(key));
+  return operation ? { path: ['assessment', 'evaluate'], operation, operations: ['and', 'or', 'one', 'xor'] } : undefined;
+}
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
 function operationKey(value: any) { return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).find(key => !['datatype', 'values_found', 'values_matching', 'value_match', 'redact_result'].includes(key)) : undefined; }
@@ -102,5 +107,9 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
     const fieldControls = Object.entries(requirement.fields ?? {}).map(([name, predicate]) => ({ kind: 'field', ...predicateControl(base.fields, [...path, 'require', 'fields', name], name, predicate, name.replaceAll('_', ' ')), operations: catalog?.operations() ?? [] }));
     return { id, path, title: test.test_title ?? id, titlePath, titleField, capability: test.capability, capabilityLabel: catalog ? catalog.capabilities().find(option => option.value === test.capability)?.label ?? test.capability : test.capability, objectControls: controls, itemControls, fieldRequirement, fieldControls, explanation: explainAssessment({ assessment: { ...assessment, tests: { [id]: test } } }, pack), unsupported: Object.keys(test).filter(key => !['test_title', 'capability', 'object', 'require', 'reported_elements'].includes(key)) };
   });
-  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, evaluate: assessment.evaluate, evaluationExplanation: assessment.evaluate ? `Authored evaluation tree: ${evaluationText(assessment.evaluate)}. This describes logical selection only; no Test has been executed.` : '', tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
+  const inputControls = Object.entries(assessment.inputs ?? {}).flatMap(([name, input]: [string, any]) => {
+    if (!input || typeof input !== 'object') return [];
+    return [{ name, label: `Input: ${name}`, description: input.description ?? 'Optional author-supplied value', controls: Object.keys(input).filter(key => ['datatype', 'required', 'description', 'cardinality'].includes(key)).map(key => ({ label: key.replaceAll('_', ' '), path: ['assessment', 'inputs', name, key], value: input[key], choices: fieldAt(base.fields, ['assessment', 'inputs', name, key])?.choices ?? [] })) }];
+  });
+  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, evaluate: assessment.evaluate, evaluationControl: evaluationControl(assessment.evaluate), evaluationExplanation: assessment.evaluate ? `Authored evaluation tree: ${evaluationText(assessment.evaluate)}. This describes logical selection only; no Test has been executed.` : '', inputControls, tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
 }
