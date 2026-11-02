@@ -80,6 +80,21 @@
           "description": "Absolute path to a verified offline SCAP-NG editor metadata pack. The pinned schema-profile.json is always checked."
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "scapNg.assessment",
+        "displayName": "SCAP-NG Assessment",
+        "selector": [
+          {
+            "filenamePattern": "**/*.assessment.yaml"
+          },
+          {
+            "filenamePattern": "**/*.assessment.yml"
+          }
+        ],
+        "priority": "option"
+      }
+    ]
   }
 }
