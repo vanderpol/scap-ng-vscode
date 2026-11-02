@@ -221,3 +221,12 @@ test('existing optional branches and multi-Test evaluation remain visible withou
  assert.match(multiModel.assessment.evaluationExplanation,/XOR/);
  assert.match(multiModel.assessment.evaluationExplanation,/no Test has been executed/); assert.deepEqual(multiModel.assessment.evaluationControl.operations,['and','or','one','xor']); assert.equal(multiModel.assessment.evaluationControl.operation,'xor');
 });
+
+test('schema-valid canonical Test duplication preserves the authored source blocks',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const original=Object.keys(new SourceBuffer(raw).json().assessment.tests)[0];
+ const copy='registry-copy-test';
+ const edit=new SourceBuffer(raw).duplicateMappingEntry(['assessment','tests'],original,copy,sha256(raw));
+ assert.deepEqual(pack.validate(base+'assessment.schema.json',edit.document.json()),[]);
+ assert.equal(edit.document.json().assessment.tests[copy].test_title,edit.document.json().assessment.tests[original].test_title);
+});

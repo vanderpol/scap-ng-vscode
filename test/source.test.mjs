@@ -77,6 +77,28 @@ test('pathological regex preview is rejected or cancelled outside the extension 
  assert.match(pathological.error,/nested quantifier|backreferences|safety/i);
  const safe=await previewRegexSafe(['^user=(.+)$'],'user=alice','',100);
  assert.equal(safe[0].matched,true); assert.deepEqual(safe[0].captures,['alice']);
- const cancelled=await previewRegexSafe(['^(a|aa)+$'],'a'.repeat(50000)+'!', '', 25);
+ const cancelled=await previewRegexSafe(['^a+$'],'a'.repeat(100000)+'!', '', 1);
  assert.ok(cancelled[0].timedOut || cancelled[0].error,JSON.stringify(cancelled[0]));
+});
+
+test('block mapping Test removal is a minimal explicit structural patch',()=>{
+ const raw='assessment:\n  tests:\n    first:\n      test_title: First\n    second:\n      test_title: Second\n';
+ const edit=new SourceBuffer(raw).removeMappingEntry(['assessment','tests'],'first',sha256(raw));
+ assert.equal(edit.document.text,'assessment:\n  tests:\n    second:\n      test_title: Second\n');
+ assert.equal(edit.undo().text,raw);
+ assert.throws(()=>new SourceBuffer('tests: {first: {test_title: First}}\n').removeMappingEntry(['tests'],'first',sha256('tests: {first: {test_title: First}}\n')),/block mapping/);
+});
+
+test('block mapping Test reorder preserves each authored block',()=>{
+ const raw='assessment:\n  tests:\n    first:\n      test_title: First\n    second:\n      test_title: Second\n';
+ const edit=new SourceBuffer(raw).moveMappingEntry(['assessment','tests'],'second','up',sha256(raw));
+ assert.equal(edit.document.text,'assessment:\n  tests:\n    second:\n      test_title: Second\n    first:\n      test_title: First\n');
+ assert.equal(edit.undo().text,raw);
+});
+
+test('block mapping Test duplication preserves source block and changes only its key',()=>{
+ const raw='assessment:\n  tests:\n    first:\n      test_title: First\n    second:\n      test_title: Second\n';
+ const edit=new SourceBuffer(raw).duplicateMappingEntry(['assessment','tests'],'second','third',sha256(raw));
+ assert.equal(edit.document.text,'assessment:\n  tests:\n    first:\n      test_title: First\n    second:\n      test_title: Second\n    third:\n      test_title: Second\n');
+ assert.equal(edit.undo().text,raw);
 });
