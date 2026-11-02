@@ -5,6 +5,13 @@ import { sha256, type Json } from './metadata.js';
 export class SourceBuffer {
   constructor(readonly text: string) {}
   openOrSave(): string { return this.text; }
+  scalarRange(path: (string | number)[]) {
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const node = doc.getIn(path, true);
+    if (isAlias(node) || !isScalar(node) || node.tag || node.anchor || !node.range || (node.type && !['PLAIN', 'QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(node.type))) throw new Error('Unsafe scalar edit; use Source mode');
+    return [node.range[0], node.range[1]] as [number, number];
+  }
   editScalar(path: (string | number)[], value: string | number | boolean | null, expectedHash: string) {
     if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Non-finite scalar is not JSON data');
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
@@ -14,6 +21,7 @@ export class SourceBuffer {
     if (isAlias(node) || !isScalar(node) || node.tag || node.anchor || !node.range || (node.type && !['PLAIN', 'QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(node.type))) throw new Error('Unsafe scalar edit; use Source mode');
     let replacement = JSON.stringify(value);
     if (typeof value === 'string' && node.type === 'QUOTE_SINGLE') replacement = "'" + value.replace(/'/g, "''") + "'";
+    if (typeof value === 'string' && node.type === 'PLAIN' && /^[A-Za-z0-9._\/-]+$/.test(value) && !/^(?:true|false|null|~|[-+]?\d+(?:\.\d+)?)$/i.test(value)) replacement = value;
     const [start, end] = node.range;
     const next = this.text.slice(0, start) + replacement + this.text.slice(end);
     const parsed = parseDocument(next, { uniqueKeys: true });

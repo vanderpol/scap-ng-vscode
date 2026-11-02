@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
+import { modelFor } from '../../dist/structured-model.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -170,4 +171,23 @@ test('final selector/API help stays schema-driven for all fifteen capabilities',
  }
  assert.equal(count,42);
  // Offline metadata/schema validation only; no provider, API or UI execution.
+});
+
+test('schema-driven model exposes canonical Registry enum help and revision',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const model=modelFor({getText:()=>raw,version:7},pack);
+ assert.equal(model.ok,true); assert.equal(model.revision,sha256(raw));
+ const path=['assessment','tests','verifies-prevent-enabling-screen-slide-show-is-set-enabled-test','require','item_requirement','items_found'];
+ const field=model.fields.find(item=>JSON.stringify(item.path)===JSON.stringify(path));
+ assert.ok(field); assert.equal(field.label,'Items found'); assert.deepEqual(field.choices,['none','exactly_one','one_or_more','zero_or_more']);
+});
+test('canonical Windows Registry Assessment rejects stale edits without changing source',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const buffer=new SourceBuffer(raw); const path=['assessment','tests','verifies-prevent-enabling-screen-slide-show-is-set-enabled-test','require','fields','value','equals'];
+ const revision=sha256(raw); const first=buffer.editScalar(path,2,revision);
+ assert.equal(first.document.json().assessment.tests['verifies-prevent-enabling-screen-slide-show-is-set-enabled-test'].require.fields.value.equals,2);
+ assert.throws(()=>first.document.editScalar(path,3,revision),/Stale/);
+ assert.equal(buffer.text,raw);
+ assert.equal(first.undo().text,raw);
+ assert.deepEqual(pack.validate(base+'assessment.schema.json',first.document.json()),[]);
 });
