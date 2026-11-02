@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
+import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -125,6 +126,29 @@ async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTre
   try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); } catch { /* file may have been removed between watcher events */ }
 }
 
+function optionHtml(options: readonly { value: string; label: string; description?: string }[]) { return options.map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join(''); }
+function guidedHtml(catalog: GuidedCatalog) {
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-guided';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:860px}fieldset{border:1px solid var(--vscode-panel-border);margin:12px 0;padding:12px}label{display:block;margin:8px 0}input,select,textarea{display:block;width:100%;box-sizing:border-box;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px}textarea{min-height:70px;font-family:var(--vscode-editor-font-family)}button{padding:7px 12px}.hint{color:var(--vscode-descriptionForeground)}#status.error{color:var(--vscode-errorForeground)}</style></head><body><h1>Guided Assessment authoring</h1><p class="hint">The platform is an authoring context only; it does not assert CPE applicability. Generated YAML remains editable in Source and Structured views.</p><p id="status" role="status"></p><fieldset><legend>Assessment</legend><label for="platform">Target platform<select id="platform">${optionHtml(catalog.platforms())}</select></label><label for="mode">Assessment mode<select id="mode">${optionHtml(catalog.modes())}</select></label><label for="className">Class<select id="className">${optionHtml(catalog.classes())}</select></label><label for="id">Assessment ID<input id="id" value="guided-assessment"></label><label for="title">Assessment title<input id="title"></label><label for="procedure">Manual procedure<textarea id="procedure">Review the target according to the documented procedure.</textarea></label><label for="response">Manual response JSON<textarea id="response">{"type":"manual-review","choices":[{"value":"yes","label":"Yes","outcome":"true"},{"value":"no","label":"No","outcome":"false"}],"allow_comment":true,"allow_evidence":true}</textarea></label></fieldset><fieldset id="automated"><legend>Automated Test</legend><label for="capability">Evidence collection capability<select id="capability">${optionHtml(catalog.capabilities())}</select></label><label for="testId">Test ID<input id="testId" value="guided-test"></label><label for="testTitle">Test title<input id="testTitle"></label><label for="object">Object JSON<textarea id="object">{}</textarea></label><label for="fields">Comparison fields JSON<textarea id="fields">{}</textarea></label><label><input id="presenceOnly" type="checkbox" style="display:inline;width:auto"> Presence-only Test (do not add field matching)</label><label for="evaluate">Multiple-Test logical operator<select id="evaluate"><option value="">Single Test</option>${optionHtml(catalog.logicalOperators())}</select></label></fieldset><button id="create">Create Assessment</button><script nonce="guided">const vscode=acquireVsCodeApi();const mode=document.getElementById('mode');const automated=document.getElementById('automated');const status=document.getElementById('status');function refresh(){automated.hidden=mode.value!=='automated';}mode.addEventListener('change',refresh);refresh();document.getElementById('create').addEventListener('click',()=>{try{const isAutomated=mode.value==='automated';const message={type:'create',platform:platform.value,id:id.value,title:title.value,mode:mode.value,className:className.value,procedure:procedure.value,response:JSON.parse(response.value)};if(isAutomated)message.tests=[{id:testId.value,title:testTitle.value||title.value,capability:capability.value,object:JSON.parse(object.value),fields:JSON.parse(fields.value),presenceOnly:presenceOnly.checked}];const op=evaluate.value;if(op)message.evaluate=op;vscode.postMessage(message);}catch(error){status.className='error';status.textContent=error.message;}});window.addEventListener('message',event=>{status.className=event.data.ok?'':'error';status.textContent=event.data.message;});</script></body></html>`;
+}
+class GuidedPanel {
+  static open(context: vscode.ExtensionContext, pack: MetadataPack | undefined) {
+    const api: any = vscode;
+    if (!pack) return void vscode.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using Guided authoring.');
+    const catalog = new GuidedCatalog(pack); const panel = api.window.createWebviewPanel('scapNg.guided', 'SCAP-NG Guided Assessment', api.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    panel.webview.html = guidedHtml(catalog);
+    panel.webview.onDidReceiveMessage(async (message: any) => {
+      if (message.type !== 'create') return;
+      try {
+        const result = createGuidedAssessment(pack, message);
+        if (result.diagnostics.length) { panel.webview.postMessage({ ok: false, message: `Schema validation: ${result.diagnostics.join('; ')}` }); return; }
+        const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' }); await api.window.showTextDocument(document);
+        panel.webview.postMessage({ ok: true, message: 'Assessment created. Review it in Source or Structured mode; no scanner result was produced.' });
+      } catch (error) { panel.webview.postMessage({ ok: false, message: error instanceof Error ? error.message : String(error) }); }
+    });
+    context.subscriptions.push(panel);
+  }
+}
+
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
@@ -165,6 +189,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
   context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit}`)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
   const inspect = (document: vscode.TextDocument) => { if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics); };
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
 }
