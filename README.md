@@ -2,7 +2,7 @@
 
 An open-source, offline-first VS Code extension for drafting and reviewing **SCAP-NG** security Assessments, Rules and STIG content.
 
-**[Current 0.4.0 native YAML downloads and small Assessment examples](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md)** include the normalized all-65 review library, original DRAFT and exact standalone Python maintenance toolchain. [The CLI/editor integration contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md) is available for [implementation issue #3](https://github.com/vanderpol/scap-ng-vscode/issues/3); this **does not** mean the extension or its backend integration is already implemented.
+The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
 
 **Status:** pre-alpha metadata/source-edit foundation implemented; no extension host, graphical UI or VSIX yet. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
@@ -12,6 +12,16 @@ An open-source, offline-first VS Code extension for drafting and reviewing **SCA
 2. **[SCAP-NG primer](docs/SCAP-NG-PRIMER.md)** — what a Benchmark, Rule, Assessment, Test, Object, require, capability and result actually mean; current 0.4 rules.
 3. **[Editor blueprint](docs/EDITOR-BLUEPRINT.md)** — Source/Structured/Guided, Assessment Studio UI, workspace index, offline design, proposed architecture and test contracts.
 4. **[Implementation roadmap / Issue #1](https://github.com/vanderpol/scap-ng-vscode/issues/1)** — first runnable VSIX milestone.
+5. **[One-clone Linux development setup](docs/WORKSPACE-BOOTSTRAP.md)** — exact public dependencies, offline pack, safe PR workflow and large-library boundary.
+
+### One checkout is enough
+
+For Linux desktop Codex or the VS Code integration, clone **only this repo**.
+The committed [dependency pins](dependency-pins.json) and standard-library
+[bootstrap helper](scripts/bootstrap_dependencies.py) fetch the exact public
+schema/tools/sample-data revisions into ignored `.external/`. To build the
+verified offline pack, follow [the bootstrap guide](docs/WORKSPACE-BOOTSTRAP.md).
+Do not clone private research or commit downloaded corpora into this repo.
 
 ### Ordered implementation issues
 
@@ -23,6 +33,8 @@ An open-source, offline-first VS Code extension for drafting and reviewing **SCA
 | [P3 · #4](https://github.com/vanderpol/scap-ng-vscode/issues/4) | Guided authoring, capabilities, require, logical alternatives |
 | [P4 · #5](https://github.com/vanderpol/scap-ng-vscode/issues/5) | Optional local compiler diagnostics and provenance, no invented runtime results |
 | [P5 · #6](https://github.com/vanderpol/scap-ng-vscode/issues/6) | Offline VSIX, security, accessibility, license and documentation checks |
+| [P6 · #7](https://github.com/vanderpol/scap-ng-vscode/issues/7) | Schema-driven help, hideable serialized defaults and regex/sample-data playground |
+| [P7 · #8](https://github.com/vanderpol/scap-ng-vscode/issues/8) | Generate human-readable Test summaries and persist them in `test_title` |
 
 ## Design principles
 
@@ -33,7 +45,7 @@ An open-source, offline-first VS Code extension for drafting and reviewing **SCA
 - Distinguish YAML/schema/graph/compile checks, draft/proof warnings and genuine runtime scanner results.
 - Reuse suitable permissively licensed components where it reduces risk, but **do not copy third-party source-available code or unlicensed upstream material**.
 
-The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/main/schema/v0.4.0); editor builds must pin the exact upstream version/commit.
+The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 235-resource metadata manifest.
 
 ## License
 
@@ -49,10 +61,12 @@ npm run lint
 npm test
 ```
 
-The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins the exact upstream source and manifest digest. `npm run package` produces a library tarball, **not a VSIX**. Full Assessment evaluation is unavailable.
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `354c9c96` and manifest SHA-256 `1f981bcc…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package` produces a library tarball, **not a VSIX**. Full Assessment evaluation is unavailable.
 
 The current pinned 0.4 schema pack adopts native Result A (`require_*` source
 locations and Field Results). Offline integration checks supplied synthetic
 Results and rejects legacy wire keys; this does not execute a scanner or replace
 upstream source/evidence correlation checks. Compatible field datatype
-annotations remain. See upstream issue #255 and editor #7.
+annotations remain. The historic research issue #255 is private; the editor's
+public acceptance requirements are in [#7](https://github.com/vanderpol/scap-ng-vscode/issues/7)
+and [#8](https://github.com/vanderpol/scap-ng-vscode/issues/8).

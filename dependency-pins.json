@@ -1,0 +1,36 @@
+{
+  "format": "scap-ng/vscode-dependency-pins/1",
+  "dependencies": [
+    {
+      "name": "scap-ng",
+      "repository": "https://github.com/vanderpol/scap-ng.git",
+      "commit": "354c9c962c77488a3d939cab56f6ceecfd495d27",
+      "required": true
+    },
+    {
+      "name": "scap-ng-tools",
+      "repository": "https://github.com/vanderpol/scap-ng-tools.git",
+      "commit": "1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42",
+      "required": true
+    },
+    {
+      "name": "scap-ng-editor-sample-data",
+      "repository": "https://github.com/vanderpol/scap-ng-editor-sample-data.git",
+      "commit": "f02948a75f1773efe91bfd163e154d4a959325fe",
+      "required": true
+    },
+    {
+      "name": "oval-v5.12.3",
+      "repository": "https://github.com/OVAL-Community/OVAL.git",
+      "commit": "2f140ee5c5dd1ed9606fcd5afc301f6baeb48706",
+      "sparse_checkout": ["oval-schemas"],
+      "required": false,
+      "purpose": "offline editor metadata generation only"
+    }
+  ],
+  "full_library": {
+    "status": "not_yet_regenerated_for_amended_0.4",
+    "historical_only": "https://github.com/vanderpol/scap-ng-evidence/tree/main/runs/v04-library/2026-10-30-all65-normalized-review-ff69d46b3",
+    "warning": "65-stream/60-editable historical review ZIP predates item_requirement; do not treat as current 0.4 fixture"
+  }
+}

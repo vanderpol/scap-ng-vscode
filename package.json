@@ -10,6 +10,9 @@
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:integration": "npm run build && node --test test/integration/*.test.mjs",
+    "bootstrap:deps": "python3 scripts/bootstrap_dependencies.py",
+    "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
+    "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
     "package": "npm pack --pack-destination /tmp"
   },
   "files": [

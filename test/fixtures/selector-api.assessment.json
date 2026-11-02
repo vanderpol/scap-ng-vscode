@@ -1,0 +1,344 @@
+{
+  "assessment": {
+    "id": "selector-contract-review-assessment",
+    "version": 1,
+    "assessment_title": "Fifteen selector/API contract shapes; no target collection",
+    "mode": "automated",
+    "class": "compliance",
+    "specification": {
+      "id": "scap-ng.pre-alpha.assessment",
+      "version": "0.4.0"
+    },
+    "tests": {
+      "independent-environmentvariable-test": {
+        "test_title": "Supplied contract shape for independent.environmentvariable",
+        "capability": "independent.environmentvariable",
+        "reported_elements": "all",
+        "object": {
+          "name": {
+            "equals": "PATH"
+          },
+          "pid": {
+            "equals": 42
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-appcmd-test": {
+        "test_title": "Supplied contract shape for windows.appcmd",
+        "capability": "windows.appcmd",
+        "reported_elements": "all",
+        "object": {
+          "identifier": {
+            "equals": "Default Web Site"
+          },
+          "identifier_type": {
+            "equals": "Site"
+          },
+          "parameter": {
+            "equals": "processModel.identityType"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-appcmdlistconfig-test": {
+        "test_title": "Supplied contract shape for windows.appcmdlistconfig",
+        "capability": "windows.appcmdlistconfig",
+        "reported_elements": "all",
+        "object": {
+          "identifier": {
+            "equals": "Default Web Site"
+          },
+          "identifier_type": {
+            "equals": "Site"
+          },
+          "parameter": {
+            "equals": "processModel.identityType"
+          },
+          "section": {
+            "equals": "system.webServer/security/authentication/anonymousAuthentication"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-cmdlet-test": {
+        "test_title": "Supplied contract shape for windows.cmdlet",
+        "capability": "windows.cmdlet",
+        "reported_elements": "all",
+        "object": {
+          "module_id": "00000000-0000-0000-0000-000000000001",
+          "module_name": "Microsoft.PowerShell.Management",
+          "module_version": "1.2.3",
+          "noun": "Item",
+          "parameters": {
+            "fields": {
+              "Name": {
+                "equals": "Example",
+                "selection_match": "every"
+              }
+            }
+          },
+          "select": {
+            "fields": {
+              "Name": {
+                "equals": "Example",
+                "selection_match": "every"
+              }
+            }
+          },
+          "verb": "Get"
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-fileeffectiverights-test": {
+        "test_title": "Supplied contract shape for windows.fileeffectiverights",
+        "capability": "windows.fileeffectiverights",
+        "reported_elements": "all",
+        "object": {
+          "full_path": {
+            "equals": "C:\\Data\\Policy.txt"
+          },
+          "trustee_sid": {
+            "equals": "S-1-5-32-544"
+          },
+          "filesystem": "all"
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-group-sid-test": {
+        "test_title": "Supplied contract shape for windows.group_sid",
+        "capability": "windows.group_sid",
+        "reported_elements": "all",
+        "object": {
+          "group_sid": {
+            "equals": "S-1-5-32-544"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-sid-sid-test": {
+        "test_title": "Supplied contract shape for windows.sid_sid",
+        "capability": "windows.sid_sid",
+        "reported_elements": "all",
+        "object": {
+          "include_group": true,
+          "resolve_group": true,
+          "trustee_sid": {
+            "equals": "S-1-5-32-544"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-user-sid-test": {
+        "test_title": "Supplied contract shape for windows.user_sid",
+        "capability": "windows.user_sid",
+        "reported_elements": "all",
+        "object": {
+          "user_sid": {
+            "equals": "S-1-5-32-544"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-ntuser-test": {
+        "test_title": "Supplied contract shape for windows.ntuser",
+        "capability": "windows.ntuser",
+        "reported_elements": "all",
+        "object": {
+          "include_default": true,
+          "item_creation": "key_and_name_exist",
+          "key": {
+            "equals": "Software\\Vendor"
+          },
+          "name": {
+            "equals": "Setting"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-regkeyeffectiverights-test": {
+        "test_title": "Supplied contract shape for windows.regkeyeffectiverights",
+        "capability": "windows.regkeyeffectiverights",
+        "reported_elements": "all",
+        "object": {
+          "hive": {
+            "equals": "local_machine"
+          },
+          "key": {
+            "equals": "Software\\Vendor"
+          },
+          "trustee_sid": {
+            "equals": "S-1-5-32-544"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-service-test": {
+        "test_title": "Supplied contract shape for windows.service",
+        "capability": "windows.service",
+        "reported_elements": "all",
+        "object": {
+          "service_name": {
+            "equals": "Spooler"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-sid-test": {
+        "test_title": "Supplied contract shape for windows.sid",
+        "capability": "windows.sid",
+        "reported_elements": "all",
+        "object": {
+          "include_group": true,
+          "resolve_group": true,
+          "trustee_name": {
+            "equals": "CONTOSO\\Alice"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-userright-test": {
+        "test_title": "Supplied contract shape for windows.userright",
+        "capability": "windows.userright",
+        "reported_elements": "all",
+        "object": {
+          "userright": {
+            "equals": "SE_BACKUP_NAME"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-wmi-query-test": {
+        "test_title": "Supplied contract shape for windows.wmi.query",
+        "capability": "windows.wmi.query",
+        "reported_elements": "all",
+        "object": {
+          "namespace": "ROOT\\CIMV2",
+          "query": "SELECT Name FROM Win32_Process WHERE Name = 'notepad.exe'"
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      },
+      "windows-wuaupdatesearcher-test": {
+        "test_title": "Supplied contract shape for windows.wuaupdatesearcher",
+        "capability": "windows.wuaupdatesearcher",
+        "reported_elements": "all",
+        "object": {
+          "include_superseded_updates": true,
+          "search_criteria": {
+            "equals": "Type='Software' and IsInstalled=0"
+          }
+        },
+        "require": {
+          "item_requirement": {
+            "items_found": "one_or_more"
+          }
+        }
+      }
+    },
+    "evaluate": {
+      "and": [
+        {
+          "test": "independent-environmentvariable-test"
+        },
+        {
+          "test": "windows-appcmd-test"
+        },
+        {
+          "test": "windows-appcmdlistconfig-test"
+        },
+        {
+          "test": "windows-cmdlet-test"
+        },
+        {
+          "test": "windows-fileeffectiverights-test"
+        },
+        {
+          "test": "windows-group-sid-test"
+        },
+        {
+          "test": "windows-sid-sid-test"
+        },
+        {
+          "test": "windows-user-sid-test"
+        },
+        {
+          "test": "windows-ntuser-test"
+        },
+        {
+          "test": "windows-regkeyeffectiverights-test"
+        },
+        {
+          "test": "windows-service-test"
+        },
+        {
+          "test": "windows-sid-test"
+        },
+        {
+          "test": "windows-userright-test"
+        },
+        {
+          "test": "windows-wmi-query-test"
+        },
+        {
+          "test": "windows-wuaupdatesearcher-test"
+        }
+      ]
+    }
+  }
+}

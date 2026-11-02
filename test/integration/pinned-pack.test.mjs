@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { context } from '../helpers.mjs';
 
@@ -10,11 +12,14 @@ const directory=process.env.SCAP_NG_METADATA_PACK;
 const source=process.env.SCAP_NG_SOURCE_ROOT;
 if(!directory||!source)throw new Error('Select SCAP_NG_METADATA_PACK and SCAP_NG_SOURCE_ROOT explicitly');
 const pin=JSON.parse(readFileSync(new URL('../../schema-profile.json',import.meta.url)));
+const fixtureRoot=fileURLToPath(new URL('../fixtures/',import.meta.url));
+const sourceCommit=execFileSync('git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(sourceCommit!==pin.sourceCommit)throw new Error('Canonical schema checkout differs from the editor profile pin');
 const pack=new MetadataPack(directory,pin);
 const base='https://scap-ng.dev/schema/v0.4.0/';
 
 test('adopted optional Input guard shape preserves source without inventing bindings or defaults',()=>{
- const raw=readFileSync(join(source,'docs/examples/input-presence-20261101/optional-lock-screen.assessment.yaml'),'utf8');
+ const raw=readFileSync(join(source,'examples/windows-optional-organizational-input.assessment.yaml'),'utf8');
  const buffer=new SourceBuffer(raw);const doc=buffer.json();
  assert.equal(buffer.openOrSave(),raw);
  assert.deepEqual(pack.validate(base+'assessment.schema.json',doc),[]);
@@ -50,9 +55,9 @@ test('all 100 mappings and every annotated location resolve offline with valid s
 });
 
 test('original-backed Linux and Windows source opens byte-identically; minimal edit/undo preserves source',()=>{
- const examples=['linux-home-mount-nosuid-assessment','windows-server-2025-shows-on-lock-screen-sv-278080-assessment','windows-server-2025-control-permissions-sv-278139-assessment'];
+ const examples=['linux-home-nosuid.assessment','windows-server-2025-lock-screen.assessment','windows-server-2025-sysvol-permissions.assessment'];
  for(const name of examples){
-  const raw=readFileSync(join(source,'docs/examples/owner-contract-20261031',name+'.yaml'),'utf8');
+  const raw=readFileSync(join(source,'examples',name+'.yaml'),'utf8');
   const buffer=new SourceBuffer(raw);const document=buffer.json();
   assert.equal(buffer.openOrSave(),raw);assert.deepEqual(pack.validate(base+'assessment.schema.json',document),[]);
   const title=document.assessment.assessment_title;
@@ -64,7 +69,7 @@ test('original-backed Linux and Windows source opens byte-identically; minimal e
 });
 
 test('Show All / safe / aggressive retain explicit YAML and visible overrides',()=>{
- const req=base+'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/items_found';
+ const req=base+'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement/properties/items_found';
  const selector=pack.manifest.capabilities['windows.registry'].schema_uri+'#/$defs/object/properties/key';
  const help=pack.describe(selector,context);assert.ok(help.choices.includes('equals'));assert.ok(help.choices.includes('matches_regex'));
  const created=pack.newKeyChoice(selector,'example',context);assert.deepEqual(created,{equals:'example'});
@@ -82,6 +87,11 @@ test('Show All / safe / aggressive retain explicit YAML and visible overrides',(
  assert.equal(pack.control(req,'one_or_more',context,'hide-defaults').hidden,true);
  assert.equal(pack.control(req,'none',context,'hide-defaults').hidden,false);
  assert.equal(pack.control(req,'one_or_more',{...context,isOverride:true},'aggressive-preview').hidden,false);
+ const paired=base+'assessment-language.schema.json#/$defs/canonical_all_items_requirement';
+ const comparison={item_requirement:{items_found:'one_or_more',items_satisfying:'every'},field_requirement:{values_found:'one_or_more',values_matching:'every'},fields:{sample:{equals:true}}};
+ assert.deepEqual(pack.validate(paired,comparison),[]);
+ assert.ok(pack.validate(paired,{items_found:'one_or_more',items_satisfying:'every',field_requirement:comparison.field_requirement,fields:comparison.fields}).length>0);
+ assert.ok(pack.validate(paired,{...comparison,item_requirement:{items_found:'one_or_more'}}).length>0);
  const shell=pack.manifest.capabilities['independent.shellcommand'].schema_uri+'#/$defs/object';
  const object=pack.newObjectDefaults(shell,{object_title:'Explicit author action',command:'echo value'},context);
  assert.equal(object.error_if_exit_status_not_0,false);assert.equal(object.error_if_stderr_exists,false);assert.equal(Object.hasOwn(object,'traversal'),false);
@@ -107,7 +117,7 @@ test('all capability Object controls expose pinned schema descriptions',()=>{
 });
 
 test('adopted native Result A schemas reject old wire fields without evaluating supplied outcomes',()=>{
- const folder=join(source,'docs/examples/native-results-20261102');
+ const folder=fixtureRoot;
  const result=JSON.parse(readFileSync(join(folder,'native.test-result.json'),'utf8'));
  const original=structuredClone(result);
  assert.deepEqual(pack.validate(base+'test-result.schema.json',result),[]);
@@ -126,8 +136,8 @@ test('adopted native Result A schemas reject old wire fields without evaluating 
 });
 
 test('final selector/API help stays schema-driven for all fifteen capabilities',()=>{
- const catalog=JSON.parse(readFileSync(join(source,'schema/v0.4.0/selector-api-contracts.json'),'utf8'));
- const fixture=JSON.parse(readFileSync(join(source,'tests/fixtures/v04-selector-contracts/authoring.assessment.json'),'utf8'));
+ const catalog=JSON.parse(readFileSync(join(source,'schema/selector-api-contracts.json'),'utf8'));
+ const fixture=JSON.parse(readFileSync(join(fixtureRoot,'selector-api.assessment.json'),'utf8'));
  assert.equal(Object.keys(catalog.capabilities).length,15);
  let count=0;
  for(const test of Object.values(fixture.assessment.tests)){

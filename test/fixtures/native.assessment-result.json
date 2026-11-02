@@ -1,0 +1,179 @@
+{
+  "assessment_result": {
+    "result_schema_version": "0.4.0",
+    "execution_id": "supplied-native-result-review",
+    "assessment": {
+      "id": "windows-server-2025-shows-on-lock-screen-sv-278080-assessment",
+      "version": 1
+    },
+    "purpose": "assessment",
+    "class": "compliance",
+    "mode": "automated",
+    "outcome": "true",
+    "summary": "Supplied synthetic complete registry observation matches source DWORD 1; no scanner executed.",
+    "logical_complete": true,
+    "population_complete": true,
+    "evidence_complete": true,
+    "tests": [
+      {
+        "invocation_ref": "supplied-native-result-review",
+        "outcome": "true",
+        "items_observed": 1,
+        "object_refs": [
+          "supplied-registry-collection"
+        ],
+        "item_refs": [
+          "supplied-registry-item"
+        ],
+        "per_item_results": [
+          {
+            "item_ref": "supplied-registry-item",
+            "outcome": "true",
+            "item": {
+              "id": "supplied-registry-item",
+              "capability": "windows.registry",
+              "status": "exists",
+              "fields": {
+                "type": {
+                  "datatype": "string",
+                  "status": "exists",
+                  "value": "dword"
+                },
+                "value": {
+                  "datatype": "integer",
+                  "status": "exists",
+                  "value": 1
+                }
+              },
+              "provenance": {
+                "source": "synthetic supplied observation for Result contract review; no scanner execution"
+              }
+            },
+            "require_results": [
+              {
+                "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require",
+                "outcome": "true",
+                "field_results": [],
+                "require_results": [
+                  {
+                    "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0",
+                    "outcome": "true",
+                    "field_results": [
+                      {
+                        "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0/fields/type",
+                        "outcome": "true",
+                        "observed_values": [
+                          {
+                            "datatype": "string",
+                            "status": "exists",
+                            "value": "dword"
+                          }
+                        ],
+                        "expected_values": [
+                          {
+                            "datatype": "string",
+                            "status": "exists",
+                            "value": "dword"
+                          }
+                        ],
+                        "observation_complete": true,
+                        "field": "type",
+                        "operation": "equals",
+                        "values_found": "one_or_more",
+                        "values_matching": "every",
+                        "requirement_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/field_requirement"
+                      }
+                    ]
+                  },
+                  {
+                    "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1",
+                    "outcome": "true",
+                    "field_results": [
+                      {
+                        "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1/fields/value",
+                        "outcome": "true",
+                        "observed_values": [
+                          {
+                            "datatype": "integer",
+                            "status": "exists",
+                            "value": 1
+                          }
+                        ],
+                        "expected_values": [
+                          {
+                            "datatype": "integer",
+                            "status": "exists",
+                            "value": 1
+                          }
+                        ],
+                        "observation_complete": true,
+                        "field": "value",
+                        "operation": "equals",
+                        "values_found": "one_or_more",
+                        "values_matching": "every",
+                        "requirement_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/field_requirement",
+                        "datatype": "integer"
+                      }
+                    ]
+                  }
+                ],
+                "operator": "and"
+              }
+            ]
+          }
+        ],
+        "item_summary": {
+          "evaluated_items": 1,
+          "observed_mismatches": 0,
+          "actual_mismatches": 0,
+          "returned_items": 1,
+          "truncated_evidence": false
+        },
+        "id": "verifies-prevent-enabling-screen-slide-show-is-set-enabled-test",
+        "require_refs": [
+          "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require",
+          "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0",
+          "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0/fields/type",
+          "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1",
+          "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1/fields/value"
+        ],
+        "items_found": "one_or_more",
+        "items_satisfying": "every",
+        "field_requirement": {
+          "values_found": "one_or_more",
+          "values_matching": "every"
+        }
+      }
+    ],
+    "objects": [
+      {
+        "id": "supplied-registry-collection",
+        "capability": "windows.registry",
+        "status": "complete",
+        "item_refs": [
+          "supplied-registry-item"
+        ]
+      }
+    ],
+    "variables": [],
+    "diagnostics": [],
+    "target_ref": "synthetic-review-target",
+    "expression_execution": {
+      "assessment": "windows-server-2025-shows-on-lock-screen-sv-278080-assessment",
+      "invocation_ref": "supplied-native-result-review",
+      "outcome": "true",
+      "executed_tests": [
+        "verifies-prevent-enabling-screen-slide-show-is-set-enabled-test"
+      ],
+      "trace": [],
+      "diagnostics": []
+    },
+    "field_uses": [],
+    "dependent_assessments": [],
+    "evidence_retention": {
+      "scope": "per_test",
+      "maximum_items": null,
+      "source": "run_request"
+    }
+  }
+}

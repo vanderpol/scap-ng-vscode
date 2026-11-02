@@ -11,7 +11,37 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Audit every tracked source/documentation file and link
+        run: python3 scripts/audit_repository.py
       - run: npm ci
       - run: npm run lint
       - run: npm test
       - run: npm run package
+  pinned-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout editor
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Fresh-clone public dependencies from one self-contained manifest
+        run: python scripts/bootstrap_dependencies.py
+      - name: Verify pinned GitHub blob/tree links resolve inside exact public checkouts
+        run: python scripts/audit_repository.py
+      - name: Install reviewed public converter dependencies for pack derivation
+        run: python -m pip install -e .external/scap-ng-tools
+      - name: Generate exact owner-amended 0.4 metadata pack
+        run: python scripts/bootstrap_dependencies.py --with-pack
+      - name: Verify the same resources in strict no-fetch offline mode
+        run: python scripts/bootstrap_dependencies.py --offline --with-pack
+      - run: npm ci
+      - name: Test pinned real examples, synthetic Result A and selector/API contracts
+        env:
+          SCAP_NG_METADATA_PACK: ${{ github.workspace }}/.external/editor-pack
+          SCAP_NG_SOURCE_ROOT: ${{ github.workspace }}/.external/scap-ng
+        run: npm run test:integration

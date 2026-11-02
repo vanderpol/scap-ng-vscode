@@ -1,0 +1,129 @@
+{
+  "invocation_ref": "supplied-native-result-review",
+  "outcome": "true",
+  "items_observed": 1,
+  "object_refs": [
+    "supplied-registry-collection"
+  ],
+  "item_refs": [
+    "supplied-registry-item"
+  ],
+  "per_item_results": [
+    {
+      "item_ref": "supplied-registry-item",
+      "outcome": "true",
+      "item": {
+        "id": "supplied-registry-item",
+        "capability": "windows.registry",
+        "status": "exists",
+        "fields": {
+          "type": {
+            "datatype": "string",
+            "status": "exists",
+            "value": "dword"
+          },
+          "value": {
+            "datatype": "integer",
+            "status": "exists",
+            "value": 1
+          }
+        },
+        "provenance": {
+          "source": "synthetic supplied observation for Result contract review; no scanner execution"
+        }
+      },
+      "require_results": [
+        {
+          "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require",
+          "outcome": "true",
+          "field_results": [],
+          "require_results": [
+            {
+              "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0",
+              "outcome": "true",
+              "field_results": [
+                {
+                  "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0/fields/type",
+                  "outcome": "true",
+                  "observed_values": [
+                    {
+                      "datatype": "string",
+                      "status": "exists",
+                      "value": "dword"
+                    }
+                  ],
+                  "expected_values": [
+                    {
+                      "datatype": "string",
+                      "status": "exists",
+                      "value": "dword"
+                    }
+                  ],
+                  "observation_complete": true,
+                  "field": "type",
+                  "operation": "equals",
+                  "values_found": "one_or_more",
+                  "values_matching": "every",
+                  "requirement_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/field_requirement"
+                }
+              ]
+            },
+            {
+              "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1",
+              "outcome": "true",
+              "field_results": [
+                {
+                  "require_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1/fields/value",
+                  "outcome": "true",
+                  "observed_values": [
+                    {
+                      "datatype": "integer",
+                      "status": "exists",
+                      "value": 1
+                    }
+                  ],
+                  "expected_values": [
+                    {
+                      "datatype": "integer",
+                      "status": "exists",
+                      "value": 1
+                    }
+                  ],
+                  "observation_complete": true,
+                  "field": "value",
+                  "operation": "equals",
+                  "values_found": "one_or_more",
+                  "values_matching": "every",
+                  "requirement_ref": "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/field_requirement",
+                  "datatype": "integer"
+                }
+              ]
+            }
+          ],
+          "operator": "and"
+        }
+      ]
+    }
+  ],
+  "item_summary": {
+    "evaluated_items": 1,
+    "observed_mismatches": 0,
+    "actual_mismatches": 0,
+    "returned_items": 1,
+    "truncated_evidence": false
+  },
+  "id": "verifies-prevent-enabling-screen-slide-show-is-set-enabled-test",
+  "require_refs": [
+    "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require",
+    "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0",
+    "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/0/fields/type",
+    "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1",
+    "/tests/verifies-prevent-enabling-screen-slide-show-is-set-enabled-test/require/and/1/fields/value"
+  ],
+  "items_found": "one_or_more",
+  "items_satisfying": "every",
+  "field_requirement": {
+    "values_found": "one_or_more",
+    "values_matching": "every"
+  }
+}

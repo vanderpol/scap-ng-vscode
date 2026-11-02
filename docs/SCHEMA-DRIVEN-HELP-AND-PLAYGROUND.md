@@ -6,7 +6,7 @@
 
 **Sources and boundaries:**
 
-- Upstream [SCAP-NG 0.4.0 owner decisions 1–29](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/audit/v04-owner-final-decisions-20261031.md), [PR #268](https://github.com/vanderpol/scap-ng/pull/268) (draft at review), [schema language/vocabulary issue #244](https://github.com/vanderpol/scap-ng/issues/244), [editor default audit](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/audit/v04-editor-default-review-20261031.md) and [OVAL crosswalk](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/audit/v04-editor-defaults-oval-crosswalk-20261031.md).
+- Current public source: the exact [frozen 0.4 schema family](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/schema), its [editor default policy](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/editor-default-policy.json), [selector/API case contracts](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/selector-api-contracts.json), [generated reference](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/docs/generated/schema-reference.md), and [converted examples](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/examples). The older owner-decision/audit documents and issue numbers are preserved in private `scap-ng-research`; they are historical provenance, **not required or accessible inputs** for company Codex.
 - The editor's existing [AGENTS.md](../AGENTS.md), [blueprint](EDITOR-BLUEPRINT.md) and implementation [#1](https://github.com/vanderpol/scap-ng-vscode/issues/1)–[#6](https://github.com/vanderpol/scap-ng-vscode/issues/6) remain in force except where this newer **editor product priority** explicitly supersedes the older idea that sample-data work was optional/later. The no-fabricated-scanner-result boundary remains absolute.
 - An editor build must pin an exact upstream schema/mapping/vocabulary commit and supported version; offline operation cannot depend on a moving remote branch. A later installed/pinned schema may update forms/help automatically, but never silently reinterpret existing 0.4.0 documents as another version.
 
@@ -40,8 +40,8 @@ Already approved hideable controls from the audit (five controls/six scalar valu
 
 | Control | Initial editor choice | Notes |
 | --- | --- | --- |
-| `items_found` | `one_or_more` | Existence policy, not Item matching. |
-| `items_satisfying` | `every` | OVAL `check` is mandatory; do not impute an invalid omitted source check. |
+| `item_requirement.items_found` | `one_or_more` | Existence policy inside the paired Item requirement, not Item matching. |
+| `item_requirement.items_satisfying` | `every` | Required in comparison Tests; existence-only Tests do not invent a matching control. OVAL `check` is mandatory in source comparisons. |
 | `field_requirement` | `{values_found: one_or_more, values_matching: every}` | One paired control; overrides always save both members. |
 | `reported_elements` | `all` | NG reporting policy, not an OVAL equivalent. |
 | File `filesystem` | `local` for **new authoring** | Converted OVAL omitted `recurse_file_system` has effective `all` and **stays `all`**. |
@@ -99,13 +99,13 @@ The longer-term authoring workflow is **test-driven**: user supplies a properly 
 
 **P4 (sample evidence, staged safely):** Import/paste sample Items and display provenance/typed fields; introduce deterministic comparison and branch traces **only alongside a compatible qualified evaluator**. Until then explain unavailable portions and never show fabricated compliance results.
 
-**Representative scenarios:** (1) actual source-backed Windows Server registry DWORD sample [SV-278080](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/examples/owner-contract-20261031/windows-server-2025-shows-on-lock-screen-sv-278080-assessment.yaml); (2) source-backed RHEL 9 /home `nosuid` [SV-257851](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/examples/owner-contract-20261031/linux-home-mount-nosuid-assessment.yaml); (3) *constructed compiler-tested, not source/scanner proved* Windows-like `if/else_if` branching with `not_evaluated` remote ACL and `not_applicable` [compatibility suite](https://github.com/vanderpol/scap-ng/blob/05fbd7a4e49aea4f49e223552d18c9951531322d/docs/audit/v04-owner-conditional-compatibility-20261031.md).
+**Representative scenarios:** (1) current source-backed Windows Server registry DWORD [SV-278080](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/examples/windows-server-2025-lock-screen.assessment.yaml); (2) current source-backed Linux `/home` [`nosuid`](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/examples/linux-home-nosuid.assessment.yaml); (3) *constructed—not source/scanner proved* Windows-like `if/else_if` branching with `not_evaluated` remote ACL and `not_applicable`, to be supplied as a clearly labelled local UI fixture. Neither the old private research suite nor a qualified evaluator is required for initial regex-only preview.
 
 Use separate acceptance badges for **schema valid**, **compiled**, **static source compared**, **regex-only preview**, **supplied-results simulation**, and **scanner executed**. Never conflate them.
 
 ## 7. Maintenance and coordination
 
 - Treat this as a **product acceptance contract** superseding older editor statements that all hidden defaults are prohibited or regex/sample-data interaction is optional future polish. Do not weaken existing truth boundaries: runtime evaluation still requires an actual evaluator.
-- Implement in the dedicated VS Code repository. Schema descriptions/default annotations/crosswalk changes must be proposed and reviewed **upstream**, version-pinned against the exact compatible grammar; do not silently modify frozen sources or pending PR #268. Existing upstream #244 is the metadata integration point.
+- Implement in the dedicated VS Code repository. Schema descriptions/default annotations/crosswalk changes must be proposed and reviewed **upstream** in the public canonical `scap-ng` repository, version-pinned against the exact compatible grammar; do not silently modify frozen sources. Historical research PR #268 and issue #244 are not active public integration targets.
 - Use the current 453-row OVAL crosswalk to classify analogous/defaulted/inapplicable/optional/ambiguous controls. Most should be mechanically dispositioned; only real ambiguities or deviations need owner votes. Never turn 433 candidate rows into 433 separate owner requests.
 - Keep a short recorded demo, screenshots/GIF, fixture/test output, exact schema SHA and before/after YAML diff with each meaningful milestone. Report what is **implemented**, what is **demonstrated**, and what remains **unqualified** separately.
