@@ -17,3 +17,9 @@ No-op open/save continues to return the original bytes. Safe plain string enum e
 Files named `*.assessment.yaml` or `*.assessment.yml` expose **SCAP-NG Assessment** through VS Code's native **Reopen Editor With…** menu. The custom editor is optional (`priority: option`); users can always keep the native Source editor. The provider never invokes a scanner or claims compliance results.
 
 Schema-backed dropdowns and capability-aware controls will be layered onto this generic fallback once the selected verified metadata pack is connected to the form model. Until then, values are edited as source-backed scalar fields rather than from a competing hardcoded enum registry.
+
+## Issue #14 stabilization
+
+The webview model carries both the SHA-256 revision and `TextDocument.version` that it rendered. The host compares both against the current document before creating a `WorkspaceEdit`; messages are serialized so rapid changes cannot race. External changes refresh the model, and rejected revisions are reported instead of overwritten.
+
+When `scapNg.schemaPackPath` points to the verified pinned pack, the same generic field fallback resolves each scalar path through the pinned Assessment schema. It uses schema titles, descriptions and enum tokens for controls; no competing enum registry is maintained. The canonical Windows Registry lock-screen Assessment is covered by the integration suite, including `items_found` enum choices and stale-edit rejection.
