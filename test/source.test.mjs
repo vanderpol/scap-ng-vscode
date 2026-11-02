@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SourceBuffer,sha256 } from '../dist/index.js';
+import { SourceBuffer,sha256,previewRegex } from '../dist/index.js';
 
 test('byte-identical open/save with Unicode, BOM, CRLF, comments, anchors and flow style',()=>{
  for(const raw of ['# note\na: { b: "old", c: 2 } # end\n','\ufeff# π\r\na: \'old\'\r\n','a: &anchor old\nb: *anchor\n','a: |\n  multiline\n','a: [\n malformed'])assert.equal(new SourceBuffer(raw).openOrSave(),raw);
@@ -45,4 +45,18 @@ test('safe mapping-key edit changes only the selected operation and supports und
  assert.equal(edit.document.text,'require:\n  fields: {value: {not_equal: 1}}\n');
  assert.equal(edit.document.json().require.fields.value.not_equal,1); assert.equal(edit.undo().text,raw);
  assert.throws(()=>edit.document.editMappingKey(['require','fields','value'],'not_equal','equals',sha256(raw)),/Stale/);
+});
+
+test('mapping-key edits can enforce schema-authorized operations before patching',()=>{
+ const raw='require:\n  fields: {value: {equals: 1}}\n'; const source=new SourceBuffer(raw);
+ assert.throws(()=>source.editMappingKey(['require','fields','value'],'equals','matches_regex',sha256(raw),['equals']),/not permitted/);
+ const edit=source.editMappingKey(['require','fields','value'],'equals','not_equal',sha256(raw),['equals','not_equal']);
+ assert.equal(edit.document.json().require.fields.value.not_equal,1);
+});
+
+test('offline regex preview is bounded and clearly dialect-scoped',()=>{
+ const result=previewRegex('^user=(.+)$','user=alice');
+ assert.equal(result.dialect,'ECMAScript'); assert.equal(result.matched,true); assert.deepEqual(result.captures,['alice']);
+ assert.equal(previewRegex('(','x').matched,false); assert.ok(previewRegex('(','x').error);
+ assert.equal(previewRegex('x','a'.repeat(100001)).limited,true);
 });

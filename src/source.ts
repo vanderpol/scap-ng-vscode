@@ -30,8 +30,9 @@ export class SourceBuffer {
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
-  editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string) {
+  editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string, allowedKeys?: readonly string[]) {
     if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
+    if (allowedKeys && !allowedKeys.includes(newKey)) throw new Error(`Operation '${newKey}' is not permitted by the pinned schema; use Source mode`);
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
     if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');

@@ -55,7 +55,15 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
   const capability = vocabularyLabel(pack, test.capability); const objectValues = Object.entries(test.object ?? {}).flatMap(([name, predicate]: any) => predicate && typeof predicate === 'object' ? Object.entries(predicate).map(([operation, operand]) => `${name.replaceAll('_', ' ')} ${operation.replaceAll('_', ' ')} ${human(operand)}`) : [`${name.replaceAll('_', ' ')} ${human(predicate)}`]);
   const requirement: any = test.require ?? {}; const item = requirement.item_requirement ?? {}; const field = requirement.field_requirement ?? {}; const itemText = item.items_found ? `at least ${item.items_found.replaceAll('_', ' ')} collected Item(s)` : 'the required collected Items'; const satisfyText = item.items_satisfying ? ` and ${item.items_satisfying.replaceAll('_', ' ')} selected Item(s) must satisfy the condition` : '';
   const fieldText = field.values_matching ? `; ${field.values_matching.replaceAll('_', ' ')} found field values must match` : ''; const predicates = Object.entries(requirement.fields ?? {}).flatMap(([name, predicate]: any) => predicate && typeof predicate === 'object' ? Object.entries(predicate).map(([operation, operand]) => `${name.replaceAll('_', ' ')} ${operation.replaceAll('_', ' ')} ${human(operand)}`) : []).join(' and ');
-  const condition = predicates ? `: ${predicates}` : ''; return `Collect ${capability}${objectValues.length ? ` (${objectValues.join(', ')})` : ''}; pass conditions require ${itemText}${satisfyText}${fieldText}${condition}. This is an authoring explanation, not a scanner result.`;
+  const condition = predicates ? `: ${predicates}` : '';
+  const evaluate = assessment.evaluate && typeof assessment.evaluate === 'object' && !Array.isArray(assessment.evaluate)
+    ? ` Assessment evaluation uses the authored ${Object.keys(assessment.evaluate).join('/')} alternative; this describes selection semantics only.` : '';
+  const inputGuard = assessment.evaluate?.if?.input_provided;
+  const inputFallback = assessment.evaluate?.else?.not_evaluated ? `else not_evaluated (${assessment.evaluate.else.not_evaluated.reason ?? 'authored fallback'})` : 'otherwise follow the authored else outcome';
+  const inputBranch = assessment.inputs && inputGuard
+    ? ` The optional Input branch is authored as: when '${inputGuard}' is provided, continue with the selected branch; ${inputFallback}. Missing, empty and not-evaluated states are not inferred here.` : '';
+  const variableChain = assessment.variables ? ` Authored Variables remain in the collection chain (${Object.keys(assessment.variables).join(', ')}); the editor does not execute them.` : '';
+  return `Collect ${capability}${objectValues.length ? ` (${objectValues.join(', ')}` : ''}${objectValues.length ? ')' : ''}; pass conditions require ${itemText}${satisfyText}${fieldText}${condition}.${evaluate}${inputBranch}${variableChain} This is an authoring explanation, not a scanner result.`;
 }
 
 export function modelFor(document: any, pack?: MetadataPack) {
@@ -68,13 +76,19 @@ export function modelFor(document: any, pack?: MetadataPack) {
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
+function evaluationText(value: any): string {
+  if (Array.isArray(value)) return value.map(evaluationText).join(' and ');
+  if (!value || typeof value !== 'object') return 'no authored evaluation tree';
+  if (typeof value.test === 'string') return value.test;
+  return Object.entries(value).map(([operator, branch]) => `${operator.toUpperCase()} (${evaluationText(branch)})`).join(' ');
+}
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
 function operationKey(value: any) { return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).find(key => !['datatype', 'values_found', 'values_matching', 'value_match', 'redact_result'].includes(key)) : undefined; }
 function predicateControl(fields: any[], mappingPath: (string | number)[], name: string, definition: any, label: string) {
   const operation = operationKey(definition); if (!operation) return { name, label, mappingPath, operation: undefined, value: undefined, valuePath: undefined, choices: [], unsupported: true };
-  const valuePath = [...mappingPath, operation]; const scalar = fieldAt(fields, valuePath);
-  return { name, label, mappingPath, operation, value: definition[operation], valuePath, choices: scalar?.choices ?? [], description: scalar?.description ?? '', operations: [], unsupported: !scalar && !Array.isArray(definition[operation]) };
+  const valuePath = [...mappingPath, operation]; const scalar = fieldAt(fields, valuePath); const rawValue = definition[operation];
+  return { name, label, mappingPath, operation, value: rawValue, valuePath, choices: scalar?.choices ?? [], description: scalar?.description ?? '', operations: [], regexPatterns: operation === 'matches_regex' ? (Array.isArray(rawValue) ? rawValue.map(String) : [String(rawValue)]) : [], unsupported: !scalar && !Array.isArray(rawValue) };
 }
 export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const base: any = modelFor(document, pack); if (!base.ok) return base;
@@ -88,5 +102,5 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
     const fieldControls = Object.entries(requirement.fields ?? {}).map(([name, predicate]) => ({ kind: 'field', ...predicateControl(base.fields, [...path, 'require', 'fields', name], name, predicate, name.replaceAll('_', ' ')), operations: catalog?.operations() ?? [] }));
     return { id, path, title: test.test_title ?? id, titlePath, titleField, capability: test.capability, capabilityLabel: catalog ? catalog.capabilities().find(option => option.value === test.capability)?.label ?? test.capability : test.capability, objectControls: controls, itemControls, fieldRequirement, fieldControls, explanation: explainAssessment({ assessment: { ...assessment, tests: { [id]: test } } }, pack), unsupported: Object.keys(test).filter(key => !['test_title', 'capability', 'object', 'require', 'reported_elements'].includes(key)) };
   });
-  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
+  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, evaluate: assessment.evaluate, evaluationExplanation: assessment.evaluate ? `Authored evaluation tree: ${evaluationText(assessment.evaluate)}. This describes logical selection only; no Test has been executed.` : '', tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
 }
