@@ -123,7 +123,7 @@ class AssessmentEditorProvider {
       }
       if (message.type === 'duplicateTest' && typeof message.id === 'string') {
         if (!sourceRevisionMatches(document.getText(), message.revision, document.version, message.version)) { panel.webview.postMessage({ type: 'error', message: 'Document changed before Test duplication; refreshed the editor.', refreshSource: true }); return send(); }
-        const newId = await api.window.showInputBox({ prompt: 'New Test ID (lowercase kebab-case ending in -test)', value: `${message.id}-copy-test`, validateInput: (value: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*-test$/.test(value) ? undefined : 'Use lowercase kebab-case ending in -test.' });
+        const newId = await api.window.showInputBox({ prompt: 'New Test ID (lowercase kebab-case ending in -test)', value: `${message.id}-copy-test`, validateInput: (value: string) => value.length > 64 ? 'Test IDs are limited to 64 characters.' : (/^[a-z0-9]+(?:-[a-z0-9]+)*-test$/.test(value) ? undefined : 'Use lowercase kebab-case ending in -test.') });
         if (!newId) return;
         try {
           const source = new SourceBuffer(document.getText()); const edit = source.duplicateMappingEntry(['assessment', 'tests'], message.id, newId, message.revision);

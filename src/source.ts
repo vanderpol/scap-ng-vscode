@@ -63,7 +63,8 @@ export class SourceBuffer {
     const nextPair: any = pairIndex >= 0 ? parent.items[pairIndex + 1] : undefined;
     const nextStart = nextPair?.key?.range ? this.text.lastIndexOf('\n', nextPair.key.range[0] - 1) + 1 : -1;
     const newline = this.text.indexOf('\n', pair.value.range[1]);
-    const end = nextStart >= 0 ? nextStart : (newline < 0 ? this.text.length : newline + 1);
+    const valueEnd = pair.value.range[1] > 0 && this.text[pair.value.range[1] - 1] === '\n' ? pair.value.range[1] : (newline < 0 ? this.text.length : newline + 1);
+    const end = nextStart >= 0 ? nextStart : valueEnd;
     const next = this.text.slice(0, lineStart) + this.text.slice(end);
     const parsed = parseDocument(next, { uniqueKeys: true });
     if (parsed.errors.length) throw new Error('Removal would break YAML');
@@ -81,7 +82,7 @@ export class SourceBuffer {
     const index = parent.items?.findIndex((candidate: any) => candidate.key?.value === key) ?? -1;
     const pair: any = index >= 0 ? parent.items[index] : undefined; const following: any = index >= 0 ? parent.items[index + 1] : undefined;
     if (!pair?.key?.range || !pair.value?.range || (pair.key.type && pair.key.type !== 'PLAIN')) throw new Error('Mapping entry is not a safe plain-keyed node');
-    const start = this.text.lastIndexOf('\n', pair.key.range[0] - 1) + 1; const followingStart = following?.key?.range ? this.text.lastIndexOf('\n', following.key.range[0] - 1) + 1 : -1; const newline = this.text.indexOf('\n', pair.value.range[1]); const end = followingStart >= 0 ? followingStart : (newline < 0 ? this.text.length : newline + 1);
+    const start = this.text.lastIndexOf('\n', pair.key.range[0] - 1) + 1; const followingStart = following?.key?.range ? this.text.lastIndexOf('\n', following.key.range[0] - 1) + 1 : -1; const newline = this.text.indexOf('\n', pair.value.range[1]); const valueEnd = pair.value.range[1] > 0 && this.text[pair.value.range[1] - 1] === '\n' ? pair.value.range[1] : (newline < 0 ? this.text.length : newline + 1); const end = followingStart >= 0 ? followingStart : valueEnd;
     const block = this.text.slice(start, end); const keyOffset = pair.key.range[0] - start; const keyEnd = pair.key.range[1] - start; const copy = block.slice(0, keyOffset) + newKey + block.slice(keyEnd);
     const next = this.text.slice(0, end) + copy + this.text.slice(end); const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Duplication would break YAML');
     return { document: new SourceBuffer(next), range: [end, end], replacement: copy, undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
@@ -102,7 +103,8 @@ export class SourceBuffer {
       const start = this.text.lastIndexOf('\n', entry.key.range[0] - 1) + 1;
       const followingStart = following?.key?.range ? this.text.lastIndexOf('\n', following.key.range[0] - 1) + 1 : -1;
       const newline = this.text.indexOf('\n', entry.value.range[1]);
-      return [start, followingStart >= 0 ? followingStart : (newline < 0 ? this.text.length : newline + 1)];
+      const valueEnd = entry.value.range[1] > 0 && this.text[entry.value.range[1] - 1] === '\n' ? entry.value.range[1] : (newline < 0 ? this.text.length : newline + 1);
+      return [start, followingStart >= 0 ? followingStart : valueEnd];
     };
     const firstRange = blockRange(parent.items[Math.min(index, otherIndex)], parent.items[Math.min(index, otherIndex) + 1]);
     const secondRange = blockRange(parent.items[Math.max(index, otherIndex)], parent.items[Math.max(index, otherIndex) + 1]);
