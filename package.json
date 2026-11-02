@@ -56,6 +56,10 @@
       {
         "command": "scapNg.searchIndex",
         "title": "SCAP-NG: Search Assessment Studio"
+      },
+      {
+        "command": "scapNg.createGuidedAssessment",
+        "title": "SCAP-NG: Create Guided Assessment"
       }
     ],
     "viewsContainers": {
