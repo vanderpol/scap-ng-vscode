@@ -88,3 +88,10 @@ test('block mapping Test removal is a minimal explicit structural patch',()=>{
  assert.equal(edit.undo().text,raw);
  assert.throws(()=>new SourceBuffer('tests: {first: {test_title: First}}\n').removeMappingEntry(['tests'],'first',sha256('tests: {first: {test_title: First}}\n')),/block mapping/);
 });
+
+test('block mapping Test reorder preserves each authored block',()=>{
+ const raw='assessment:\n  tests:\n    first:\n      test_title: First\n    second:\n      test_title: Second\n';
+ const edit=new SourceBuffer(raw).moveMappingEntry(['assessment','tests'],'second','up',sha256(raw));
+ assert.equal(edit.document.text,'assessment:\n  tests:\n    second:\n      test_title: Second\n    first:\n      test_title: First\n');
+ assert.equal(edit.undo().text,raw);
+});

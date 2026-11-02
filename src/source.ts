@@ -70,6 +70,31 @@ export class SourceBuffer {
     return { document: new SourceBuffer(next), range: [lineStart, end], replacement: '', undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  moveMappingEntry(path: (string | number)[], key: string, direction: 'up' | 'down', expectedHash: string) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(path, true);
+    if (!isMap(parent) || parent.flow) throw new Error('Only block mapping entries have a safe reorder; use Source mode');
+    const index = parent.items?.findIndex((candidate: any) => candidate.key?.value === key) ?? -1;
+    const otherIndex = direction === 'up' ? index - 1 : index + 1;
+    const pair: any = index >= 0 ? parent.items[index] : undefined;
+    const other: any = otherIndex >= 0 ? parent.items[otherIndex] : undefined;
+    if (!pair?.key?.range || !pair.value?.range || !other?.key?.range || !other.value?.range) throw new Error('Mapping entry is not a safe scalar-keyed node');
+    const blockRange = (entry: any, following?: any): [number, number] => {
+      const start = this.text.lastIndexOf('\n', entry.key.range[0] - 1) + 1;
+      const followingStart = following?.key?.range ? this.text.lastIndexOf('\n', following.key.range[0] - 1) + 1 : -1;
+      const newline = this.text.indexOf('\n', entry.value.range[1]);
+      return [start, followingStart >= 0 ? followingStart : (newline < 0 ? this.text.length : newline + 1)];
+    };
+    const firstRange = blockRange(parent.items[Math.min(index, otherIndex)], parent.items[Math.min(index, otherIndex) + 1]);
+    const secondRange = blockRange(parent.items[Math.max(index, otherIndex)], parent.items[Math.max(index, otherIndex) + 1]);
+    const firstText = this.text.slice(firstRange[0], firstRange[1]); const secondText = this.text.slice(secondRange[0], secondRange[1]);
+    const next = this.text.slice(0, firstRange[0]) + secondText + firstText + this.text.slice(secondRange[1]);
+    const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Reorder would break YAML');
+    return { document: new SourceBuffer(next), range: [firstRange[0], secondRange[1]], replacement: secondText + firstText, undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   json(): Json {
     const doc = parseDocument(this.text, { uniqueKeys: true });
     if (doc.errors.length) throw new Error('YAML parse error');
