@@ -9,10 +9,14 @@ development.
 ## Exact external profile
 
 `schema-profile.json` pins the public canonical SCAP-NG 0.4 source
-`354c9c962c77488a3d939cab56f6ceecfd495d27`, manifest SHA-256
-`1f981bcc09c294e15b287176482d6be0b0a9d3d128bda6c37a160826bda036e2`.
+`463675f3b931e596c922352a131cb3c515ab2265`, manifest SHA-256
+`0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`.
 This is a pre-alpha metadata checkpoint, not a release. Select exact checked-out
 copies of the public canonical spec, tools exporter and official OVAL v5.12.3.
+This follow-on source pin incorporates presentation-only requirements-first
+canonical examples. All 235 resource identities/capability definitions are
+identical to the prior pack; only the manifest's source commit and manifest
+digest changed from the previously reviewed profile.
 From a single VS Code editor checkout, see [the bootstrap guide](WORKSPACE-BOOTSTRAP.md)
 and use `npm run bootstrap:deps`, install the tools Python dependencies, then
 `npm run bootstrap:pack` and `npm run verify:offline`. The equivalent manual
@@ -22,7 +26,7 @@ external export is:
 PYTHONPATH=/path/to/scap-ng-tools/src python /path/to/scap-ng-tools/scripts/build_v04_editor_metadata_pack.py \
   --schema-root /path/to/scap-ng \
   --oval-root /path/to/OVAL-v5.12.3 \
-  --source-commit 354c9c962c77488a3d939cab56f6ceecfd495d27 \
+  --source-commit 463675f3b931e596c922352a131cb3c515ab2265 \
   --output /path/to/metadata-pack
 SCAP_NG_METADATA_PACK=/path/to/metadata-pack SCAP_NG_SOURCE_ROOT=/path/to/scap-ng npm run test:integration
 ```
