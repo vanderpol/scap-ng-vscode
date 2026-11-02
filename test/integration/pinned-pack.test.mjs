@@ -219,3 +219,30 @@ test('existing optional branches and multi-Test evaluation remain visible withou
  assert.match(multiModel.assessment.evaluationExplanation,/XOR/);
  assert.match(multiModel.assessment.evaluationExplanation,/no Test has been executed/); assert.deepEqual(multiModel.assessment.evaluationControl.operations,['and','or','one','xor']); assert.equal(multiModel.assessment.evaluationControl.operation,'xor');
 });
+
+test('native Rule discovery is derived metadata with current pointer grammar, preserving source bytes',()=>{
+ const folder=join(source,'examples/organizational-input');
+ const raw=readFileSync(join(folder,'input.rule.yaml'),'utf8');
+ const buffer=new SourceBuffer(raw);const authored=buffer.json();
+ assert.equal(Object.hasOwn(authored.rule,'organizational_input_requirements'),false);
+ assert.deepEqual(pack.validate(base+'rule.schema.json',authored),[]);
+ assert.equal(buffer.openOrSave(),raw);
+ const schema=pack.resource(base+'rule.schema.json').properties.rule;
+ const index=schema.properties.organizational_input_requirements;
+ assert.equal(index.readOnly,true);assert.equal(schema.required.includes('organizational_input_requirements'),false);
+ const compiled=JSON.parse(readFileSync(join(folder,'compiled.rule.json'),'utf8'));
+ assert.deepEqual(pack.validate(base+'rule.schema.json',compiled),[]);
+ const rows=compiled.rule.organizational_input_requirements.automated;
+ assert.equal(rows.length,1);assert.equal(rows[0].uses.length,2);
+ assert.deepEqual(new Set(rows[0].uses.map(use=>use.kind)),new Set(['value','presence']));
+ for(const use of [
+  {test:'registry-test',state:'synthetic-state',state_slot:'value'},
+  {kind:'wrong',source_path:'/evaluate/if/input_provided'},
+  {kind:'presence',source_path:'/a~2b/input_provided'},
+ ]){
+  const invalid=structuredClone(compiled);invalid.rule.organizational_input_requirements.automated[0].uses=[use];
+  assert.ok(pack.validate(base+'rule.schema.json',invalid).length>0);
+ }
+ // Shape validation does not prove pointer target/binding/dominance agreement;
+ // those graph checks belong to the pinned compiler, never to AI or the UI.
+});

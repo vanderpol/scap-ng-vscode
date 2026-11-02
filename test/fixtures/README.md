@@ -18,7 +18,7 @@ scanner data or a benchmark distribution:
 | `selector-api.assessment.json` | amended from historical `tests/fixtures/v04-selector-contracts/authoring.assessment.json` | `30fb558b125fa10de1a10b91a9b6e8b36288bf877b7c9959e08359c908ce1642` |
 
 The canonical current source for **real converted authoring examples** is
-`vanderpol/scap-ng@463675f3b931e596c922352a131cb3c515ab2265/examples/`,
+`vanderpol/scap-ng@d4e477998cda438a1e53a7c3c84123ec92e5ba1f/examples/`,
 loaded from a separate exact checkout in integration tests. The 235-resource
 metadata pack is generated from that canonical commit by the separately pinned
 `vanderpol/scap-ng-tools` build script, not copied into this extension repo.

@@ -7,8 +7,8 @@ The repository now contains an installable VS Code extension skeleton. `Assessme
 `schema-profile.json` is the contract descriptor:
 
 - SCAP-NG schema version: `0.4.0`
-- canonical source commit: `463675f3b931e596c922352a131cb3c515ab2265`
-- verified metadata manifest SHA-256: `0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`
+- canonical source commit: `d4e477998cda438a1e53a7c3c84123ec92e5ba1f`
+- verified metadata manifest SHA-256: `33fa58aa40b627fc1d3ae03a5ef08312461614f3c99f21ffedf26003524d4dee`
 
 The extension always displays this version/SHA. A local editor pack can be selected through `scapNg.schemaPackPath`; it is accepted only when `MetadataPack` verifies every manifest/resource hash and exact pin. With no pack, the host reports only YAML parse and obvious document-version diagnostics—it does not claim schema validity.
 

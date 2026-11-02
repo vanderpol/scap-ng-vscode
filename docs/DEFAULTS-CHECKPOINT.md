@@ -9,8 +9,8 @@ development.
 ## Exact external profile
 
 `schema-profile.json` pins the public canonical SCAP-NG 0.4 source
-`463675f3b931e596c922352a131cb3c515ab2265`, manifest SHA-256
-`0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`.
+`d4e477998cda438a1e53a7c3c84123ec92e5ba1f`, manifest SHA-256
+`33fa58aa40b627fc1d3ae03a5ef08312461614f3c99f21ffedf26003524d4dee`.
 This is a pre-alpha metadata checkpoint, not a release. Select exact checked-out
 copies of the public canonical spec, tools exporter and official OVAL v5.12.3.
 This follow-on source pin incorporates presentation-only requirements-first
@@ -26,7 +26,7 @@ external export is:
 PYTHONPATH=/path/to/scap-ng-tools/src python /path/to/scap-ng-tools/scripts/build_v04_editor_metadata_pack.py \
   --schema-root /path/to/scap-ng \
   --oval-root /path/to/OVAL-v5.12.3 \
-  --source-commit 463675f3b931e596c922352a131cb3c515ab2265 \
+  --source-commit d4e477998cda438a1e53a7c3c84123ec92e5ba1f \
   --output /path/to/metadata-pack
 SCAP_NG_METADATA_PACK=/path/to/metadata-pack SCAP_NG_SOURCE_ROOT=/path/to/scap-ng npm run test:integration
 ```
