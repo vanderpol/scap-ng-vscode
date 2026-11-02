@@ -7,17 +7,17 @@
 SCAP-NG is an evolving pre-alpha replacement for parts of the SCAP 1.4 ecosystem. The editor must **consume a pinned version** of the real project, never invent its own dialect.
 
 - [Canonical SCAP-NG repository](https://github.com/vanderpol/scap-ng)
-- [v0.4.0 schema README](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/README.md)
-- [v0.4.0 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/assessment.schema.json)
-- [v0.4.0 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/rule.schema.json)
-- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/main/schema/v0.4.0/authoring-vocabulary.en.json)
-- [Package identity and integrity](https://github.com/vanderpol/scap-ng/blob/main/specification/package/package-and-integrity.md)
-- [Assessment method and standalone role](https://github.com/vanderpol/scap-ng/blob/main/specification/assessment/assessment-method.md)
-- [Pre-alpha 0.4 release-candidate guide](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-rc.md)
-- [Current 0.4 native YAML downloads and source-backed Assessment examples](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md)
-- [Exact offline library-check/index CLI and JSON integration contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md)
+- [Frozen 0.4 schema README](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/README.md)
+- [0.4 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/assessment.schema.json)
+- [0.4 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/rule.schema.json)
+- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/authoring-vocabulary.en.json)
+- [Package identity and integrity schema](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/schema/package-manifest.schema.json)
+- [Specification status](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/specification/README.md)
+- [Generated structural reference](https://github.com/vanderpol/scap-ng/blob/354c9c962c77488a3d939cab56f6ceecfd495d27/docs/generated/schema-reference.md)
+- [Current 0.4 YAML authoring examples](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/examples)
+- [Separate 0.4 converter and authoring-tool boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md)
 
-At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After the official 0.4.0 release, explicitly upgrade from the pinned candidate to the tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The schema README itself contains historical dated paragraphs; its topmost current-candidate status and version-local files take priority.
+At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After an official 0.4.0 release, explicitly upgrade from the pinned candidate to its tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The new canonical repository physically stores 0.4 directly under flat `schema/`, even though the logical JSON Schema `$id` continues to contain `v0.4.0`.
 
 ## 2. Mental model: policy is not a check
 
@@ -52,7 +52,7 @@ assessment:
       capability: unix.file
       object: {full_path: /etc/ssh/sshd_config}
       require:
-        items_found: one_or_more
+        item_requirement: {items_found: one_or_more}
 ```
 
 Before accepting or emitting this structure, consult the pinned schema's required Test fields, capability contract and naming rules. The editor must not silently supply undocumented defaults.
@@ -62,6 +62,18 @@ Important 0.4 details:
 - `capability` belongs at **Test** level, not redundantly inside an inline Object.
 - Native Object fields are direct capability-specific source fields; do not add legacy `select`/`collect` wrappers.
 - Test expectations belong in `require`; old top-level `state`/`states`/`states_match` are not supported native authoring.
+- For readability, show the compact `item_requirement` **before**
+  `field_requirement`, and `field_requirement` **before** `fields` in new
+  complete-Test YAML examples. They are sibling keys under `require`;
+  order has no semantic effect and existing valid files must not be reordered
+  merely by opening or saving them. Prefer the compact one-line flow map
+  `field_requirement: {values_found: one_or_more, values_matching: one_or_more}`
+  when it fits; do not expand it solely to satisfy a formatter.
+- A comparison Test must serialize the complete pair
+  `item_requirement: {items_found: one_or_more, items_satisfying: every}`;
+  an existence-only Test may contain only `item_requirement.items_found` and
+  must not invent a matching decision. The ungrouped 0.4 research form is
+  intentionally invalid in the amended candidate.
 - Existence and satisfaction are **independent**: `items_found` is not `items_satisfying`; field `values_found` is distinct from `values_matching`; record `records_found` is distinct from `records_matching`.
 - Source-given data types and quantifiers must remain explicit. Absence-only requirements must use the sanctioned version-local grammar and must not carry meaningless comparisons.
 - Boolean `and`, `or`, `one` and `xor` apply at their defined logical scope. `one` = exactly one true; `xor` = odd number of true branches. Never conflate with one Item or with `one_or_more`.
@@ -97,7 +109,7 @@ Distinguish prominently:
 
 The original SCAP 1.4 converter may classify content as `CONVERTED_VERIFIED`, `CONVERTED_UNVERIFIED`, `BLOCKED` or manual/OCIL preserved. These are conversion provenance labels, **not** security scan results.
 
-- `all_exist` may be warning-lowered to `items_found: one_or_more` in a draft. This is **not unrestricted runtime equivalence** with expected missing, incomplete/error/not-collected populations. SCAP-NG scanners must not fabricate nonexistent Items.
+- `all_exist` may be warning-lowered to `item_requirement.items_found: one_or_more` in a draft. This is **not unrestricted runtime equivalence** with expected missing, incomplete/error/not-collected populations. SCAP-NG scanners must not fabricate nonexistent Items.
 - Nonstandard NIWC `ds:uri` catalog extensions may be warning-admitted only after exact deterministic reference-chain resolution. Do not silently rewrite signed source or suggest equivalent scanner proof.
 - A scanner's incomplete or unknown collection must not automatically be rendered compliant. Editor validation should report its own "unknown/not run" status when there is no evaluator.
 - Manual Assessment involves human procedure and provenance; never fabricate execution evidence.

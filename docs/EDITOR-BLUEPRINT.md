@@ -2,7 +2,7 @@
 
 **Status:** implementation guidance for an open-source pre-alpha extension. This document describes product design decisions and a staged delivery strategy; it **does not** change SCAP-NG 0.4 normative grammar or prescribe a future OVAL Board outcome.
 
-See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 native source/sample downloads](https://github.com/vanderpol/scap-ng/blob/main/docs/releases/0.4.0-downloads-and-samples.md) for reproducible editor fixtures. The [optional local normalizer/index CLI contract](https://github.com/vanderpol/scap-ng/blob/ff69d46b36e05e45074a5e7f43bf2ef3cf464ddf/docs/developer/NATIVE-LIBRARY.md) is delivered separately; do not reimplement its semantic checks in TypeScript. Canonical schema and behavior remain in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/main/schema/v0.4.0) at an explicitly pinned source SHA.
+See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 canonical Assessment examples](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/examples) for reproducible editor fixtures. The [separate converter and shared authoring-tool contract](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) is not an invitation to reimplement its semantic checks in TypeScript. Canonical schema and behavior are pinned to [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/354c9c962c77488a3d939cab56f6ceecfd495d27/schema).
 
 ## Product goal and audience
 
@@ -57,7 +57,7 @@ Step 3 — Title, class and optional Rule binding role, manual vs automated.
 
 Step 4 — For each automated Test, choose capability; show available acquisition/Source/Object prompts dynamically from pinned capability contract.
 
-Step 5 — Choose collected-Item requirement; show explicit `items_found` and `items_satisfying` counts. Prompt for field and record existence **separately** from matching. Use the versioned authoring vocabulary; no hidden quantifier defaults.
+Step 5 — Choose collected-Item requirement as one paired control: `item_requirement: {items_found: ..., items_satisfying: ...}`. In existence-only Tests, show just the `items_found` member; never invent `items_satisfying`. Prompt for field and record existence **separately** from matching. Use the versioned authoring vocabulary; no hidden scanner quantifier defaults.
 
 Step 6 — Configure typed comparisons, regex, and/or alternatives. Show `one` = exactly one and `xor` = odd parity as distinct choices.
 

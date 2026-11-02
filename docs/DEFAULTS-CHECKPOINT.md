@@ -1,23 +1,47 @@
 # Offline metadata and source-edit checkpoint
 
-Implements the adapter fallback explicitly authorized in [upstream #269](https://github.com/vanderpol/scap-ng/issues/269); coordinated under [editor #7](https://github.com/vanderpol/scap-ng-vscode/issues/7), dependencies #1/#2. The source repository was documentation-only at `2f12e81b38a996e55e115ec72caa02e49099ad53`.
+Implements the offline adapter fallback accepted in historical research #269;
+coordinated under public [editor #7](https://github.com/vanderpol/scap-ng-vscode/issues/7),
+dependencies #1/#2. Historical upstream issue references have moved into the
+private `scap-ng-research` repository and are not required for current editor
+development.
 
 ## Exact external profile
 
-`schema-profile.json` pins SCAP-NG0.4.0 source `e34c1b92a61d9cfdf1c1734e54c086aea3aa898b`, manifest SHA256 `60af65d97007e737fe4f1db9d5af57a664b370955a662dacafabbe0ecc1603a8`. This is a draft metadata checkpoint, not a release. Select an existing owner-authorized local upstream checkout at that commit and export to a new directory:
+`schema-profile.json` pins the public canonical SCAP-NG 0.4 source
+`354c9c962c77488a3d939cab56f6ceecfd495d27`, manifest SHA-256
+`1f981bcc09c294e15b287176482d6be0b0a9d3d128bda6c37a160826bda036e2`.
+This is a pre-alpha metadata checkpoint, not a release. Select exact checked-out
+copies of the public canonical spec, tools exporter and official OVAL v5.12.3.
+From a single VS Code editor checkout, see [the bootstrap guide](WORKSPACE-BOOTSTRAP.md)
+and use `npm run bootstrap:deps`, install the tools Python dependencies, then
+`npm run bootstrap:pack` and `npm run verify:offline`. The equivalent manual
+external export is:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python /path/to/scap-ng/tools/build_v04_editor_metadata_pack.py --output /path/to/metadata-pack
+PYTHONPATH=/path/to/scap-ng-tools/src python /path/to/scap-ng-tools/scripts/build_v04_editor_metadata_pack.py \
+  --schema-root /path/to/scap-ng \
+  --oval-root /path/to/OVAL-v5.12.3 \
+  --source-commit 354c9c962c77488a3d939cab56f6ceecfd495d27 \
+  --output /path/to/metadata-pack
 SCAP_NG_METADATA_PACK=/path/to/metadata-pack SCAP_NG_SOURCE_ROOT=/path/to/scap-ng npm run test:integration
 ```
 
-The pack is generated externally from all100 capability schemas/mappings, shared schemas and version-local vocabulary. No upstream assets, content or implementation are copied into this editor repository. No upstream license decision is implied. The manifest and each resource must match the explicit profile, version and SHA; traversal, symlink escapes, duplicate resource identities, unpublished packs, corrupt hashes and stale versions fail closed. There is no network loader, telemetry or source upload. Manifest hashes provide integrity against the selected profile, not publisher signatures.
+The pack is generated externally from all 100 capability schemas/mappings,
+34 root schemas and version-local vocabulary (235 resources). Only three small,
+reviewed synthetic Result A/selector test fixtures are carried in this editor
+repository, with exact hashes in [fixture provenance](../test/fixtures/README.md).
+No canonical schema files or signed benchmark content are bundled. The manifest
+and each resource must match the explicit profile, version and SHA; traversal,
+symlink escapes, duplicate resource identities, unpublished packs, corrupt hashes
+and stale versions fail closed. There is no runtime network loader, telemetry or
+source upload. Manifest hashes provide integrity, not publisher signatures.
 
 ## Implemented and tested
 
 - One immutable adapter reads the same schema help/defaults/enums for Source/Structured/Guided consumers; mode cannot select a different registry. Vocabulary/mappings are available from the same pinned pack.
-- The #268 conformance-remediation pin supplies resolved descriptions for all610 Object property occurrences. A fresh external integration checks every location through the actual adapter; no competing help registry or upstream assets are vendored. This does not supply the still-missing extension host.
-- All264 newly annotated locations resolve, every scalar/object suggestion validates, every key default is present in the schema-derived alternatives, and38 distinct controls are accounted for across100 contracts.
+- The owner-amended schema pack supplies resolved descriptions for all 610 Object property occurrences. A fresh external integration checks every location through the actual adapter; no competing help registry or upstream assets are vendored. This does not supply the still-missing extension host.
+- All 264 annotated locations resolve, every scalar/object suggestion validates, every key default is present in the schema-derived alternatives, and 38 distinct controls are accounted for across 100 contracts.
 - Show All, Hide Defaults and separate aggressive-preview **view models** have counts/group summaries and a reveal path (`show-all`). Hidden values stay serialized. Explicit overrides, non-defaults, diagnostics, absent values and unknown context remain visible. Operator hiding affects the dropdown only; operands/predicates remain visible. No full Assessment evaluation is provided.
 - New authoring is an explicit API operation with supplied seeds/operands. It does not create optional branches. Conditional matching follows schema pointers; schema validation never inserts defaults. Shell suggestions false/false are preserved as Booleans. Present Windows and Unix traversal suggestions remain distinct.
 - SourceBuffer never changes existing documents on open/save. Supported scalar edits splice one YAML source range; undo restores the exact original string. Unsafe anchors/aliases/tags/block scalars and malformed YAML decline graphical editing. Existing source remains available. Stale revision hashes fail. This is a source-edit foundation, **not native VS Code undo/redo or a TextDocument integration**.
@@ -34,7 +58,7 @@ The practical offline regex tester and sample-evidence playground remain require
 
 `npm ci`, `npm run lint`, `npm test`, `npm run package` are the bounded CI gate. Integration uses the external source/pack paths above and never downloads source at runtime. The package tarball is not a VSIX. Dependency versions/integrity are locked; licenses are in THIRD-PARTY-NOTICES.md. Schemas are supplied separately under owner control. Updating the supported pin is deliberate; a newer compatible metadata pack changes help/enums without changing consumer code, but never bypasses version/hash checks.
 
-## Recovered conformance handoff — reproducible export
+## Historical conformance handoff — reproducible export
 
 Recovery found that the prior external pack exporter serialized selector maps in
 Python set order: identical source trees produced different byte hashes. The
@@ -54,11 +78,15 @@ bindings/defaults, validates shape, preserves no-op bytes and rejects missing
 required declaration fields. Static transitive guard dominance, supplied binding
 states and program0.2 verification belong to the upstream compiler/tests; JSON
 Schema-only adapter checks do not claim those semantic or runtime guarantees.
-The original host/UI/playground dependencies remain open. Full schema-family
-freeze remains NO-GO pending the upstream Result/case-contract audit; this pin is
-not a release or approval to merge/freeze.
+The original host/UI/playground dependencies remain open. The earlier NO-GO
+decision was superseded by the owner freeze and the specifically approved
+2026-11-02 pre-release Item grouping amendment. This pin is still not a release
+or an independent scanner/proof qualification.
 
-The2026-11-02 profile also selects the upstream correction that keeps authored
-logical names in program0.2 source paths. All233 metadata resources are
-byte-identical to the previous profile; only the explicit source identity and
-manifest pin change. Legacy program0.1 and historical proof bytes are preserved.
+The previous 2026-11-02 research profile captured the correction preserving
+authored logical names in program0.2 source paths. The **current canonical
+profile** reproduces the **owner-amended 235-resource** schema/mapping/
+vocabulary pack, not the byte-identical original research export: the
+Item requirement schema and vocabulary changed deliberately while the 100
+capability/mapping resource definitions remained stable. Legacy program0.1 and
+historical proof bytes remain outside this editor project.
