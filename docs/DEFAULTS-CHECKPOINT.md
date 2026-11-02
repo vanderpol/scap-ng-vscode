@@ -54,13 +54,13 @@ source upload. Manifest hashes provide integrity, not publisher signatures.
 
 ## Precise implementation dependency
 
-There is no extension-host activation/manifest, `CustomTextEditorProvider`, shared `TextDocument`, `WorkspaceEdit`, Assessment Studio tree, Structured/Guided UI, VSIX or graphical test runner in this repository yet. The deliverable is a TypeScript **library foundation**. A real editor screenshot/GIF cannot be produced until #1/#2 supply that vertical slice; no mock image or fabricated UI evidence is supplied. Those issues remain open. Wire adapter diagnostics into the UI and display the selected profile before accepting graphical edits.
+The P0/P1 extension host, `CustomTextEditorProvider`, shared `TextDocument`, `WorkspaceEdit`, Assessment Studio tree, source-backed Structured UI and VSIX are now implemented. Guided authoring remains a later milestone; no mock image or fabricated UI evidence is supplied. Wire adapter diagnostics into the UI and display the selected profile before accepting graphical edits.
 
 The practical offline regex tester and sample-evidence playground remain required under #7, with dialect labels, bounded worker execution, positive/negative samples and integer regex capture tests. They are **not implemented in this checkpoint**, and must be part of the initial usable editor demo. Full sample Assessment PASS/FAIL remains unavailable until a qualified evaluator exists. These are implementation tasks, not semantic owner votes; they do not block upstream default classification. No scanner-runtime equivalence is claimed.
 
 ## Maintenance
 
-`npm ci`, `npm run lint`, `npm test`, `npm run package` are the bounded CI gate. Integration uses the external source/pack paths above and never downloads source at runtime. The package tarball is not a VSIX. Dependency versions/integrity are locked; licenses are in THIRD-PARTY-NOTICES.md. Schemas are supplied separately under owner control. Updating the supported pin is deliberate; a newer compatible metadata pack changes help/enums without changing consumer code, but never bypasses version/hash checks.
+`npm ci`, `npm run lint`, `npm test`, and `npm run package:vsix` are the bounded local gate. Integration uses the external source/pack paths above and never downloads source at runtime. The generated VSIX is verified as a ZIP archive before installation. Dependency versions/integrity are locked; licenses are in THIRD-PARTY-NOTICES.md. Schemas are supplied separately under owner control. Updating the supported pin is deliberate; a newer compatible metadata pack changes help/enums without changing consumer code, but never bypasses version/hash checks.
 
 ## Historical conformance handoff — reproducible export
 
