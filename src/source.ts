@@ -50,6 +50,26 @@ export class SourceBuffer {
     return { document: new SourceBuffer(next), range: [start, end], replacement: newKey,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
+  removeMappingEntry(path: (string | number)[], key: string, expectedHash: string) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(path, true);
+    if (!isMap(parent) || parent.flow) throw new Error('Only block mapping entries have a safe structural removal; use Source mode');
+    const pair: any = parent.items?.find((candidate: any) => candidate.key?.value === key);
+    if (!pair?.key?.range || !pair.value?.range) throw new Error('Mapping entry is not a safe scalar-keyed node');
+    const lineStart = this.text.lastIndexOf('\n', pair.key.range[0] - 1) + 1;
+    const pairIndex = parent.items.indexOf(pair);
+    const nextPair: any = pairIndex >= 0 ? parent.items[pairIndex + 1] : undefined;
+    const nextStart = nextPair?.key?.range ? this.text.lastIndexOf('\n', nextPair.key.range[0] - 1) + 1 : -1;
+    const newline = this.text.indexOf('\n', pair.value.range[1]);
+    const end = nextStart >= 0 ? nextStart : (newline < 0 ? this.text.length : newline + 1);
+    const next = this.text.slice(0, lineStart) + this.text.slice(end);
+    const parsed = parseDocument(next, { uniqueKeys: true });
+    if (parsed.errors.length) throw new Error('Removal would break YAML');
+    return { document: new SourceBuffer(next), range: [lineStart, end], replacement: '', undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   json(): Json {
     const doc = parseDocument(this.text, { uniqueKeys: true });
     if (doc.errors.length) throw new Error('YAML parse error');
