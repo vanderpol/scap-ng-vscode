@@ -32,6 +32,6 @@ graph closure, optional-use dominance, package validity or scanner truth; those
 remain toolchain/runtime responsibilities. No UI or evaluator behavior is added.
 
 Qualification: fresh public dependency bootstrap and pack hash verification,
-offline audit, TypeScript lint,4 unit tests,15 integration tests and VSIX packaging.
+offline audit, TypeScript lint,20 unit tests,15 integration tests and VSIX packaging.
 Exact editor-source CI links are attached to the PR after publication.
 No private research or historical65-stream library is a dependency.
