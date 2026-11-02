@@ -124,3 +124,25 @@ test('adopted native Result A schemas reject old wire fields without evaluating 
  assert.deepEqual(pack.validate(base+'assessment-result.schema.json',parent),[]);
  // Schema-only integration: source binding/record correlation stays upstream.
 });
+
+test('final selector/API help stays schema-driven for all fifteen capabilities',()=>{
+ const catalog=JSON.parse(readFileSync(join(source,'schema/v0.4.0/selector-api-contracts.json'),'utf8'));
+ const fixture=JSON.parse(readFileSync(join(source,'tests/fixtures/v04-selector-contracts/authoring.assessment.json'),'utf8'));
+ assert.equal(Object.keys(catalog.capabilities).length,15);
+ let count=0;
+ for(const test of Object.values(fixture.assessment.tests)){
+  const uri=pack.manifest.capabilities[test.capability].schema_uri;
+  const generated=pack.resource(uri);
+  for(const name of Object.keys(catalog.capabilities[test.capability].fields)){
+   const description=generated.$defs.object.properties[name].description;
+   assert.ok(description.includes('Decision22'));
+   assert.ok(description.includes('Collected-value comparisons remain independent.'));
+   assert.ok(description.includes('https://learn.microsoft.com/')||description.includes('https://github.com/'));
+   count++;
+  }
+  assert.deepEqual(pack.validate(uri+'#/$defs/object',test.object),[]);
+  assert.ok(pack.validate(uri+'#/$defs/object',{...test.object,case_sensitive:false}).length>0);
+ }
+ assert.equal(count,42);
+ // Offline metadata/schema validation only; no provider, API or UI execution.
+});
