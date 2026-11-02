@@ -60,6 +60,14 @@ content hashes before accepting it. Runtime remains offline-first.
 - The current 0.4 owner amendment groups Item quantifiers under
   `require.item_requirement` while keeping the `field_requirement` sibling;
   see the pinned canonical `examples/` and [primer](SCAP-NG-PRIMER.md).
+- Treat authoring property order as a separate **schema-derived presentation**
+  contract: the pack exporter alphabetizes JSON keys when generating hashes,
+  so its object iteration order is **not** the original schema declaration
+  order. The original pinned `schema/assessment-language.schema.json` and
+  matching canonical/sample fixtures demonstrate `item_requirement`, then
+  `field_requirement`, then `fields`; simple predicates may use compact flow
+  YAML. Before runtime UI packaging, preserve that ordering through reviewed,
+  generated metadata, never a competing hardcoded list.
 - The canonical JSON `$id` prefix includes `v0.4.0` **by design** even though
   file paths are physically flat under `schema/`. Do not change `$id` URIs to
   match filesystem locations.

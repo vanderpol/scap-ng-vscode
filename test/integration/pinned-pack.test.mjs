@@ -13,6 +13,7 @@ const source=process.env.SCAP_NG_SOURCE_ROOT;
 if(!directory||!source)throw new Error('Select SCAP_NG_METADATA_PACK and SCAP_NG_SOURCE_ROOT explicitly');
 const pin=JSON.parse(readFileSync(new URL('../../schema-profile.json',import.meta.url)));
 const fixtureRoot=fileURLToPath(new URL('../fixtures/',import.meta.url));
+const currentSamples=fileURLToPath(new URL('../../.external/scap-ng-editor-sample-data/fixtures/current-v04/',import.meta.url));
 const sourceCommit=execFileSync('git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
 if(sourceCommit!==pin.sourceCommit)throw new Error('Canonical schema checkout differs from the editor profile pin');
 const pack=new MetadataPack(directory,pin);
@@ -20,6 +21,7 @@ const base='https://scap-ng.dev/schema/v0.4.0/';
 
 test('adopted optional Input guard shape preserves source without inventing bindings or defaults',()=>{
  const raw=readFileSync(join(source,'examples/windows-optional-organizational-input.assessment.yaml'),'utf8');
+ assert.equal(raw,readFileSync(join(currentSamples,'windows-optional-organizational-input.assessment.yaml'),'utf8'));
  const buffer=new SourceBuffer(raw);const doc=buffer.json();
  assert.equal(buffer.openOrSave(),raw);
  assert.deepEqual(pack.validate(base+'assessment.schema.json',doc),[]);
@@ -56,10 +58,23 @@ test('all 100 mappings and every annotated location resolve offline with valid s
 
 test('original-backed Linux and Windows source opens byte-identically; minimal edit/undo preserves source',()=>{
  const examples=['linux-home-nosuid.assessment','windows-server-2025-lock-screen.assessment','windows-server-2025-sysvol-permissions.assessment'];
+ const order=['item_requirement','field_requirement','fields'];
+ // Pack JSON keys are sorted for reproducible hashes; authoring presentation
+ // order must be derived from the original pinned schema, never Object.keys
+ // on a normalized metadata resource.
+ const canonicalLanguage=JSON.parse(readFileSync(join(source,'schema/assessment-language.schema.json'),'utf8'));
+ const schemaOrder=Object.keys(canonicalLanguage.$defs.canonical_all_items_requirement.properties).slice(0,3);
+ assert.deepEqual(schemaOrder,order);
  for(const name of examples){
   const raw=readFileSync(join(source,'examples',name+'.yaml'),'utf8');
+  assert.equal(raw,readFileSync(join(currentSamples,name+'.yaml'),'utf8'),name+' canonical vs current sample');
   const buffer=new SourceBuffer(raw);const document=buffer.json();
   assert.equal(buffer.openOrSave(),raw);assert.deepEqual(pack.validate(base+'assessment.schema.json',document),[]);
+  const requirement=Object.values(document.assessment.tests)[0].require;
+  assert.deepEqual(Object.keys(requirement).slice(0,3),order,name+' authoring order');
+  assert.ok(raw.includes('        field_requirement: {'),name+' compact Field requirement');
+  if(name==='windows-server-2025-lock-screen.assessment')assert.ok(raw.includes('fields: {type: {equals: dword}, value: {equals: 1}}'));
+  if(name==='linux-home-nosuid.assessment')assert.ok(raw.includes('fields: {mount_options: {equals: nosuid}}'));
   const title=document.assessment.assessment_title;
   const edit=buffer.editScalar(['assessment','assessment_title'],title+' (local edit)',sha256(raw));
   assert.equal(edit.undo().text,raw);assert.equal(edit.document.json().assessment.assessment_title,title+' (local edit)');

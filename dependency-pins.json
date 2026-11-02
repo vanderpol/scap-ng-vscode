@@ -4,7 +4,7 @@
     {
       "name": "scap-ng",
       "repository": "https://github.com/vanderpol/scap-ng.git",
-      "commit": "354c9c962c77488a3d939cab56f6ceecfd495d27",
+      "commit": "463675f3b931e596c922352a131cb3c515ab2265",
       "required": true
     },
     {
@@ -16,7 +16,7 @@
     {
       "name": "scap-ng-editor-sample-data",
       "repository": "https://github.com/vanderpol/scap-ng-editor-sample-data.git",
-      "commit": "f02948a75f1773efe91bfd163e154d4a959325fe",
+      "commit": "950b9f6ac75e51fbe0bf20a1a8713ca2f1d27136",
       "required": true
     },
     {
