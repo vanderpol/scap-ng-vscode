@@ -13,7 +13,8 @@
     "bootstrap:deps": "python3 scripts/bootstrap_dependencies.py",
     "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
     "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
-    "package": "npm pack --pack-destination /tmp"
+    "package": "npm run package:vsix",
+    "package:vsix": "node scripts/package-vsix.mjs"
   },
   "files": [
     "dist",
@@ -32,5 +33,53 @@
     "typescript": "7.0.2"
   },
   "exports": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "displayName": "SCAP-NG Assessment Studio",
+  "publisher": "vanderpol",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:scapNg.assessmentStudio",
+    "onCommand:scapNg.showPin"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "scapNg.showPin",
+        "title": "SCAP-NG: Show pinned contract"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "scapNg.assessmentStudio",
+          "title": "Assessment Studio",
+          "icon": "media/scap-ng.svg"
+        }
+      ]
+    },
+    "views": {
+      "scapNg.assessmentStudio": [
+        {
+          "id": "scapNg.assessmentStudio",
+          "name": "Assessment Studio"
+        }
+      ]
+    },
+    "viewsWelcome": [],
+    "configuration": {
+      "title": "SCAP-NG Assessment Studio",
+      "properties": {
+        "scapNg.schemaPackPath": {
+          "type": "string",
+          "description": "Absolute path to a verified offline SCAP-NG editor metadata pack. The pinned schema-profile.json is always checked."
+        }
+      }
+    }
+  }
 }
