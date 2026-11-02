@@ -50,3 +50,9 @@ npm test
 ```
 
 The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins the exact upstream source and manifest digest. `npm run package` produces a library tarball, **not a VSIX**. Full Assessment evaluation is unavailable.
+
+The current pinned 0.4 schema pack adopts native Result A (`require_*` source
+locations and Field Results). Offline integration checks supplied synthetic
+Results and rejects legacy wire keys; this does not execute a scanner or replace
+upstream source/evidence correlation checks. Compatible field datatype
+annotations remain. See upstream issue #255 and editor #7.

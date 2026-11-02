@@ -105,3 +105,22 @@ test('all capability Object controls expose pinned schema descriptions',()=>{
  }
  assert.equal(count,610);
 });
+
+test('adopted native Result A schemas reject old wire fields without evaluating supplied outcomes',()=>{
+ const folder=join(source,'docs/examples/native-results-20261102');
+ const result=JSON.parse(readFileSync(join(folder,'native.test-result.json'),'utf8'));
+ const original=structuredClone(result);
+ assert.deepEqual(pack.validate(base+'test-result.schema.json',result),[]);
+ assert.deepEqual(result,original);
+ for(const uri of ['require-result.schema.json','state-result.schema.json']){
+  assert.deepEqual(pack.validate(base+uri,result.per_item_results[0].require_results[0]),[]);
+ }
+ const leaf=result.per_item_results[0].require_results[0].require_results[1].field_results[0];
+ for(const uri of ['field-result.schema.json','entity-result.schema.json'])assert.deepEqual(pack.validate(base+uri,leaf),[]);
+ for(const patch of [{state_refs:['test.states[0]']},{check:'all'},{state_operator:'AND'},{outcome:'error'}]){
+  assert.ok(pack.validate(base+'test-result.schema.json',{...result,...patch}).length>0);
+ }
+ const parent=JSON.parse(readFileSync(join(folder,'native.assessment-result.json'),'utf8'));
+ assert.deepEqual(pack.validate(base+'assessment-result.schema.json',parent),[]);
+ // Schema-only integration: source binding/record correlation stays upstream.
+});
