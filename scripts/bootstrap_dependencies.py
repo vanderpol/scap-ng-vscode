@@ -22,11 +22,14 @@ PIN = json.loads((ROOT / 'dependency-pins.json').read_text())
 PROFILE = json.loads((ROOT / 'schema-profile.json').read_text())
 
 
-def git(*args):
+def git(*args, allow_lazy_fetch=False):
     # A blob-filtered checkout can ask a promisor remote for missing objects
     # even during `git status`. Verification must work with NO network at all.
     env = os.environ.copy()
-    env['GIT_NO_LAZY_FETCH'] = '1'
+    if allow_lazy_fetch:
+        env.pop('GIT_NO_LAZY_FETCH', None)
+    else:
+        env['GIT_NO_LAZY_FETCH'] = '1'
     return subprocess.run(['git', *map(str, args)], capture_output=True,
                           text=True, check=True, env=env).stdout.strip()
 
@@ -45,7 +48,9 @@ def materialize(row, *, offline):
         if row.get('sparse_checkout'):
             git('-C', dest, 'sparse-checkout', 'set', '--no-cone', *row['sparse_checkout'])
         git('-C', dest, 'fetch', '--depth=1', 'origin', commit)
-        git('-C', dest, 'checkout', '--detach', commit)
+        # Online materialization must download filtered blobs on checkout;
+        # only subsequent verification (and all --offline runs) forbid it.
+        git('-C', dest, 'checkout', '--detach', commit, allow_lazy_fetch=True)
     else:
         if not (dest / '.git').exists():
             raise ValueError(f'{name}: existing non-repository path; refusing overwrite')
@@ -116,5 +121,8 @@ if __name__ == '__main__':
         print(json.dumps({'result': 'VERIFIED', 'offline': args.offline,
                           'metadata_pack': str(CACHE / 'editor-pack') if args.with_pack else None,
                           'inputs': data}, indent=2))
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or '').strip()
+        parser.exit(1, f'bootstrap verification failed: {error}\n{detail}\n')
+    except (ValueError, OSError) as error:
         parser.exit(1, f'bootstrap verification failed: {error}\n')
