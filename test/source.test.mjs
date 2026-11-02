@@ -39,3 +39,10 @@ test('plain enum/string edits retain plain style when safe',()=>{
  assert.equal(edit.replacement,'new-value');
  assert.equal(edit.document.text,'status: new-value\n');
 });
+test('safe mapping-key edit changes only the selected operation and supports undo',()=>{
+ const raw='require:\n  fields: {value: {equals: 1}}\n'; const source=new SourceBuffer(raw);
+ const edit=source.editMappingKey(['require','fields','value'],'equals','not_equal',sha256(raw));
+ assert.equal(edit.document.text,'require:\n  fields: {value: {not_equal: 1}}\n');
+ assert.equal(edit.document.json().require.fields.value.not_equal,1); assert.equal(edit.undo().text,raw);
+ assert.throws(()=>edit.document.editMappingKey(['require','fields','value'],'not_equal','equals',sha256(raw)),/Stale/);
+});

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
-import { modelFor, explainAssessment } from '../../dist/structured-model.js';
+import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -174,6 +174,15 @@ test('final selector/API help stays schema-driven for all fifteen capabilities',
 });
 
 
+
+test('three-pane model covers complex canonical Assessments without flattening advanced source',()=>{
+ for(const name of ['windows-server-2025-lock-screen.assessment','linux-home-nosuid.assessment','windows-server-2025-sysvol-permissions.assessment']){
+  const raw=readFileSync(join(source,'examples',name+'.yaml'),'utf8'); const model=assessmentEditorModel({getText:()=>raw,version:3},pack);
+  assert.equal(model.ok,true,name); assert.equal(model.assessment.tests.length,1,name); assert.ok(model.assessment.tests[0].explanation.includes('authoring explanation'),name);
+  assert.ok(model.assessment.tests[0].objectControls.length>0,name); assert.ok(model.assessment.tests[0].itemControls.length>0,name);
+  assert.equal(new SourceBuffer(raw).openOrSave(),raw,name);
+ }
+});
 test('canonical explanations teach Registry requirements without scanner claims',()=>{
  const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
  const value=new SourceBuffer(raw).json(); const explanation=explainAssessment(value,pack);

@@ -1,5 +1,5 @@
 /** Range edits for the future TextDocument host; no reserialization (#2/#7). */
-import { parseDocument, isScalar, isAlias } from 'yaml';
+import { parseDocument, isScalar, isAlias, isMap } from 'yaml';
 import { sha256, type Json } from './metadata.js';
 
 export class SourceBuffer {
@@ -27,6 +27,22 @@ export class SourceBuffer {
     const parsed = parseDocument(next, { uniqueKeys: true });
     if (parsed.errors.length) throw new Error('Edit would break YAML');
     return { document: new SourceBuffer(next), range: [start, end], replacement,
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
+  editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string) {
+    if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(path, true);
+    if (!isMap(parent) || !Array.isArray(parent.items)) throw new Error('Mapping-key edit requires a YAML mapping');
+    if (parent.items.some((pair: any) => pair.key && pair.key.value === newKey)) throw new Error('Mapping key already exists');
+    const pair: any = parent.items.find((candidate: any) => candidate.key && candidate.key.value === oldKey);
+    if (!pair?.key?.range) throw new Error('Mapping key is not a safe scalar');
+    const [start, end] = pair.key.range; const next = this.text.slice(0, start) + newKey + this.text.slice(end);
+    const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Edit would break YAML');
+    return { document: new SourceBuffer(next), range: [start, end], replacement: newKey,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
   json(): Json {
