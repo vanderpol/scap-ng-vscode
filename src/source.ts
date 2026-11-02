@@ -2,6 +2,10 @@
 import { parseDocument, isScalar, isAlias, isMap } from 'yaml';
 import { sha256, type Json } from './metadata.js';
 
+export function sourceRevisionMatches(text: string, expectedHash: string, version?: number, expectedVersion?: number) {
+  return sha256(text) === expectedHash && (expectedVersion === undefined || version === expectedVersion);
+}
+
 export class SourceBuffer {
   constructor(readonly text: string) {}
   openOrSave(): string { return this.text; }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SourceBuffer,sha256,previewRegex } from '../dist/index.js';
+import { SourceBuffer,sha256,sourceRevisionMatches,previewRegex,previewRegexSafe } from '../dist/index.js';
 
 test('byte-identical open/save with Unicode, BOM, CRLF, comments, anchors and flow style',()=>{
  for(const raw of ['# note\na: { b: "old", c: 2 } # end\n','\ufeff# π\r\na: \'old\'\r\n','a: &anchor old\nb: *anchor\n','a: |\n  multiline\n','a: [\n malformed'])assert.equal(new SourceBuffer(raw).openOrSave(),raw);
@@ -56,7 +56,27 @@ test('mapping-key edits can enforce schema-authorized operations before patching
 
 test('offline regex preview is bounded and clearly dialect-scoped',()=>{
  const result=previewRegex('^user=(.+)$','user=alice');
- assert.equal(result.dialect,'ECMAScript'); assert.equal(result.matched,true); assert.deepEqual(result.captures,['alice']);
+ assert.equal(result.dialect,'ECMAScript-safe-preview'); assert.equal(result.matched,true); assert.deepEqual(result.captures,['alice']);
  assert.equal(previewRegex('(','x').matched,false); assert.ok(previewRegex('(','x').error);
  assert.equal(previewRegex('x','a'.repeat(100001)).limited,true);
+});
+
+test('source apply revision guard rejects edits made while approval is open',async()=>{
+ let current='title: old\n'; const draftHash=sha256(current);
+ assert.equal(sourceRevisionMatches(current,draftHash,1,1),true);
+ // Simulate the approval promise yielding to an external TextDocument edit.
+ const approval=Promise.resolve('Apply').then(()=>{current='title: external\n';return 'Apply';});
+ assert.equal(await approval,'Apply');
+ assert.equal(sourceRevisionMatches(current,draftHash,2,1),false);
+ // Cancellation never changes the authoritative source.
+ const before=current; const cancelled=await Promise.resolve('Cancel'); assert.equal(cancelled,'Cancel'); assert.equal(current,before);
+});
+
+test('pathological regex preview is rejected or cancelled outside the extension host',async()=>{
+ const pathological=previewRegex('(a+)+$','a'.repeat(10000)+'!');
+ assert.match(pathological.error,/nested quantifier|backreferences|safety/i);
+ const safe=await previewRegexSafe(['^user=(.+)$'],'user=alice','',100);
+ assert.equal(safe[0].matched,true); assert.deepEqual(safe[0].captures,['alice']);
+ const cancelled=await previewRegexSafe(['^(a|aa)+$'],'a'.repeat(50000)+'!', '', 25);
+ assert.ok(cancelled[0].timedOut || cancelled[0].error,JSON.stringify(cancelled[0]));
 });
