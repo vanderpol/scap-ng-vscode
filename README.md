@@ -54,6 +54,10 @@ The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in 
 
 This editor repository is licensed under **Apache License 2.0** (see [LICENSE](LICENSE)). That license does not automatically grant rights to redistribute upstream content, schema assets or third-party code.
 
+## Issue #18 desktop UX checkpoint
+
+The current custom editor provides a simultaneous Guided context, Graphical/Structured Test editor and editable YAML Source pane for existing Assessments. It preserves source-backed scalar edits, highlights safe source ranges, supports retained pane splitters, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. See [the Issue #18 checkpoint](docs/ISSUE-18-UX-CHECKPOINT.md) for verification commands and explicit remaining boundaries.
+
 ## Runnable metadata checkpoint (#7)
 
 [Implementation, exact pin and remaining UI dependency](docs/DEFAULTS-CHECKPOINT.md).
