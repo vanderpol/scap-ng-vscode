@@ -8,6 +8,8 @@ const pack = new MetadataPack(process.env.SCAP_NG_METADATA_PACK ?? '.external/ed
 test('guided catalog is vocabulary/schema-driven and preserves exact logic distinctions', () => {
   const catalog = new GuidedCatalog(pack);
   assert.equal(catalog.platforms().find(option => option.value === 'windows').label, 'Windows');
+  assert.deepEqual(catalog.objectFields('windows.registry').map(field => field.name), ['hive', 'key', 'name']);
+  assert.ok(catalog.resultFields('linux.partition').some(field => field.name === 'mount_options'));
   assert.equal(catalog.modes().some(option => option.value === 'manual'), true);
   assert.deepEqual(catalog.logicalOperators().map(option => option.value), ['and', 'or', 'one', 'xor']);
   assert.match(catalog.logicalOperators().find(option => option.value === 'one').label, /Exactly one/);

@@ -6,7 +6,7 @@ The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/v
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
-**Status:** pre-alpha extension host, Assessment Studio P0 skeleton and a source-backed Structured editing vertical slice are implemented. Full schema-driven UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
+**Status:** pre-alpha extension host, Assessment Studio index, source-backed Structured editing and first schema-driven Guided authoring slice are implemented. Full novice-oriented UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
 
@@ -14,6 +14,7 @@ Current editor samples deliberately display the comparison order **Item requirem
 2. **[SCAP-NG primer](docs/SCAP-NG-PRIMER.md)** — what a Benchmark, Rule, Assessment, Test, Object, require, capability and result actually mean; current 0.4 rules.
 3. **[Editor blueprint](docs/EDITOR-BLUEPRINT.md)** — Source/Structured/Guided, Assessment Studio UI, workspace index, offline design, proposed architecture and test contracts.
 4. **[Implementation roadmap / Issue #1](https://github.com/vanderpol/scap-ng-vscode/issues/1)** — first runnable VSIX milestone.
+5. **[Open-source editor reconnaissance](docs/OPEN-SOURCE-EDITOR-RECON.md)** — reviewed interoperability and custom-editor patterns.
 5. **[One-clone Linux development setup](docs/WORKSPACE-BOOTSTRAP.md)** — exact public dependencies, offline pack, safe PR workflow and large-library boundary.
 
 ### One checkout is enough
