@@ -70,6 +70,23 @@ export class SourceBuffer {
     return { document: new SourceBuffer(next), range: [lineStart, end], replacement: '', undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  duplicateMappingEntry(path: (string | number)[], key: string, newKey: string, expectedHash: string) {
+    if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(path, true);
+    if (!isMap(parent) || parent.flow) throw new Error('Only block mapping entries have a safe duplication; use Source mode');
+    if (parent.items?.some((candidate: any) => candidate.key?.value === newKey)) throw new Error('Mapping key already exists');
+    const index = parent.items?.findIndex((candidate: any) => candidate.key?.value === key) ?? -1;
+    const pair: any = index >= 0 ? parent.items[index] : undefined; const following: any = index >= 0 ? parent.items[index + 1] : undefined;
+    if (!pair?.key?.range || !pair.value?.range || (pair.key.type && pair.key.type !== 'PLAIN')) throw new Error('Mapping entry is not a safe plain-keyed node');
+    const start = this.text.lastIndexOf('\n', pair.key.range[0] - 1) + 1; const followingStart = following?.key?.range ? this.text.lastIndexOf('\n', following.key.range[0] - 1) + 1 : -1; const newline = this.text.indexOf('\n', pair.value.range[1]); const end = followingStart >= 0 ? followingStart : (newline < 0 ? this.text.length : newline + 1);
+    const block = this.text.slice(start, end); const keyOffset = pair.key.range[0] - start; const keyEnd = pair.key.range[1] - start; const copy = block.slice(0, keyOffset) + newKey + block.slice(keyEnd);
+    const next = this.text.slice(0, end) + copy + this.text.slice(end); const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Duplication would break YAML');
+    return { document: new SourceBuffer(next), range: [end, end], replacement: copy, undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   moveMappingEntry(path: (string | number)[], key: string, direction: 'up' | 'down', expectedHash: string) {
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
