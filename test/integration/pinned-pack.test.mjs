@@ -208,6 +208,8 @@ test('canonical Windows Registry Assessment rejects stale edits without changing
 });
 
 test('existing optional branches and multi-Test evaluation remain visible without execution',()=>{
+ const manualYaml='{\"assessment\":{\"id\":\"manual-assessment\",\"version\":1,\"assessment_title\":\"Manual review\",\"mode\":\"manual\",\"class\":\"compliance\",\"procedure\":\"Review the local policy.\",\"response\":{\"type\":\"manual-review\",\"allow_comment\":true}}}';
+ const manualModel=assessmentEditorModel({getText:()=>manualYaml,version:6},pack); assert.equal(manualModel.assessment.mode,'manual'); assert.equal(manualModel.assessment.tests.length,0); assert.ok(manualModel.assessment.manualControls.some(control=>control.path.at(-1)==='procedure'));
  const optional=readFileSync(join(source,'examples/windows-optional-organizational-input.assessment.yaml'),'utf8');
  const optionalModel=assessmentEditorModel({getText:()=>optional,version:4},pack);
  assert.match(optionalModel.assessment.tests[0].explanation,/optional Input branch/);
