@@ -6,7 +6,7 @@ The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/v
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
-**Status:** pre-alpha metadata/source-edit foundation implemented; no extension host, graphical UI or VSIX yet. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
+**Status:** pre-alpha extension host and Assessment Studio P0 skeleton implemented; Source/Structured editing and full schema-driven UI remain roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
 

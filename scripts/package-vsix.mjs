@@ -1,0 +1,11 @@
+import { mkdirSync, rmSync, cpSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
+const stage = '/tmp/scap-ng-vscode-vsix';
+rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'extension'), { recursive: true });
+for (const path of ['package.json','README.md','LICENSE','THIRD-PARTY-NOTICES.md','schema-profile.json','media','dist']) cpSync(path, join(stage, 'extension', path), { recursive: true });
+const output = join(process.cwd(), 'scap-ng-vscode-0.0.1.vsix');
+function files(root, dir = root) { return readdirSync(dir, { withFileTypes: true }).flatMap(entry => { const path = join(dir, entry.name); return entry.isDirectory() ? files(root, path) : [path]; }); }
+function crc32(bytes) { let crc = 0xffffffff; for (const byte of bytes) { crc ^= byte; for (let i=0;i<8;i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); } return (crc ^ 0xffffffff) >>> 0; }
+const chunks = [], central = []; let offset = 0;
+for (const path of files(stage)) { const data = readFileSync(path); const name = relative(stage, path).replaceAll('\\','/'); const nameBytes = Buffer.from(name); const crc = crc32(data); const header = Buffer.alloc(30); header.writeUInt32LE(0x04034b50,0); header.writeUInt16LE(20,4); header.writeUInt16LE(0,6); header.writeUInt16LE(0,8); header.writeUInt32LE(crc,14); header.writeUInt32LE(data.length,18); header.writeUInt32LE(data.length,22); header.writeUInt16LE(nameBytes.length,26); chunks.push(header,nameBytes,data); const cd = Buffer.alloc(46); cd.writeUInt32LE(0x02014b50,0); cd.writeUInt16LE(20,4); cd.writeUInt16LE(20,6); cd.writeUInt16LE(0,8); cd.writeUInt16LE(0,10); cd.writeUInt32LE(crc,16); cd.writeUInt32LE(data.length,20); cd.writeUInt32LE(data.length,24); cd.writeUInt16LE(nameBytes.length,28); cd.writeUInt32LE(offset,42); central.push(cd,nameBytes); offset += header.length + nameBytes.length + data.length; }
+const directory = Buffer.concat(central); const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50,0); end.writeUInt16LE(central.length ? central.filter((_,i)=>i%2===0).length : 0,8); end.writeUInt16LE(central.length ? central.filter((_,i)=>i%2===0).length : 0,10); end.writeUInt32LE(directory.length,12); end.writeUInt32LE(offset,16); writeFileSync(output, Buffer.concat([...chunks,directory,end])); console.log(output);
