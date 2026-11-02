@@ -77,7 +77,7 @@ test('pathological regex preview is rejected or cancelled outside the extension 
  assert.match(pathological.error,/nested quantifier|backreferences|safety/i);
  const safe=await previewRegexSafe(['^user=(.+)$'],'user=alice','',100);
  assert.equal(safe[0].matched,true); assert.deepEqual(safe[0].captures,['alice']);
- const cancelled=await previewRegexSafe(['^(a|aa)+$'],'a'.repeat(50000)+'!', '', 25);
+ const cancelled=await previewRegexSafe(['^a+$'],'a'.repeat(100000)+'!', '', 1);
  assert.ok(cancelled[0].timedOut || cancelled[0].error,JSON.stringify(cancelled[0]));
 });
 
