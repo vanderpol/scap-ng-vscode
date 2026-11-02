@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
-import { modelFor } from '../../dist/structured-model.js';
+import { modelFor, explainAssessment } from '../../dist/structured-model.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -173,6 +173,12 @@ test('final selector/API help stays schema-driven for all fifteen capabilities',
  // Offline metadata/schema validation only; no provider, API or UI execution.
 });
 
+
+test('canonical explanations teach Registry requirements without scanner claims',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const value=new SourceBuffer(raw).json(); const explanation=explainAssessment(value,pack);
+ assert.match(explanation,/Windows Registry/); assert.match(explanation,/at least one_or_more|at least one or more/); assert.match(explanation,/every selected Item/); assert.match(explanation,/field values must match/); assert.match(explanation,/not a scanner result/);
+});
 test('schema-driven model exposes canonical Registry enum help and revision',()=>{
  const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
  const model=modelFor({getText:()=>raw,version:7},pack);
