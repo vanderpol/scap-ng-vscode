@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer } from './source.js';
+import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -13,14 +14,30 @@ class StudioNode extends vscode.TreeItem {
   }
 }
 class StudioTree implements vscode.TreeDataProvider<StudioNode> {
+  private readonly changed = new vscode.EventEmitter<StudioNode | undefined>();
+  readonly onDidChangeTreeData = this.changed.event;
+  private query = '';
+  constructor(private readonly index: WorkspaceIndex) {}
+  refresh() { this.changed.fire(undefined); }
+  setQuery(query: string) { this.query = query; this.refresh(); }
   getTreeItem(node: StudioNode) { return node; }
   getChildren(node?: StudioNode) {
     if (!node) return [
       new StudioNode('STIG Library', vscode.TreeItemCollapsibleState.Collapsed, 'stig-library'),
-      new StudioNode('Assessment Library', vscode.TreeItemCollapsibleState.Collapsed, 'assessment-library')
+      new StudioNode('Assessment Library', vscode.TreeItemCollapsibleState.Collapsed, 'assessment-library'),
+      new StudioNode('Diagnostics', vscode.TreeItemCollapsibleState.Collapsed, 'index-diagnostics')
     ];
-    return [new StudioNode('No indexed documents yet')];
+    const records = this.query ? this.index.search(this.query) : this.index.all();
+    if (node.contextValue === 'stig-library') return records.filter(record => record.kind === 'benchmark').map(recordNode);
+    if (node.contextValue === 'assessment-library') return records.filter(record => record.kind === 'assessment').map(recordNode);
+    if (node.contextValue === 'index-diagnostics') return this.index.diagnostics().map(diagnostic => new StudioNode(`${diagnostic.code}: ${diagnostic.message}`, vscode.TreeItemCollapsibleState.None, 'index-diagnostic'));
+    return [];
   }
+}
+function recordNode(record: IndexedDocument) {
+  const node = new StudioNode(record.title ? `${record.title} (${record.id ?? 'no id'})` : (record.id ?? record.path), vscode.TreeItemCollapsibleState.None, 'indexed-document');
+  node.description = `${record.kind}${record.diagnostics.length ? ` · ${record.diagnostics.length} diagnostic(s)` : ''}`;
+  return node;
 }
 class PinView implements vscode.WebviewViewProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -80,6 +97,26 @@ class AssessmentEditorProvider {
   }
 }
 
+async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, diagnostics: vscode.DiagnosticCollection) {
+  if (!api.workspace.findFiles || !api.workspace.openTextDocument) return;
+  const files = await api.workspace.findFiles('**/*.{yaml,yml}', '**/{node_modules,.git,.external}/**');
+  const entries: { uri: string; text: string; path: string }[] = [];
+  await Promise.all(files.map(async (uri: any) => {
+    try { const document = await api.workspace.openTextDocument(uri); entries.push({ uri: uri.toString(), text: document.getText(), path: uri.fsPath }); } catch { /* unreadable files remain outside the index */ }
+  }));
+  index.updateMany(entries);
+  publishIndexDiagnostics(index, diagnostics, api); tree.refresh();
+}
+function publishIndexDiagnostics(index: WorkspaceIndex, diagnostics: vscode.DiagnosticCollection, api: any) {
+  for (const diagnostic of index.diagnostics()) {
+    const uri = api.Uri.parse(diagnostic.uri); const severity = diagnostic.severity === 'error' ? api.DiagnosticSeverity.Error : api.DiagnosticSeverity.Warning;
+    diagnostics.set(uri, [new api.Diagnostic(new api.Range(0, 0, 0, 1), diagnostic.message, severity)]);
+  }
+}
+async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, diagnostics: vscode.DiagnosticCollection) {
+  try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, diagnostics, api); tree.refresh(); } catch { /* file may have been removed between watcher events */ }
+}
+
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
@@ -104,10 +141,19 @@ export function activate(context: vscode.ExtensionContext) {
     try { pack = new MetadataPack(configuredPack, profile); }
     catch (error) { void vscode.window.showWarningMessage(`SCAP-NG metadata pack rejected: ${error instanceof Error ? error.message : String(error)}`); }
   }
-  const tree = new StudioTree();
+  const index = new WorkspaceIndex();
+  const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
   const api: any = vscode;
   context.subscriptions.push(diagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
+  void indexWorkspace(index, tree, api, diagnostics);
+  if (api.workspace.createFileSystemWatcher) {
+    for (const pattern of ['**/*.yaml', '**/*.yml']) {
+      const watcher = api.workspace.createFileSystemWatcher(pattern);
+      context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, diagnostics)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, diagnostics)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, diagnostics, api); tree.refresh(); }));
+    }
+  }
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
   context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit}`)));
   const inspect = (document: vscode.TextDocument) => { if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics); };

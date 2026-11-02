@@ -52,6 +52,10 @@
       {
         "command": "scapNg.showPin",
         "title": "SCAP-NG: Show pinned contract"
+      },
+      {
+        "command": "scapNg.searchIndex",
+        "title": "SCAP-NG: Search Assessment Studio"
       }
     ],
     "viewsContainers": {
