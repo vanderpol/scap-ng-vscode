@@ -72,7 +72,7 @@ content hashes before accepting it. Runtime remains offline-first.
   file paths are physically flat under `schema/`. Do not change `$id` URIs to
   match filesystem locations.
 - This repository still contains a TypeScript metadata/source-buffer
-  foundation, **not yet** a VS Code extension host, graphical UI or VSIX.
+  foundation plus the initial VS Code extension host, source-backed Structured editor and VSIX packaging.
 
 ## Full converted library (optional, not a bootstrap dependency)
 

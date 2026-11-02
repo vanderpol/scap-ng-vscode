@@ -97,24 +97,32 @@ class AssessmentEditorProvider {
   }
 }
 
-async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, diagnostics: vscode.DiagnosticCollection) {
+const INDEX_WORKERS = 8;
+async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection) {
   if (!api.workspace.findFiles || !api.workspace.openTextDocument) return;
   const files = await api.workspace.findFiles('**/*.{yaml,yml}', '**/{node_modules,.git,.external}/**');
-  const entries: { uri: string; text: string; path: string }[] = [];
-  await Promise.all(files.map(async (uri: any) => {
-    try { const document = await api.workspace.openTextDocument(uri); entries.push({ uri: uri.toString(), text: document.getText(), path: uri.fsPath }); } catch { /* unreadable files remain outside the index */ }
-  }));
-  index.updateMany(entries);
-  publishIndexDiagnostics(index, diagnostics, api); tree.refresh();
+  const entries: { uri: string; text: string; path: string }[] = []; let cursor = 0;
+  const worker = async () => {
+    while (cursor < files.length) {
+      const uri = files[cursor++];
+      try { const document = await api.workspace.openTextDocument(uri); entries.push({ uri: uri.toString(), text: document.getText(), path: uri.fsPath }); } catch { /* unreadable files remain outside the index */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(INDEX_WORKERS, files.length) }, worker));
+  index.updateMany(entries); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh();
 }
 function publishIndexDiagnostics(index: WorkspaceIndex, diagnostics: vscode.DiagnosticCollection, api: any) {
+  const grouped = new Map<string, vscode.Diagnostic[]>();
   for (const diagnostic of index.diagnostics()) {
-    const uri = api.Uri.parse(diagnostic.uri); const severity = diagnostic.severity === 'error' ? api.DiagnosticSeverity.Error : api.DiagnosticSeverity.Warning;
-    diagnostics.set(uri, [new api.Diagnostic(new api.Range(0, 0, 0, 1), diagnostic.message, severity)]);
+    const severity = diagnostic.severity === 'error' ? api.DiagnosticSeverity.Error : api.DiagnosticSeverity.Warning;
+    const existing = grouped.get(diagnostic.uri) ?? [];
+    existing.push(new api.Diagnostic(new api.Range(0, 0, 0, 1), diagnostic.message, severity)); grouped.set(diagnostic.uri, existing);
   }
+  diagnostics.clear();
+  for (const [uri, values] of grouped) diagnostics.set(api.Uri.parse(uri), values);
 }
-async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, diagnostics: vscode.DiagnosticCollection) {
-  try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, diagnostics, api); tree.refresh(); } catch { /* file may have been removed between watcher events */ }
+async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection) {
+  try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); } catch { /* file may have been removed between watcher events */ }
 }
 
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
@@ -144,13 +152,14 @@ export function activate(context: vscode.ExtensionContext) {
   const index = new WorkspaceIndex();
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
+  const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   const api: any = vscode;
-  context.subscriptions.push(diagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
-  void indexWorkspace(index, tree, api, diagnostics);
+  context.subscriptions.push(diagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
+  void indexWorkspace(index, tree, api, indexDiagnostics);
   if (api.workspace.createFileSystemWatcher) {
     for (const pattern of ['**/*.yaml', '**/*.yml']) {
       const watcher = api.workspace.createFileSystemWatcher(pattern);
-      context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, diagnostics)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, diagnostics)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, diagnostics, api); tree.refresh(); }));
+      context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); }));
     }
   }
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));

@@ -20,7 +20,7 @@ declare module 'vscode' {
   export class Diagnostic { constructor(range: Range, message: string, severity: DiagnosticSeverity); source?: string; }
   export class Range { constructor(startLine: number, startCharacter: number, endLine: number, endCharacter: number); }
   export enum DiagnosticSeverity { Error = 0, Warning = 1, Information = 2, Hint = 3 }
-  export interface DiagnosticCollection { set(uri: Uri, diagnostics: Diagnostic[]): void; delete(uri: Uri): void; dispose(): void; }
+  export interface DiagnosticCollection { set(uri: Uri, diagnostics: Diagnostic[]): void; delete(uri: Uri): void; clear(): void; dispose(): void; }
   export interface ExtensionContext { subscriptions: Disposable[]; extensionPath: string; }
   export interface Disposable { dispose(): void; }
   export interface WebviewViewProvider { resolveWebviewView(view: WebviewView): void | Thenable<void>; }
