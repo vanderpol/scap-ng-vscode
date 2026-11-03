@@ -604,7 +604,7 @@ export function activate(context: vscode.ExtensionContext) {
     const summary = !details
       ? 'No recognized SCAP-NG Assessment document is active.'
       : `SCAP-NG ${details.schemaVersion} · build ${details.buildId} · ${details.state} · Red Hat YAML ${details.redhatInstalled ? `${details.redhatVersion || 'unknown'}${details.redhatActive ? ', active' : ', inactive'}` : 'not installed'} · schema ${details.associationPresent ? 'associated' : 'missing'}`;
-    await api.window.showInformationMessage(summary);
+    void api.window.showInformationMessage(summary);
     return details;
   }));
   context.subscriptions.push(api.commands.registerCommand('scapNg.diagnoseYaml', async () => {
