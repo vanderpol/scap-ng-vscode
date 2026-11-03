@@ -438,7 +438,7 @@ function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profil
     document: document?.uri?.fsPath ?? '', languageId: document?.languageId ?? '',
     schemaUri: schemaUri ?? '', schemaVersion: pack?.pin.schemaVersion ?? profile.schemaVersion,
     schemaPath: schemaPath ?? '', packPath: pack?.directory ?? '', packSha256: pack?.pin.manifestSha256 ?? '',
-    redhatInstalled: Boolean(redhat), redhatActive: Boolean(redhat?.isActive), associationPresent: associated,
+    redhatInstalled: Boolean(redhat), redhatVersion: redhat?.packageJSON?.version ?? '', redhatActive: Boolean(redhat?.isActive), associationPresent: associated,
     diagnostics: diagnostics.length, error: error ?? (associated ? '' : 'Pinned Assessment schema association is not present.')
   };
 }
@@ -596,7 +596,7 @@ export function activate(context: vscode.ExtensionContext) {
       `State: ${details.state}`, `Build: ${details.buildId} · ${details.builtAt}`, `Source commit: ${details.sourceCommit}`, `Document: ${details.document}`, `Language ID: ${details.languageId}`,
       `Schema: ${details.schemaUri || 'unavailable'} (${details.schemaVersion})`, `Schema path: ${details.schemaPath || 'unavailable'}`,
       `Pack: ${details.packPath || 'unavailable'}`, `Pack manifest SHA-256: ${details.packSha256 || 'unavailable'}`,
-      `Red Hat YAML: ${details.redhatInstalled ? `installed, active=${details.redhatActive}` : 'not installed'}`,
+      `Red Hat YAML: ${details.redhatInstalled ? `installed ${details.redhatVersion || 'unknown'}, active=${details.redhatActive}` : 'not installed'}`,
       `Schema association: ${details.associationPresent ? 'present' : 'missing'}`, `Diagnostics: ${details.diagnostics}`,
       `Error: ${details.error || 'none'}`, 'Commands: SCAP-NG: Diagnose native YAML; SCAP-NG: Configure native YAML schemas'
     ]) channel.appendLine(line);
