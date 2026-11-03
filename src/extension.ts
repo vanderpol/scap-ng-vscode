@@ -234,9 +234,9 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: 
       });
     }
   };
-  for (const scheme of ['file', 'untitled', 'vscode-remote']) {
-    context.subscriptions.push(api.languages.registerCompletionItemProvider({ language: 'yaml', scheme }, provider, ':', '_'));
-  }
+  // Keep the selector resource-scoped. A language-only selector is merged with
+  // VS Code's word provider and produces unrelated document-word suggestions.
+  context.subscriptions.push(api.languages.registerCompletionItemProvider({ language: 'yaml', scheme: 'file' }, provider, ':', '_'));
 }
 
 export function activate(context: vscode.ExtensionContext) {
