@@ -243,4 +243,5 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const found='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_found: '; assert.deepEqual(completionChoices(pack,found,found.length).map(x=>x.value),['none','exactly_one','one_or_more','every','zero_or_more']);
  const matching='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_matching: '; assert.deepEqual(completionChoices(pack,matching,matching.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
  const wrong='assessment:\n  tests:\n    check-test:\n      require:\n        item_requirement:\n          items_found: '; assert.deepEqual(completionChoices(pack,wrong,wrong.length).map(x=>x.value),['none','exactly_one','one_or_more','zero_or_more']);
+ const flow='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement: {values_matching: '; assert.deepEqual(completionChoices(pack,flow,flow.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
 });

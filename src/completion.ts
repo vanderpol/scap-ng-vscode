@@ -22,8 +22,12 @@ function pathAt(source: string, offset: number): string[] {
     while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
     if (!/[{}\[\]]/.test(raw.slice(match[0].length))) stack.push({ indent, key: match[2] });
   }
-  const current = lineAt(source, offset).text.match(/^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
-  return [...stack.map(entry => entry.key), ...(current ? [current[2]] : [])];
+  const currentText = lineAt(source, offset).text;
+  const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
+  const segment = currentText.slice(delimiter + 1);
+  const current = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+  const inlineParent = delimiter >= 0 ? currentText.slice(0, delimiter + 1).match(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{\s*$/) : undefined;
+  return [...stack.map(entry => entry.key), ...(inlineParent ? [inlineParent[1]] : []), ...(current ? [current[1]] : [])];
 }
 /**
  * Return only schema/catalog-backed values for a YAML scalar at the cursor.
@@ -33,7 +37,9 @@ function pathAt(source: string, offset: number): string[] {
  */
 export function completionChoices(pack: MetadataPack, source: string, offset: number): CompletionChoice[] {
   const { text } = lineAt(source, offset);
-  const keyMatch = text.match(/^\s*(?:[,{]\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*[^#]*$/);
+  const delimiter = Math.max(text.lastIndexOf('{'), text.lastIndexOf(','));
+  const segment = text.slice(delimiter + 1);
+  const keyMatch = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*[^#]*$/);
   if (!keyMatch) return [];
   const key = keyMatch[1];
   const path = pathAt(source, offset);
