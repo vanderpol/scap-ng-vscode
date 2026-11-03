@@ -235,7 +235,8 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
   const existing = yamlConfiguration.get('schemas', {}) ?? {};
   const associations = { ...(typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), ...yamlAssociationMap(pack) };
   await yamlConfiguration.update('schemas', associations, target);
-  const rootConfiguration = api.workspace.getConfiguration();
+  const resource = api.window.activeTextEditor?.document?.uri ?? api.workspace.workspaceFolders?.[0]?.uri;
+  const rootConfiguration = api.workspace.getConfiguration(undefined, resource);
   const existingYaml = rootConfiguration.get('[yaml]', {}) ?? {};
   const yamlEditorSettings = { ...(typeof existingYaml === 'object' && !Array.isArray(existingYaml) ? existingYaml : {}), 'editor.wordBasedSuggestions': 'off' };
   await rootConfiguration.update('[yaml]', yamlEditorSettings, target);
