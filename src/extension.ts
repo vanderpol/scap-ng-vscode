@@ -332,10 +332,19 @@ export function activate(context: vscode.ExtensionContext) {
   const build = readBuildInfo(context.extensionPath);
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.diagnoseYaml', () => {
+  context.subscriptions.push(api.commands.registerCommand('scapNg.diagnoseYaml', async () => {
     const editor = api.window.activeTextEditor; const document = editor?.document; const yaml = api.workspace.getConfiguration('yaml');
     const schemas = yaml.get('schemas', {}) ?? {}; const override = document ? api.workspace.getConfiguration('editor', document.uri).get('wordBasedSuggestions') : undefined;
     const redhat = api.extensions?.getExtension?.('redhat.vscode-yaml'); const expectedSchemas = pack ? Object.keys(yamlAssociationMap(pack)) : [];
+    let cursorCompletion = 'unavailable'; let classCompletion = 'unavailable';
+    if (document) {
+      try {
+        const cursor = await api.commands.executeCommand('vscode.executeCompletionItemProvider', document.uri, editor.selection.active);
+        cursorCompletion = (cursor?.items ?? []).map((item: any) => typeof item.label === 'string' ? item.label : item.label?.label).filter(Boolean).slice(0, 20).join(', ') || 'none';
+        const classLine = [...Array(document.lineCount).keys()].find((line: number) => document.lineAt(line).text.includes('class:'));
+        if (classLine !== undefined) { const line = document.lineAt(classLine).text; const position = new api.Position(classLine, Math.min(line.length, line.indexOf('class:') + 'class:'.length + 1)); const result = await api.commands.executeCommand('vscode.executeCompletionItemProvider', document.uri, position); classCompletion = (result?.items ?? []).map((item: any) => typeof item.label === 'string' ? item.label : item.label?.label).filter(Boolean).slice(0, 20).join(', ') || 'none'; }
+      } catch (error) { cursorCompletion = `error: ${error instanceof Error ? error.message : String(error)}`; }
+    }
     const channel = api.window.createOutputChannel('SCAP-NG Diagnostics'); channel.clear();
     for (const line of [
       `Build: ${buildLabel(build)}`,
@@ -345,7 +354,9 @@ export function activate(context: vscode.ExtensionContext) {
       `Red Hat YAML: ${redhat ? `installed ${redhat.packageJSON?.version ?? ''}, active=${redhat.isActive}` : 'not detected'}`,
       `wordBasedSuggestions: ${override ?? 'not set in workspace'}`,
       `SCAP-NG schema association: ${expectedSchemas.some(uri => Object.hasOwn(schemas, uri)) ? 'present' : 'missing'}`,
-      `Workspace folders: ${api.workspace.workspaceFolders?.length ?? 0}`
+      `Workspace folders: ${api.workspace.workspaceFolders?.length ?? 0}`,
+      `Completion at cursor: ${cursorCompletion}`,
+      `Completion at class value: ${classCompletion}`
     ]) channel.appendLine(line);
     channel.show(true);
   }));
