@@ -37,7 +37,10 @@ const expected = {
   values_matching: catalog.fieldValuesMatching().map(option => option.value)
 };
 const capabilitySchema = pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
-const expectedObjectFields = Object.keys(capabilitySchema.$defs?.object?.properties ?? {});
+const expectedObjectFields = Object.entries(capabilitySchema.$defs?.object?.properties ?? {})
+  .filter(([, spec]) => spec?.['x-scap-ng-authoring']?.context === 'selector_comparison')
+  .map(([name]) => name);
+const expectedRequireFields = [...new Set(['oneOf', 'anyOf'].flatMap(key => (capabilitySchema.$defs?.state_predicate?.[key] ?? []).flatMap(branch => branch.required ?? [])))];
 
 function check(text, key, occurrence = 0) {
   const lines = text.split(/\r?\n/);
@@ -60,6 +63,7 @@ const validDocument = join(workspace, 'windows-server-2025-lock-screen.assessmen
 const blockDocument = join(workspace, 'incomplete-block.assessment.yaml');
 const flowDocument = join(workspace, 'incomplete-flow.assessment.yaml');
 const objectDocument = join(workspace, 'incomplete-object.assessment.yaml');
+const fieldsDocument = join(workspace, 'incomplete-fields.assessment.yaml');
 const invalidDocument = join(workspace, 'invalid.assessment.yaml');
 const typingDocument = join(workspace, 'typing.assessment.yaml');
 const unique = (text, suffix) => text.replace('windows-server-2025-shows-on-lock-screen-sv-278080-assessment', `host-probe-${suffix}-assessment`);
@@ -76,11 +80,13 @@ const blockIncomplete = incomplete
   .replace('field_requirement: {values_found: , values_matching: }', 'field_requirement:\n          values_found:\n          values_matching:');
 const flowIncomplete = incomplete;
 const objectIncomplete = unique(source.replace(/object: \{hive:.*?NoLockScreenSlideshow\}\}/, 'object: {'), 'object');
+const fieldsIncomplete = unique(source.replace('fields: {type: {equals: dword}, value: {equals: 1}}', 'fields: {'), 'fields');
 const invalid = unique(source.replace('class: compliance', 'class: definitely-not-a-schema-value'), 'invalid');
 writeFileSync(validDocument, source);
 writeFileSync(blockDocument, unique(blockIncomplete, 'block'));
 writeFileSync(flowDocument, unique(flowIncomplete, 'flow'));
 writeFileSync(objectDocument, objectIncomplete);
+writeFileSync(fieldsDocument, fieldsIncomplete);
 writeFileSync(invalidDocument, invalid);
 const canonicalDocuments = Object.fromEntries(Object.entries(canonicalInputs).map(([name, input]) => { if (name === 'windowsRegistry') return [name, validDocument]; const target = join(workspace, `${name}.assessment.yaml`); writeFileSync(target, readFileSync(input, 'utf8')); return [name, target]; }));
 writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c').replace('mode: ', 'mode: aut'), 'typing'));
@@ -96,9 +102,11 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, invalidDocument, typingDocument, canonicalDocuments })};
+const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, fieldsDocument, invalidDocument, typingDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
+const expectedObjectFields=${JSON.stringify(expectedObjectFields)};
+const expectedRequireFields=${JSON.stringify(expectedRequireFields)};
 const expectedSource=${JSON.stringify(source)};
 function itemText(item){return typeof item.insertText==='string'?item.insertText:item.insertText?.value||item.textEdit?.newText||item.additionalTextEdits?.[0]?.newText||'';}
 function itemLabel(item){return typeof item.label==='string'?item.label:item.label?.label;}
@@ -107,14 +115,19 @@ async function insert(uri, point, label){const list=await vscode.commands.execut
 function hoverText(values){return (values||[]).flatMap(value=>Array.isArray(value.contents)?value.contents:[value.contents]).map(value=>typeof value==='string'?value:value?.value||'').join('\\n');}
 function diagnostic(value){return {message:value.message,severity:value.severity,source:value.source||''};}
 exports.activate=()=>setTimeout(async()=>{try{
- const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), invalid=vscode.Uri.file(files.invalidDocument), typing=vscode.Uri.file(files.typingDocument);
+ const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), fields=vscode.Uri.file(files.fieldsDocument), invalid=vscode.Uri.file(files.invalidDocument), typing=vscode.Uri.file(files.typingDocument);
  const validDoc=await vscode.workspace.openTextDocument(valid); await vscode.window.showTextDocument(valid,vscode.ViewColumn.One);
  await new Promise(resolve=>setTimeout(resolve,${languageServerDelay}));
- const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), invalidDoc=await vscode.workspace.openTextDocument(invalid), typingDoc=await vscode.workspace.openTextDocument(typing);
+ const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), typingDoc=await vscode.workspace.openTextDocument(typing);
  await vscode.window.showTextDocument(blockDoc,vscode.ViewColumn.Two);
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
  const objectCompletions=await completion(object,objectPoint);
+ const fieldsLine=fieldsDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('fields: {'));
+ const fieldsPoint={line:fieldsLine,character:fieldsDoc.lineAt(fieldsLine).text.length};
+ const requireFieldCompletions=await completion(fields,fieldsPoint);
+ const objectInsertion=await insert(object,objectPoint,expectedObjectFields[0]);
+ const requireFieldInsertion=await insert(fields,fieldsPoint,expectedRequireFields[0]);
  const typingLine=typingDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('class: c'));
  const typingPoint={line:typingLine,character:typingDoc.lineAt(typingLine).text.length};
  const naturalTyping=await completion(typing,typingPoint);
@@ -127,7 +140,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,requireFieldCompletions,objectInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -150,6 +163,9 @@ function assertSet(actual, wanted, name) {
 for (const key of ['class','mode','capability','items_found','items_satisfying','values_found','values_matching']) assertSet(receipt.blockCompletions?.[key], expected[key], `block ${key}`);
 for (const key of ['items_satisfying','values_matching']) assertSet(receipt.flowCompletions?.[key], expected[key], `flow ${key}`);
 assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fields');
+assertSet(receipt.requireFieldCompletions, expectedRequireFields, 'require fields');
+if (!receipt.objectInsertion?.found || !receipt.objectInsertion?.applied || !/\{hive:\s/.test(receipt.objectInsertion?.line || '')) failures.push('object property completion insertion failed');
+if (!receipt.requireFieldInsertion?.found || !receipt.requireFieldInsertion?.applied || !/\{expanded_value:\s/.test(receipt.requireFieldInsertion?.line || '')) failures.push('require field completion insertion failed');
 assertSet(receipt.naturalTyping, expected.class, 'natural typing class prefix');
 const canonicalExpectations={windowsRegistry:{tests:1,capabilities:['windows.registry']},unixFile:{tests:1,capabilities:['unix.file']},multipleTests:{tests:2,capabilities:['windows.registry','unix.file']}};
 for(const [name,wanted] of Object.entries(canonicalExpectations)){const actual=receipt.canonicalReceipts?.[name];if(!actual||actual.languageId!=='yaml'||actual.testCount!==wanted.tests||wanted.capabilities.some(value=>!actual.capabilities.includes(value))||(actual.diagnostics||[]).length) failures.push(`canonical ${name}: host verification mismatch`);}

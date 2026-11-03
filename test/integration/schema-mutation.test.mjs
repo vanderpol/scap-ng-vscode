@@ -30,6 +30,22 @@ function mutatedPack() {
   const bytes = readFileSync(schemaPath);
   resource.bytes = bytes.length;
   resource.sha256 = createHash('sha256').update(bytes).digest('hex');
+  const capabilityResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/capabilities/windows.registry.schema.json'));
+  const capabilityPath = join(root, capabilityResource.path);
+  const capabilitySchema = JSON.parse(readFileSync(capabilityPath, 'utf8'));
+  capabilitySchema.$defs.object.properties.fixture_selector = {
+    description: 'Fixture selector from the mutated capability schema.',
+    type: 'object',
+    'x-scap-ng-authoring': { version: 1, context: 'selector_comparison' }
+  };
+  capabilitySchema.$defs.state_predicate.oneOf.push({
+    required: ['fixture_state'],
+    properties: { fixture_state: { type: 'object', description: 'Fixture state from the mutated capability schema.' } }
+  });
+  writeFileSync(capabilityPath, JSON.stringify(capabilitySchema, null, 2) + '\n');
+  const capabilityBytes = readFileSync(capabilityPath);
+  capabilityResource.bytes = capabilityBytes.length;
+  capabilityResource.sha256 = createHash('sha256').update(capabilityBytes).digest('hex');
   manifest.capabilities['fixture.capability'] = { ...manifest.capabilities['windows.registry'] };
   const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
   writeFileSync(manifestPath, manifestBytes);
@@ -44,6 +60,10 @@ test('schema mutation drives native completion, Graphical controls, hover metada
     assert.ok(completionChoices(pack, prefix, prefix.length).some(choice => choice.value === 'fixture-class'));
     const catalog = new GuidedCatalog(pack);
     assert.ok(catalog.capabilities().some(choice => choice.value === 'fixture.capability'));
+    const objectPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {';
+    assert.ok(completionChoices(pack, objectPrefix, objectPrefix.length).some(choice => choice.value === 'fixture_selector'));
+    const fieldsPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {';
+    assert.ok(completionChoices(pack, fieldsPrefix, fieldsPrefix.length).some(choice => choice.value === 'fixture_state'));
     const sample = readFileSync(join(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml'), 'utf8');
     const model = modelFor({ getText: () => sample, version: 1 }, pack);
     const classField = model.fields.find(field => field.path.join('.') === 'assessment.class');

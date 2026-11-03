@@ -278,7 +278,7 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))
           : new api.Range(position, position);
-        item.detail = choice.kind === 'property' ? 'Selected capability schema' : 'Pinned SCAP-NG metadata';
+        item.detail = choice.kind === 'property' ? 'Selected capability schema' : `Pinned SCAP-NG metadata${choice.isDefault ? ' (schema default)' : ''}`;
         item.documentation = choice.description;
         return item;
       });

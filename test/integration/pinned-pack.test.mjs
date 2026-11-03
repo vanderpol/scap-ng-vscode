@@ -245,4 +245,14 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const matching='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_matching: '; assert.deepEqual(completionChoices(pack,matching,matching.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
  const wrong='assessment:\n  tests:\n    check-test:\n      require:\n        item_requirement:\n          items_found: '; assert.deepEqual(completionChoices(pack,wrong,wrong.length).map(x=>x.value),['none','exactly_one','one_or_more','zero_or_more']);
  const flow='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement: {values_matching: '; assert.deepEqual(completionChoices(pack,flow,flow.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
+ const registryObject='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {';
+ assert.deepEqual(completionChoices(pack,registryObject,registryObject.length).map(x=>x.value),['hive','key','name']);
+ const registryFields='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {';
+ const registrySchema=pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
+ const registryStateFields=[...new Set((registrySchema.$defs.state_predicate.oneOf ?? []).flatMap(branch=>branch.required ?? []))];
+ assert.deepEqual(completionChoices(pack,registryFields,registryFields.length).map(x=>x.value),registryStateFields);
+ const registryFlowFields='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require: {fields: {';
+ assert.deepEqual(completionChoices(pack,registryFlowFields,registryFlowFields.length).map(x=>x.value),registryStateFields);
+ const unixObject='assessment:\n  tests:\n    check-test:\n      capability: unix.file\n      object:\n        ';
+ assert.deepEqual(completionChoices(pack,unixObject,unixObject.length).map(x=>x.value),['directory','full_path','name']);
 });

@@ -28,6 +28,22 @@ writeFileSync(assessmentPath, JSON.stringify(assessment, null, 2) + '\n');
 const resourceBytes = readFileSync(assessmentPath);
 assessmentResource.bytes = resourceBytes.length;
 assessmentResource.sha256 = createHash('sha256').update(resourceBytes).digest('hex');
+const capabilityResource = manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/capabilities/windows.registry.schema.json'));
+const capabilityPath = join(pack, capabilityResource.path);
+const capability = JSON.parse(readFileSync(capabilityPath, 'utf8'));
+capability.$defs.object.properties.fixture_selector = {
+  description: 'Fixture selector description from the mutated capability schema.',
+  type: 'object',
+  'x-scap-ng-authoring': { version: 1, context: 'selector_comparison' }
+};
+capability.$defs.state_predicate.oneOf.push({
+  required: ['fixture_state'],
+  properties: { fixture_state: { type: 'object', description: 'Fixture state description from the mutated capability schema.' } }
+});
+writeFileSync(capabilityPath, JSON.stringify(capability, null, 2) + '\n');
+const capabilityBytes = readFileSync(capabilityPath);
+capabilityResource.bytes = capabilityBytes.length;
+capabilityResource.sha256 = createHash('sha256').update(capabilityBytes).digest('hex');
 manifest.capabilities['fixture.capability'] = { ...manifest.capabilities['windows.registry'] };
 const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
 writeFileSync(manifestPath, manifestBytes);

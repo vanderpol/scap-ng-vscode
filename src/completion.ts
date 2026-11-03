@@ -6,11 +6,18 @@ export interface CompletionChoice {
   label: string;
   description?: string;
   kind?: 'value' | 'property';
+  isDefault?: boolean;
 }
 
 function lineAt(source: string, offset: number) {
   const start = source.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
   return { start, text: source.slice(start, offset) };
+}
+function inlineMappingKeys(text: string): string[] {
+  // This deliberately only recognizes mapping keys followed by an opening
+  // brace. It is not a YAML parser; it is the bounded context needed while a
+  // user is editing an incomplete flow mapping (including nested mappings).
+  return [...text.matchAll(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{/g)].map(match => match[1]);
 }
 function pathAt(source: string, offset: number): string[] {
   const before = source.slice(0, offset).split(/\r?\n/);
@@ -32,8 +39,7 @@ function pathAt(source: string, offset: number): string[] {
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
   const segment = currentText.slice(delimiter + 1);
   const current = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
-  const inlineParent = delimiter >= 0 ? currentText.slice(0, delimiter + 1).match(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{[^{}]*$/) : undefined;
-  return [...stack.map(entry => entry.key), ...(inlineParent ? [inlineParent[1]] : []), ...(current ? [current[1]] : [])];
+  return [...stack.map(entry => entry.key), ...inlineMappingKeys(currentText), ...(current ? [current[1]] : [])];
 }
 function currentKey(source: string, offset: number) {
   const { text } = lineAt(source, offset);
@@ -46,17 +52,49 @@ function currentCapability(source: string, offset: number) {
   const matches = [...prefix.matchAll(/(?:^|\n)\s*capability\s*:\s*([^\s#},]+)/g)];
   return matches.at(-1)?.[1];
 }
-function capabilityFields(pack: MetadataPack, capability: string): CompletionChoice[] {
+function propertyChoice(pack: MetadataPack, uri: string, path: string, value: string, spec: any): CompletionChoice {
+  let description = typeof spec?.description === 'string' ? spec.description : undefined;
+  if (!description) {
+    try {
+      description = pack.describe(`${uri}#${path}`, {
+        documentVersion: pack.pin.schemaVersion,
+        schemaValid: true,
+        isOverride: false,
+        diagnostics: []
+      }).description || undefined;
+    } catch { /* A schema-defined property may intentionally have no description. */ }
+  }
+  return { value, label: spec?.title ?? value, description, kind: 'property' };
+}
+function capabilityObjectFields(pack: MetadataPack, capability: string): CompletionChoice[] {
   const uri = pack.manifest.capabilities[capability]?.schema_uri;
   if (!uri) return [];
   const schema: any = pack.resource(uri);
   const properties = schema.$defs?.object?.properties ?? {};
-  return Object.entries(properties).map(([value, spec]: [string, any]) => ({
-    value,
-    label: spec.title ?? value,
-    description: spec.description,
-    kind: 'property'
-  }));
+  // Canonical generated capability schemas mark selector members with the
+  // versioned authoring context. Generic object controls (set, filters,
+  // traversal, and so on) are intentionally not selector-field suggestions.
+  return Object.entries(properties)
+    .filter(([, spec]: [string, any]) => spec?.['x-scap-ng-authoring']?.context === 'selector_comparison')
+    .map(([value, spec]: [string, any]) => propertyChoice(pack, uri, '/$defs/object/properties/' + value.replace(/~/g, '~0').replace(/\//g, '~1'), value, spec));
+}
+function predicateBranches(predicate: any): any[] {
+  return ['oneOf', 'anyOf'].flatMap(key => Array.isArray(predicate?.[key]) ? predicate[key] : []);
+}
+function capabilityRequireFields(pack: MetadataPack, capability: string): CompletionChoice[] {
+  const uri = pack.manifest.capabilities[capability]?.schema_uri;
+  if (!uri) return [];
+  const schema: any = pack.resource(uri);
+  const branches = predicateBranches(schema.$defs?.state_predicate);
+  const choices = new Map<string, CompletionChoice>();
+  branches.forEach((branch, branchIndex) => {
+    const properties = branch?.properties ?? {};
+    for (const value of branch?.required ?? []) {
+      if (choices.has(value)) continue;
+      choices.set(value, propertyChoice(pack, uri, `/$defs/state_predicate/${Array.isArray(schema.$defs.state_predicate.oneOf) ? 'oneOf' : 'anyOf'}/${branchIndex}/properties/${value.replace(/~/g, '~0').replace(/\//g, '~1')}`, value, properties[value] ?? {}));
+    }
+  });
+  return [...choices.values()];
 }
 
 /**
@@ -88,13 +126,9 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
     if (key === 'items_found' && path.at(-2) === 'item_requirement') return catalog.itemFound();
     if (key === 'values_found' && path.at(-2) === 'field_requirement') return catalog.fieldValuesFound();
   }
-  // The selected capability schema is the only source of YAML object member
-  // names. This adapter fills the Red Hat gap for dynamic capability objects;
-  // it never carries a parallel SCAP-NG vocabulary.
-  const delimiter = Math.max(text.lastIndexOf('{'), text.lastIndexOf(','));
-  const segment = text.slice(delimiter + 1);
-  const looksLikeObjectMemberPosition = path.at(-1) === 'object' &&
-    (!segment.trim() || !/^\s*[A-Za-z_][A-Za-z0-9_-]*\s*:/.test(segment));
-  if (looksLikeObjectMemberPosition) return capabilityFields(pack, currentCapability(source, offset) ?? '');
+  const objectMemberPosition = path.at(-1) === 'object' && !key;
+  const requireFieldPosition = path.at(-1) === 'fields' && path.includes('require') && !key;
+  if (objectMemberPosition) return capabilityObjectFields(pack, currentCapability(source, offset) ?? '');
+  if (requireFieldPosition) return capabilityRequireFields(pack, currentCapability(source, offset) ?? '');
   return [];
 }

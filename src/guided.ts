@@ -1,13 +1,21 @@
 import { stringify } from 'yaml';
 import { MetadataPack, type Json } from './metadata.js';
 
-export interface GuidedOption { value: string; label: string; description?: string; }
+export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; }
 export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; }
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function choices(pack: MetadataPack, uri: string): GuidedOption[] {
-  try { const help = pack.describe(uri, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }); return help.choices.filter((value: Json): value is string => typeof value === 'string').map(value => ({ value, label: value })); } catch { return []; }
+  try {
+    const help = pack.describe(uri, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] });
+    return help.choices.filter((value: Json): value is string => typeof value === 'string').map(value => ({
+      value,
+      label: value,
+      description: help.description || undefined,
+      isDefault: help.hasSuggestion && value === help.suggested
+    }));
+  } catch { return []; }
 }
 function vocabulary(pack: MetadataPack): any { return pack.resource(pack.manifest.vocabulary_uri); }
 function datatypeValues(node: any): string[] { const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const [key, child] of Object.entries(value)) if (key === 'datatype') visit(child); else if (child && typeof child === 'object') visit(child); }; visit(node); return [...values]; }
@@ -35,8 +43,11 @@ export class GuidedCatalog {
   objectFields(capability: string) {
     const uri = this.capabilityObjectSchema(capability); if (!uri) return [];
     const schema: any = this.pack.resource(uri); const properties = schema.$defs?.object?.properties ?? {};
-    const hidden = new Set(['capability', 'filters', 'for_each', 'object_title', 'set', 'traversal']);
-    return Object.entries(properties).filter(([name]) => !hidden.has(name)).map(([name, spec]: [string, any]) => {
+    // Generated capability schemas identify the primary object selectors with
+    // the versioned authoring context. Do not keep a parallel list of generic
+    // object members here; schema changes must flow into Guided and native YAML
+    // authoring together.
+    return Object.entries(properties).filter(([, spec]: [string, any]) => spec?.['x-scap-ng-authoring']?.context === 'selector_comparison').map(([name, spec]: [string, any]) => {
       const help = this.pack.describe(uri + '#/$defs/object/properties/' + name.replace(/~/g, '~0').replace(/\//g, '~1'), { documentVersion: this.pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] });
       return { name, label: help.title || name, description: help.description, datatype: 'string', operations: this.operations(), enumValues: enumValues(spec) };
     });
@@ -44,8 +55,17 @@ export class GuidedCatalog {
   resultFields(capability: string) {
     const uri = this.capabilityObjectSchema(capability); if (!uri) return [];
     const schema: any = this.pack.resource(uri); const predicate: any = schema.$defs?.state_predicate;
-    const names = new Set<string>(); for (const branch of predicate?.oneOf ?? []) for (const name of branch.required ?? []) names.add(name);
-    return [...names].map(name => { const branches = (predicate?.oneOf ?? []).filter((branch: any) => (branch.required ?? []).includes(name)); const datatypes = [...new Set(branches.flatMap((branch: any) => datatypeValues(branch.properties?.[name])))]; return { name, label: name.replaceAll('_', ' '), description: `Collected ${name.replaceAll('_', ' ')} field`, datatype: datatypes[0] ?? 'string', datatypes, operations: this.operations() }; });
+    const branches = ['oneOf', 'anyOf'].flatMap(key => Array.isArray(predicate?.[key]) ? predicate[key] : []);
+    const names = new Set<string>(); for (const branch of branches) for (const name of branch.required ?? []) names.add(name);
+    return [...names].map(name => {
+      const matching = branches.map((branch: any, index: number) => ({ branch, index })).filter(({ branch }) => (branch.required ?? []).includes(name));
+      const datatypes = [...new Set(matching.flatMap(({ branch }) => datatypeValues(branch.properties?.[name])))];
+      const description = matching.map(({ branch, index }) => {
+        const property = branch.properties?.[name]; if (property?.description) return property.description;
+        try { return this.pack.describe(`${uri}#/$defs/state_predicate/${Array.isArray(predicate.oneOf) ? 'oneOf' : 'anyOf'}/${index}/properties/${name}`, { documentVersion: this.pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }).description; } catch { return ''; }
+      }).find(Boolean) || undefined;
+      return { name, label: name, description, datatype: datatypes[0] ?? 'string', datatypes, operations: this.operations() };
+    });
   }
   operations() {
     const vocabularyOperations = vocabulary(this.pack).operations ?? {}; const predicate = this.pack.resource(schemaBase + 'assessment-language.schema.json').$defs?.scalar_field_predicate?.properties ?? {};
