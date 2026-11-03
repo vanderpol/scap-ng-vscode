@@ -274,7 +274,15 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
       return completionChoices(pack, document.getText(), offset, redhatOwnsSchema(pack)).map(choice => {
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
-        item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
+        const nextCharacter = choice.kind === 'property' && typeof document.getText === 'function'
+          ? document.getText().slice(offset, offset + 1)
+          : '';
+        // If the user deleted only the property name, preserve the existing
+        // colon (`k: ...`) instead of producing `key: : ...`. For a blank map
+        // member position, insert the complete `key: ` authoring fragment.
+        item.insertText = choice.kind === 'property'
+          ? (nextCharacter === ':' ? choice.value : `${choice.value}: `)
+          : choice.value;
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))
           : new api.Range(position, position);

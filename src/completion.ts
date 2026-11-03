@@ -13,11 +13,31 @@ function lineAt(source: string, offset: number) {
   const start = source.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
   return { start, text: source.slice(start, offset) };
 }
-function inlineMappingKeys(text: string): string[] {
-  // This deliberately only recognizes mapping keys followed by an opening
-  // brace. It is not a YAML parser; it is the bounded context needed while a
-  // user is editing an incomplete flow mapping (including nested mappings).
-  return [...text.matchAll(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{/g)].map(match => match[1]);
+function inlineMappingPath(text: string): string[] {
+  // Track the flow mappings that are still open at the cursor. This matters
+  // after a comma: `object: {hive: {...}, k` is still inside `object`, but a
+  // simple last-brace/last-comma heuristic loses that parent context.
+  const stack: string[] = [];
+  let quote: string | undefined;
+  let escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === '{') {
+      const before = text.slice(0, index);
+      const key = before.match(/(?:^|[,{}])\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*$/)?.[1];
+      if (key) stack.push(key);
+    } else if (character === '}') {
+      stack.pop();
+    }
+  }
+  return stack;
 }
 function pathAt(source: string, offset: number): string[] {
   const before = source.slice(0, offset).split(/\r?\n/);
@@ -39,7 +59,7 @@ function pathAt(source: string, offset: number): string[] {
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
   const segment = currentText.slice(delimiter + 1);
   const current = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
-  return [...stack.map(entry => entry.key), ...inlineMappingKeys(currentText), ...(current ? [current[1]] : [])];
+  return [...stack.map(entry => entry.key), ...inlineMappingPath(currentText), ...(current ? [current[1]] : [])];
 }
 function currentKey(source: string, offset: number) {
   const { text } = lineAt(source, offset);

@@ -69,8 +69,8 @@ npm run test:host:redhat
 - selected-value insertion into incomplete block YAML;
 - completion queried after a typed `c` prefix (without invoking Ctrl+Space);
 - byte-for-byte source preservation on opening the canonical document;
-- flow-map behavior;
-- selected capability-schema object selector fields (`windows.registry`: `hive`, `key`, `name`);
+- flow-map behavior, including completion after a comma in an existing Object;
+- selected capability-schema object selector fields (`windows.registry`: `hive`, `key`, `name`) at the first, middle, and final member positions;
 - selected capability-schema `require.fields` names (including `hive`, `key`, `name`, and `value` where applicable);
 - property insertion (`hive: ` and a schema-derived require field) in flow mappings;
 - Red Hat schema hover text;
