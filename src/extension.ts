@@ -251,16 +251,20 @@ function discoverPackPath(documentPath: string | undefined) {
     const parent = dirname(directory); if (parent === directory) return undefined; directory = parent;
   }
 }
-function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: MetadataPack | undefined, api: any) {
-  if (!pack || !api.languages?.registerCompletionItemProvider) return;
+function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPack: () => MetadataPack | undefined, api: any) {
+  if (!api.languages?.registerCompletionItemProvider) return;
   const redhatExtension = api.extensions?.getExtension?.('redhat.vscode-yaml');
-  const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
-  const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
-  const redhatOwnsSchema = () => Boolean(redhatExtension?.isActive && assessmentSchemaUri);
+  const redhatOwnsSchema = (pack: MetadataPack) => {
+    const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
+    const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
+    return Boolean(redhatExtension?.isActive && assessmentSchemaUri);
+  };
   const provider = {
     provideCompletionItems(document: any, position: any) {
+      const pack = getPack();
+      if (!pack) return [];
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
-      return completionChoices(pack, document.getText(), offset, redhatOwnsSchema()).map(choice => {
+      return completionChoices(pack, document.getText(), offset, redhatOwnsSchema(pack)).map(choice => {
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
         item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
@@ -278,21 +282,29 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: 
 export function activate(context: vscode.ExtensionContext) {
   const profile = readProfile(context.extensionPath);
   const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
-  const discoveredPack = configuredPack ? undefined : discoverPackPath((vscode.window as any).activeTextEditor?.document.uri.fsPath);
   let pack: MetadataPack | undefined;
-  if (configuredPack || discoveredPack) {
-    try { pack = new MetadataPack(configuredPack ?? discoveredPack!, profile); }
-    catch (error) { void vscode.window.showWarningMessage(`SCAP-NG metadata pack rejected: ${error instanceof Error ? error.message : String(error)}`); }
-  }
+  let packWarningShown = false;
+  const loadPack = (documentPath?: string) => {
+    if (pack) return pack;
+    const candidate = configuredPack || discoverPackPath(documentPath);
+    if (!candidate) return undefined;
+    try {
+      pack = new MetadataPack(candidate, profile);
+      void configureNativeYamlWorkspace(pack, vscode);
+    } catch (error) {
+      if (!packWarningShown) { packWarningShown = true; void vscode.window.showWarningMessage(`SCAP-NG metadata pack rejected: ${error instanceof Error ? error.message : String(error)}`); }
+    }
+    return pack;
+  };
+  loadPack((vscode.window as any).activeTextEditor?.document.uri.fsPath);
   const index = new WorkspaceIndex();
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   const api: any = vscode;
-  registerYamlCompletionProvider(context, pack, api);
+  registerYamlCompletionProvider(context, () => pack, api);
   // Keep the suppression and schema association workspace-scoped. This avoids
   // changing ordinary YAML files in other workspaces or the user's global settings.
-  if (pack) void configureNativeYamlWorkspace(pack, api);
   context.subscriptions.push(diagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
   void indexWorkspace(index, tree, api, indexDiagnostics);
   if (api.workspace.createFileSystemWatcher) {
@@ -337,7 +349,13 @@ export function activate(context: vscode.ExtensionContext) {
     channel.show(true);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
-  const inspect = (document: vscode.TextDocument) => { if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics); };
-  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect)); if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
+  const inspect = (document: vscode.TextDocument) => {
+    loadPack(document.uri.fsPath);
+    if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics);
+  };
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
+  if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
+  if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { if (editor?.document) loadPack(editor.document.uri.fsPath); }));
+  if (api.window.activeTextEditor?.document) inspect(api.window.activeTextEditor.document);
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }
