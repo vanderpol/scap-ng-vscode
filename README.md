@@ -54,6 +54,10 @@ The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in 
 
 This editor repository is licensed under **Apache License 2.0** (see [LICENSE](LICENSE)). That license does not automatically grant rights to redistribute upstream content, schema assets or third-party code.
 
+## Issue #30 real VSIX and native YAML checkpoint
+
+A real VS Code 1.128.0 host receipt is documented in [docs/ISSUE-30-VSIX-DEMO.md](docs/ISSUE-30-VSIX-DEMO.md). The VSIX now stages its pinned runtime dependency closure for cold offline activation; native YAML editor redesign is the next focused increment.
+
 ## Issue #18 desktop UX checkpoint
 
 The current custom editor provides a simultaneous Guided context, Graphical/Structured Test editor and editable YAML Source pane for existing Assessments. It preserves source-backed scalar edits, highlights safe source ranges, supports retained pane splitters, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. See [the Issue #18 checkpoint](docs/ISSUE-18-UX-CHECKPOINT.md) for verification commands and explicit remaining boundaries.
