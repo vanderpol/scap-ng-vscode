@@ -16,3 +16,9 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.match(profile.sourceCommit, /^[a-f0-9]{40}$/);
   assert.match(profile.manifestSha256, /^[a-f0-9]{64}$/);
 });
+
+test('offline VSIX runtime dependency closure is present for cold activation', () => {
+  for (const dependency of ['yaml', 'ajv', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string']) {
+    assert.ok(readFileSync(new URL(`../node_modules/${dependency}/package.json`, import.meta.url)), dependency);
+  }
+});
