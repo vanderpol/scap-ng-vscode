@@ -227,6 +227,20 @@ function yamlAssociationMap(pack: MetadataPack) {
 function apiUriFile(resource: any, pack: MetadataPack) {
   return vscode.Uri.file(pack.resourcePath(resource.uri)).toString();
 }
+async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
+  if (!api.workspace.workspaceFolders?.length || !api.workspace.getConfiguration) return false;
+  const target = api.ConfigurationTarget?.Workspace ?? 2;
+  const yamlConfiguration = api.workspace.getConfiguration('yaml');
+  const existing = yamlConfiguration.get('schemas', {}) ?? {};
+  const associations = { ...(typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), ...yamlAssociationMap(pack) };
+  await yamlConfiguration.update('schemas', associations, target);
+  const rootConfiguration = api.workspace.getConfiguration();
+  const existingYaml = rootConfiguration.get('[yaml]', {}) ?? {};
+  const yamlEditorSettings = { ...(typeof existingYaml === 'object' && !Array.isArray(existingYaml) ? existingYaml : {}), 'editor.wordBasedSuggestions': 'off' };
+  await rootConfiguration.update('[yaml]', yamlEditorSettings, target);
+  await rootConfiguration.update('yaml.schemaStore.enable', false, target);
+  return true;
+}
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: MetadataPack | undefined, api: any) {
   if (!pack || !api.languages?.registerCompletionItemProvider) return;
   const redhatYaml = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
@@ -262,6 +276,9 @@ export function activate(context: vscode.ExtensionContext) {
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   const api: any = vscode;
   registerYamlCompletionProvider(context, pack, api);
+  // Keep the suppression and schema association workspace-scoped. This avoids
+  // changing ordinary YAML files in other workspaces or the user's global settings.
+  if (pack) void configureNativeYamlWorkspace(pack, api);
   context.subscriptions.push(diagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
   void indexWorkspace(index, tree, api, indexDiagnostics);
   if (api.workspace.createFileSystemWatcher) {
@@ -273,11 +290,11 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
   context.subscriptions.push(api.commands.registerCommand('scapNg.configureYamlSchemas', async () => {
     if (!pack) { await api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before associating native YAML schemas.'); return; }
-    const yamlConfiguration = api.workspace.getConfiguration('yaml'); const existing = yamlConfiguration.get('schemas', {}) ?? {};
-    const associations = { ...(typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), ...yamlAssociationMap(pack) };
-    await yamlConfiguration.update('schemas', associations, api.ConfigurationTarget?.Workspace ?? 2);
+    const configured = await configureNativeYamlWorkspace(pack, api);
     const installed = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
-    await api.window.showInformationMessage(`Pinned SCAP-NG ${pack.pin.schemaVersion} YAML schema associations saved for the workspace${installed ? ' (Red Hat YAML detected).' : '. Install Red Hat YAML to activate language-service completion/hover.'}`);
+    await api.window.showInformationMessage(configured
+      ? `Pinned SCAP-NG ${pack.pin.schemaVersion} YAML settings saved for this workspace${installed ? ' (Red Hat YAML detected).' : '. Install Red Hat YAML to activate language-service completion/hover.'}`
+      : 'Open the SCAP-NG folder as a workspace before configuring native YAML settings.');
   }));
   context.subscriptions.push(api.commands.registerCommand('scapNg.openAssessmentStudio', async (argument: any) => {
     const uri = argument?.uri ?? argument ?? api.window.activeTextEditor?.document?.uri;
