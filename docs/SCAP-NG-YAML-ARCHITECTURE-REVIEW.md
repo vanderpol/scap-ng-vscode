@@ -38,6 +38,16 @@ SCAP_NG_EXTENSIONS_DIR=/tmp/scap-ng-redhat-extensions npm run verify:test-deps
 
 The extension directory is passed to the host with `--extensions-dir`; no global settings or global extensions are changed. The test is offline after the VSIX is available.
 
+For disconnected DoD deployment, create `scap-ng-vscode-p0-offline-bundle.tgz` with:
+
+```sh
+SCAP_NG_METADATA_PACK=/approved/editor-pack \
+SCAP_NG_REDHAT_YAML_DIR=/approved/redhat.vscode-yaml-2.0.0 \
+npm run package:offline-bundle
+```
+
+The bundle contains the SCAP-NG VSIX, Red Hat YAML extension files, the verified editor pack, the pin descriptor, and third-party notices. It does not run `npm install` or fetch schemas at install/runtime.
+
 ## Real extension-host acceptance
 
 Run from the extension root:
@@ -56,13 +66,16 @@ npm run test:host:redhat
 - exact `class`, `mode`, `capability`, `items_found`, `items_satisfying`, `values_found`, and `values_matching` menus;
 - no duplicate labels;
 - selected-value insertion into incomplete block YAML;
+- completion queried after a typed `c` prefix (without invoking Ctrl+Space);
+- byte-for-byte source preservation on opening the canonical document;
 - flow-map behavior;
 - selected capability-schema object fields;
 - Red Hat schema hover text;
 - no diagnostics for the valid document and an error diagnostic for an invalid enum;
-- workspace-local schema association.
+- workspace-local schema association;
+- canonical Windows Registry, Unix file, and two-Test Assessment fixtures with inline and nested mappings.
 
-Observed on 2026-11-03 with Red Hat YAML v2.0.0:
+Observed on 2026-11-03 with Red Hat YAML v2.0.0, using the installed VSIX in the user's VS Code extension directory:
 
 ```text
 native language: yaml

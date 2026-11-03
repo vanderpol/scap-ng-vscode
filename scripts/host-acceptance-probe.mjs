@@ -18,6 +18,12 @@ const pack = new MetadataPack(packDir, pin);
 const catalog = new GuidedCatalog(pack);
 const sample = resolve(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml');
 const source = readFileSync(sample, 'utf8');
+const fixtureRoot = resolve(process.env.SCAP_NG_P0_FIXTURE_ROOT ?? 'test/fixtures');
+const canonicalInputs = {
+  windowsRegistry: sample,
+  unixFile: join(fixtureRoot, 'p0-unix-file.assessment.yaml'),
+  multipleTests: join(fixtureRoot, 'p0-multiple-tests.assessment.yaml')
+};
 const schema = pack.manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/assessment.schema.json'));
 if (!schema) throw new Error('Pinned assessment schema is not present in the metadata pack');
 
@@ -55,6 +61,7 @@ const blockDocument = join(workspace, 'incomplete-block.assessment.yaml');
 const flowDocument = join(workspace, 'incomplete-flow.assessment.yaml');
 const objectDocument = join(workspace, 'incomplete-object.assessment.yaml');
 const invalidDocument = join(workspace, 'invalid.assessment.yaml');
+const typingDocument = join(workspace, 'typing.assessment.yaml');
 const unique = (text, suffix) => text.replace('windows-server-2025-shows-on-lock-screen-sv-278080-assessment', `host-probe-${suffix}-assessment`);
 const incomplete = source
   .replace('mode: automated', 'mode: ')
@@ -75,6 +82,8 @@ writeFileSync(blockDocument, unique(blockIncomplete, 'block'));
 writeFileSync(flowDocument, unique(flowIncomplete, 'flow'));
 writeFileSync(objectDocument, objectIncomplete);
 writeFileSync(invalidDocument, invalid);
+const canonicalDocuments = Object.fromEntries(Object.entries(canonicalInputs).map(([name, input]) => { if (name === 'windowsRegistry') return [name, validDocument]; const target = join(workspace, `${name}.assessment.yaml`); writeFileSync(target, readFileSync(input, 'utf8')); return [name, target]; }));
+writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c'), 'typing'));
 const settings = {
   // Supported Red Hat YAML extension integration; no schema server is bundled
   // or reached over the network by this probe.
@@ -87,9 +96,10 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, invalidDocument })};
+const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, invalidDocument, typingDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
+const expectedSource=${JSON.stringify(source)};
 function itemText(item){return typeof item.insertText==='string'?item.insertText:item.insertText?.value||item.textEdit?.newText||item.additionalTextEdits?.[0]?.newText||'';}
 function itemLabel(item){return typeof item.label==='string'?item.label:item.label?.label;}
 async function completion(uri, point){const list=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',uri,new vscode.Position(point.line,point.character));return (list?.items||[]).map(item=>({label:itemLabel(item),insertText:itemText(item),detail:item.detail||'',kind:item.kind}));}
@@ -97,20 +107,24 @@ async function insert(uri, point, label){const list=await vscode.commands.execut
 function hoverText(values){return (values||[]).flatMap(value=>Array.isArray(value.contents)?value.contents:[value.contents]).map(value=>typeof value==='string'?value:value?.value||'').join('\\n');}
 function diagnostic(value){return {message:value.message,severity:value.severity,source:value.source||''};}
 exports.activate=()=>setTimeout(async()=>{try{
- const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), invalid=vscode.Uri.file(files.invalidDocument);
+ const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), invalid=vscode.Uri.file(files.invalidDocument), typing=vscode.Uri.file(files.typingDocument);
  const validDoc=await vscode.workspace.openTextDocument(valid); await vscode.window.showTextDocument(valid,vscode.ViewColumn.One);
  await new Promise(resolve=>setTimeout(resolve,${languageServerDelay}));
- const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), invalidDoc=await vscode.workspace.openTextDocument(invalid);
+ const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), invalidDoc=await vscode.workspace.openTextDocument(invalid), typingDoc=await vscode.workspace.openTextDocument(typing);
  await vscode.window.showTextDocument(blockDoc,vscode.ViewColumn.Two);
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
  const objectCompletions=await completion(object,objectPoint);
+ const typingLine=typingDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('class: c'));
+ const typingPoint={line:typingLine,character:typingDoc.lineAt(typingLine).text.length};
+ const naturalTyping=await completion(typing,typingPoint);
  const insertion=await insert(block,checks.block.find(point=>point.key==='class'),expectedClass);
  await new Promise(resolve=>setTimeout(resolve,1000));
  const hover=await vscode.commands.executeCommand('vscode.executeHoverProvider',valid,new vscode.Position(${checks(source).find(point=>point.key==='class').line},${checks(source).find(point=>point.key==='class').character}));
+ const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,naturalTyping,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -133,6 +147,10 @@ function assertSet(actual, wanted, name) {
 for (const key of ['class','mode','capability','items_found','items_satisfying','values_found','values_matching']) assertSet(receipt.blockCompletions?.[key], expected[key], `block ${key}`);
 for (const key of ['items_satisfying','values_matching']) assertSet(receipt.flowCompletions?.[key], expected[key], `flow ${key}`);
 assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fields');
+assertSet(receipt.naturalTyping, expected.class, 'natural typing class prefix');
+const canonicalExpectations={windowsRegistry:{tests:1,capabilities:['windows.registry']},unixFile:{tests:1,capabilities:['unix.file']},multipleTests:{tests:2,capabilities:['windows.registry','unix.file']}};
+for(const [name,wanted] of Object.entries(canonicalExpectations)){const actual=receipt.canonicalReceipts?.[name];if(!actual||actual.languageId!=='yaml'||actual.testCount!==wanted.tests||wanted.capabilities.some(value=>!actual.capabilities.includes(value))||(actual.diagnostics||[]).length) failures.push(`canonical ${name}: host verification mismatch`);}
+if (!receipt.sourcePreserved) failures.push('opening the canonical Assessment changed its YAML source');
 if (!receipt.insertion?.found || !receipt.insertion?.applied || receipt.insertion?.text !== expected.class[0] || !/class:\s+compliance/.test(receipt.insertion?.line || '')) failures.push('completion insertion did not produce the selected SCAP-NG value');
 if (!receipt.hoverCount || !receipt.hoverText || !receipt.hoverText.includes('compliance')) failures.push('schema hover did not return canonical enum documentation');
 if (process.env.SCAP_NG_EXPECT_HOVER_TEXT && !receipt.hoverText?.includes(process.env.SCAP_NG_EXPECT_HOVER_TEXT)) failures.push('schema hover did not reflect the mutated canonical description/enum');

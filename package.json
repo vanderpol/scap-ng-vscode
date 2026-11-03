@@ -18,7 +18,8 @@
     "test:host": "npm run build && node scripts/host-acceptance-probe.mjs",
     "test:host:mutation": "npm run build && node scripts/schema-mutation-host-probe.mjs",
     "test:host:redhat": "npm run build && npm run verify:test-deps && node scripts/host-acceptance-probe.mjs",
-    "verify:test-deps": "node scripts/verify-redhat-yaml.mjs"
+    "verify:test-deps": "node scripts/verify-redhat-yaml.mjs",
+    "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs"
   },
   "files": [
     "dist",

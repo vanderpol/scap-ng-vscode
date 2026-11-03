@@ -1,0 +1,39 @@
+assessment:
+  id: p0-multiple-tests-assessment
+  version: 1
+  assessment_title: Windows registry and Unix file checks
+  mode: automated
+  class: compliance
+  specification:
+    id: scap-ng.pre-alpha.assessment
+    version: 0.4.0
+  tests:
+    registry-test:
+      test_title: Registry test
+      capability: windows.registry
+      object: {hive: {equals: local_machine}, key: {equals: 'SOFTWARE\Policies\Microsoft\Windows\Personalization'}, name: {equals: NoLockScreenSlideshow}}
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        field_requirement: {values_found: one_or_more, values_matching: every}
+        fields: {type: {equals: dword}, value: {equals: 1}}
+      reported_elements: all
+    unix-file-test:
+      test_title: Unix file test
+      capability: unix.file
+      object:
+        full_path:
+          equals: /etc/passwd
+      require:
+        item_requirement:
+          items_found: one_or_more
+          items_satisfying: every
+        field_requirement:
+          values_found: one_or_more
+          values_matching: every
+        fields:
+          path: {equals: /etc/passwd}
+      reported_elements: all
+  evaluate:
+    and:
+      - test: registry-test
+      - test: unix-file-test

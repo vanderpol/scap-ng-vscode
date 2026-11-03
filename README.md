@@ -72,7 +72,7 @@ npm run lint
 npm test
 ```
 
-The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `463675f3` and manifest SHA-256 `0b8df930…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable.
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `463675f3` and manifest SHA-256 `0b8df930…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`).
 
 The current pinned 0.4 schema pack adopts native Result A (`require_*` source
 locations and Field Results). Offline integration checks supplied synthetic
