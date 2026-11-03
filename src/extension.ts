@@ -254,6 +254,7 @@ function discoverPackPath(documentPath: string | undefined) {
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPack: () => MetadataPack | undefined, api: any) {
   if (!api.languages?.registerCompletionItemProvider) return;
   const redhatExtension = api.extensions?.getExtension?.('redhat.vscode-yaml');
+  if (redhatExtension && !redhatExtension.isActive) void redhatExtension.activate().catch(() => undefined);
   const redhatOwnsSchema = (pack: MetadataPack) => {
     const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
     const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
