@@ -234,7 +234,8 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: 
       });
     }
   };
-  context.subscriptions.push(api.languages.registerCompletionItemProvider({ language: 'yaml' }, provider, ':', '_'));
+  const yamlSelector = [{ language: 'yaml', scheme: 'file' }, { language: 'yaml', scheme: 'untitled' }, { language: 'yaml', scheme: 'vscode-remote' }];
+  context.subscriptions.push(api.languages.registerCompletionItemProvider(yamlSelector, provider, ':', '_'));
 }
 
 export function activate(context: vscode.ExtensionContext) {

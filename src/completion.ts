@@ -29,7 +29,7 @@ function pathAt(source: string, offset: number): string[] {
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
   const segment = currentText.slice(delimiter + 1);
   const current = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
-  const inlineParent = delimiter >= 0 ? currentText.slice(0, delimiter + 1).match(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{\s*$/) : undefined;
+  const inlineParent = delimiter >= 0 ? currentText.slice(0, delimiter + 1).match(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*\{[^{}]*$/) : undefined;
   return [...stack.map(entry => entry.key), ...(inlineParent ? [inlineParent[1]] : []), ...(current ? [current[1]] : [])];
 }
 /**

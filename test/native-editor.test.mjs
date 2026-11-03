@@ -8,4 +8,5 @@ test('native YAML architecture keeps Source out of the webview textarea', () => 
   assert.match(source, /showTextDocument\(document/);
   assert.match(source, /onDidChangeTextEditorSelection/);
   assert.match(source, /Open native YAML editor beside workbench/);
+  assert.match(source, /const yamlSelector = \[\{ language: 'yaml', scheme: 'file' \}/);
 });
