@@ -247,6 +247,14 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const flow='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement: {values_matching: '; assert.deepEqual(completionChoices(pack,flow,flow.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
  const registryObject='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {';
  assert.deepEqual(completionChoices(pack,registryObject,registryObject.length).map(x=>x.value),['hive','key','name']);
+ const hiveOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {';
+ assert.deepEqual(completionChoices(pack,hiveOperators,hiveOperators.length).map(x=>x.value),['equals','datatype','value_match','redact_result']);
+ const hiveValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';
+ assert.deepEqual(completionChoices(pack,hiveValues,hiveValues.length).map(x=>x.value),['classes_root','current_config','current_user','current_user_local_settings','local_machine','users']);
+ const keyOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {key: {';
+ assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='equals'));
+ assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='not_equal'));
+ assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='matches_regex'));
  const registryKeyPrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, k';
  assert.deepEqual(completionChoices(pack,registryKeyPrefix,registryKeyPrefix.length).map(x=>x.value),['hive','key','name']);
  const registryNamePrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, key: {equals: value}, n';

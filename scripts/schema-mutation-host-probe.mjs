@@ -31,6 +31,7 @@ assessmentResource.sha256 = createHash('sha256').update(resourceBytes).digest('h
 const capabilityResource = manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/capabilities/windows.registry.schema.json'));
 const capabilityPath = join(pack, capabilityResource.path);
 const capability = JSON.parse(readFileSync(capabilityPath, 'utf8'));
+capability.$defs.object.properties.hive.oneOf[0].allOf[2].properties.equals.oneOf[0].enum.push('fixture-hive');
 capability.$defs.object.properties.fixture_selector = {
   description: 'Fixture selector description from the mutated capability schema.',
   type: 'object',

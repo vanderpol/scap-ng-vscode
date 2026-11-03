@@ -281,7 +281,7 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         // colon (`k: ...`) instead of producing `key: : ...`. For a blank map
         // member position, insert the complete `key: ` authoring fragment.
         item.insertText = choice.kind === 'property'
-          ? (nextCharacter === ':' ? choice.value : `${choice.value}: `)
+          ? (nextCharacter === ':' ? choice.value : (choice.insertText ?? `${choice.value}: `))
           : choice.value;
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))

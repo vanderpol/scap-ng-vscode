@@ -21,6 +21,8 @@ The pinned offline pack remains authoritative. Red Hat owns schema hover and sch
 - supplying capability identifiers from the pinned manifest catalog;
 - supplying dynamic capability-object selector property names from the selected capability schema;
 - supplying dynamic `require.fields` names from the selected capability's state-predicate schema;
+- supplying nested selector operators and schema enums from the selected field schema;
+- inserting schema-shaped mapping scaffolds (`hive: {`, then `equals: `) without rewriting existing source;
 - filling cardinality completion in block mappings where the tested Red Hat release did not return a result;
 - mapping incomplete YAML cursor positions, including flow maps, to those contexts.
 
@@ -72,7 +74,8 @@ npm run test:host:redhat
 - flow-map behavior, including completion after a comma in an existing Object;
 - selected capability-schema object selector fields (`windows.registry`: `hive`, `key`, `name`) at the first, middle, and final member positions;
 - selected capability-schema `require.fields` names (including `hive`, `key`, `name`, and `value` where applicable);
-- property insertion (`hive: ` and a schema-derived require field) in flow mappings;
+- property insertion (`hive: {` and a schema-derived require field) in flow mappings;
+- nested operator insertion and the canonical Windows Registry hive enum menu;
 - Red Hat schema hover text;
 - no diagnostics for the valid document and an error diagnostic for an invalid enum;
 - workspace-local schema association;
@@ -89,6 +92,8 @@ valid diagnostics: none
 invalid enum: yaml-schema error
 capability object: `hive`, `key`, `name` derived from windows.registry.schema.json
 require.fields: state-predicate names derived from windows.registry.schema.json
+hive operators: propertyNames/selector schema-derived
+hive values: enum-derived (`classes_root`, `current_config`, `current_user`, `current_user_local_settings`, `local_machine`, `users`)
 ```
 
 This is the first passing real-host receipt. Earlier receipts correctly exposed the defect: Red Hat returned no capability catalog (the assessment schema intentionally has no capability enum), and the extension's broad provider duplicated Red Hat enum entries. Both issues are now covered by the adapter boundary and duplicate-label assertions.
@@ -120,6 +125,6 @@ The mutation probe copies the verified pack, changes a schema enum, description,
 
 ## Schema-driven contract
 
-The canonical schemas and manifest are authoritative for properties, types, enumerations, defaults, descriptions, validation, object selector fields, and capability-specific `require.fields`. Object completion consumes the schema's versioned `selector_comparison` authoring context; require-field completion consumes the schema's state-predicate alternatives. No capability field names are duplicated in the extension. The adapter may contain cursor/context resolution because JSON Schema cannot identify a YAML cursor or select a schema from an open catalog string. It must not contain a parallel vocabulary. A compatible schema-defined capability or field is therefore visible after pack replacement, as demonstrated by the mutation acceptance.
+The canonical schemas and manifest are authoritative for properties, types, enumerations, defaults, descriptions, validation, object selector fields, and capability-specific `require.fields`. Object completion consumes the schema's versioned `selector_comparison` authoring context; require-field completion consumes the schema's state-predicate alternatives. Nested operator menus consume the selected field's schema branches and property-name restrictions, while value menus consume that operator's schema enums. No capability field names are duplicated in the extension. The adapter may contain cursor/context resolution because JSON Schema cannot identify a YAML cursor or select a schema from an open catalog string. It must not contain a parallel vocabulary. A compatible schema-defined capability or field is therefore visible after pack replacement, as demonstrated by the mutation acceptance.
 
 The Graphical editor remains frozen while P0 native authoring is stabilized. No read-only YAML preview or alternate YAML language mode is introduced by this evaluation. Source fidelity and offline operation remain unchanged.

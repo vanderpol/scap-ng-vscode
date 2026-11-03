@@ -33,6 +33,7 @@ function mutatedPack() {
   const capabilityResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/capabilities/windows.registry.schema.json'));
   const capabilityPath = join(root, capabilityResource.path);
   const capabilitySchema = JSON.parse(readFileSync(capabilityPath, 'utf8'));
+  capabilitySchema.$defs.object.properties.hive.oneOf[0].allOf[2].properties.equals.oneOf[0].enum.push('fixture-hive');
   capabilitySchema.$defs.object.properties.fixture_selector = {
     description: 'Fixture selector from the mutated capability schema.',
     type: 'object',
@@ -62,6 +63,8 @@ test('schema mutation drives native completion, Graphical controls, hover metada
     assert.ok(catalog.capabilities().some(choice => choice.value === 'fixture.capability'));
     const objectPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {';
     assert.ok(completionChoices(pack, objectPrefix, objectPrefix.length).some(choice => choice.value === 'fixture_selector'));
+    const hiveValuePrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';
+    assert.ok(completionChoices(pack, hiveValuePrefix, hiveValuePrefix.length).some(choice => choice.value === 'fixture-hive'));
     const fieldsPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {';
     assert.ok(completionChoices(pack, fieldsPrefix, fieldsPrefix.length).some(choice => choice.value === 'fixture_state'));
     const sample = readFileSync(join(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml'), 'utf8');
