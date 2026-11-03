@@ -226,9 +226,9 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: 
     provideCompletionItems(document: any, position: any) {
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
       return completionChoices(pack, document.getText(), offset).map(choice => {
-        const item = new api.CompletionItem(choice.label, api.CompletionItemKind?.Value ?? 12);
+        const item = new api.CompletionItem(choice.value, api.CompletionItemKind?.Value ?? 12);
         item.insertText = choice.value;
-        item.detail = 'Pinned SCAP-NG metadata';
+        item.detail = choice.label === choice.value ? 'Pinned SCAP-NG metadata' : choice.label;
         item.documentation = choice.description;
         return item;
       });
