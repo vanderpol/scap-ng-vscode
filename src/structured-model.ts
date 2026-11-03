@@ -89,6 +89,10 @@ function evaluationControl(value: any) {
 }
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
+function objectFieldLabel(capability: string, name: string, fallback: string) {
+  if (capability === 'windows.registry') return ({ hive: 'Registry hive', key: 'Registry key', name: 'Value name' } as Record<string, string>)[name] ?? fallback;
+  return fallback;
+}
 function operationKey(value: any) { return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).find(key => !['datatype', 'values_found', 'values_matching', 'value_match', 'redact_result'].includes(key)) : undefined; }
 function predicateControl(fields: any[], mappingPath: (string | number)[], name: string, definition: any, label: string) {
   const operation = operationKey(definition); if (!operation) return { name, label, mappingPath, operation: undefined, value: undefined, valuePath: undefined, choices: [], unsupported: true };
@@ -101,7 +105,7 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   if (!assessment || typeof assessment !== 'object' || !assessment.tests || typeof assessment.tests !== 'object') return { ...base, assessment: undefined, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
   const catalog = pack ? new GuidedCatalog(pack) : undefined; const tests = Object.entries(assessment.tests).map(([id, test]: [string, any]) => {
     const path = ['assessment', 'tests', id]; const titlePath = [...path, 'test_title']; const titleField = fieldAt(base.fields, titlePath); const controls: any[] = [];
-    for (const [name, predicate] of Object.entries(test.object ?? {})) if (predicate && typeof predicate === 'object' && !Array.isArray(predicate)) controls.push({ kind: 'object', ...predicateControl(base.fields, [...path, 'object', name], name, predicate, catalog?.objectFields(test.capability).find(field => field.name === name)?.label ?? name.replaceAll('_', ' ')), definition: catalog?.objectFields(test.capability).find(field => field.name === name) });
+    for (const [name, predicate] of Object.entries(test.object ?? {})) if (predicate && typeof predicate === 'object' && !Array.isArray(predicate)) controls.push({ kind: 'object', ...predicateControl(base.fields, [...path, 'object', name], name, predicate, objectFieldLabel(test.capability, name, catalog?.objectFields(test.capability).find(field => field.name === name)?.label ?? name.replaceAll('_', ' '))), definition: catalog?.objectFields(test.capability).find(field => field.name === name) });
     const requirement = test.require ?? {}; const itemControls = Object.entries(requirement.item_requirement ?? {}).map(([name, current]) => ({ name, label: name === 'items_found' ? 'Items found' : 'Items satisfying', path: [...path, 'require', 'item_requirement', name], value: current, choices: fieldAt(base.fields, [...path, 'require', 'item_requirement', name])?.choices ?? [] }));
     const fieldRequirement = Object.entries(requirement.field_requirement ?? {}).map(([name, current]) => ({ name, label: name === 'values_found' ? 'Field values found' : 'Field values matching', path: [...path, 'require', 'field_requirement', name], value: current, choices: fieldAt(base.fields, [...path, 'require', 'field_requirement', name])?.choices ?? [] }));
     const fieldControls = Object.entries(requirement.fields ?? {}).map(([name, predicate]) => ({ kind: 'field', ...predicateControl(base.fields, [...path, 'require', 'fields', name], name, predicate, name.replaceAll('_', ' ')), operations: catalog?.operations() ?? [] }));

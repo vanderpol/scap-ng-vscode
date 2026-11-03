@@ -6,7 +6,7 @@ The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/v
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
-**Status:** pre-alpha extension host, Assessment Studio index, source-backed Structured editing and first schema-driven Guided authoring slice are implemented. Full novice-oriented UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
+**Status:** pre-alpha extension host, Assessment Studio index, source-backed Graphical editing and native YAML authoring are implemented; Guided authoring is reserved for the New Assessment Wizard. Full novice-oriented UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
 
@@ -60,7 +60,7 @@ A real VS Code 1.128.0 host receipt is documented in [docs/ISSUE-30-VSIX-DEMO.md
 
 ## Issue #18 desktop UX checkpoint
 
-The current custom editor provides a simultaneous Guided context, Graphical/Structured Test editor and editable YAML Source pane for existing Assessments. It preserves source-backed scalar edits, highlights safe source ranges, supports retained pane splitters, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. See [the Issue #18 checkpoint](docs/ISSUE-18-UX-CHECKPOINT.md) for verification commands and explicit remaining boundaries.
+The current custom editor provides a Graphical Test editor for existing Assessments and opens the same document in the native VS Code YAML editor on demand. It preserves source-backed scalar edits, highlights safe source ranges, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. Guided authoring is deferred to the New Assessment Wizard. See [the Issue #35 checkpoint](docs/ISSUE-35-GRAPHICAL-YAML-CHECKPOINT.md) for the current workflow, completion scope, verification commands and explicit boundaries.
 
 ## Runnable metadata checkpoint (#7)
 

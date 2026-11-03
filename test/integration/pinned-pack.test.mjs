@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
+import { completionChoices } from '../../dist/completion.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -175,7 +176,7 @@ test('final selector/API help stays schema-driven for all fifteen capabilities',
 
 
 
-test('three-pane model covers complex canonical Assessments without flattening advanced source',()=>{
+test('Graphical model covers complex canonical Assessments without flattening advanced source',()=>{
  for(const name of ['windows-server-2025-lock-screen.assessment','linux-home-nosuid.assessment','windows-server-2025-sysvol-permissions.assessment']){
   const raw=readFileSync(join(source,'examples',name+'.yaml'),'utf8'); const model=assessmentEditorModel({getText:()=>raw,version:3},pack);
   assert.equal(model.ok,true,name); assert.equal(model.assessment.tests.length,1,name); assert.ok(model.assessment.tests[0].explanation.includes('authoring explanation'),name);
@@ -218,4 +219,28 @@ test('existing optional branches and multi-Test evaluation remain visible withou
  assert.equal(multiModel.assessment.tests.length,2);
  assert.match(multiModel.assessment.evaluationExplanation,/XOR/);
  assert.match(multiModel.assessment.evaluationExplanation,/no Test has been executed/); assert.deepEqual(multiModel.assessment.evaluationControl.operations,['and','or','one','xor']); assert.equal(multiModel.assessment.evaluationControl.operation,'xor');
+});
+
+
+test('Graphical controls preserve canonical requirement values and sibling paths',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const model=assessmentEditorModel({getText:()=>raw,version:9},pack); const testModel=model.assessment.tests[0];
+ assert.deepEqual(testModel.fieldRequirement.map(field=>[field.name,field.value]),[['values_found','one_or_more'],['values_matching','every']]);
+ assert.deepEqual(testModel.itemControls.map(field=>[field.name,field.value]),[['items_found','one_or_more'],['items_satisfying','every']]);
+ const id=testModel.id; const foundPath=['assessment','tests',id,'require','field_requirement','values_found'];
+ const matchingPath=['assessment','tests',id,'require','field_requirement','values_matching']; const buffer=new SourceBuffer(raw);
+ const changed=buffer.editScalar(foundPath,'exactly_one',sha256(raw)); const value=changed.document.json().assessment.tests[id].require;
+ assert.equal(value.field_requirement.values_found,'exactly_one'); assert.equal(value.field_requirement.values_matching,'every'); assert.equal(value.item_requirement.items_found,'one_or_more');
+ const changedAgain=changed.document.editScalar(matchingPath,'one_or_more',sha256(changed.document.text)).document.json().assessment.tests[id].require;
+ assert.equal(changedAgain.field_requirement.values_found,'exactly_one'); assert.equal(changedAgain.field_requirement.values_matching,'one_or_more');
+});
+
+test('contextual native YAML completion uses exact schema/cardinality scopes and manifest capabilities',()=>{
+ const prefix=(value)=>`assessment:\n  class: ${value}`;
+ assert.deepEqual(completionChoices(pack,prefix(''),prefix('').length).map(x=>x.value),['compliance','vulnerability','patch','inventory','miscellaneous']);
+ const mode='assessment:\n  mode: '; assert.deepEqual(completionChoices(pack,mode,mode.length).map(x=>x.value),['manual','automated']);
+ const cap='assessment:\n  tests:\n    check-test:\n      capability: '; const caps=completionChoices(pack,cap,cap.length).map(x=>x.value); assert.deepEqual(caps,Object.keys(pack.manifest.capabilities).sort());
+ const found='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_found: '; assert.deepEqual(completionChoices(pack,found,found.length).map(x=>x.value),['none','exactly_one','one_or_more','every','zero_or_more']);
+ const matching='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_matching: '; assert.deepEqual(completionChoices(pack,matching,matching.length).map(x=>x.value),['none','exactly_one','one_or_more','every']);
+ const wrong='assessment:\n  tests:\n    check-test:\n      require:\n        item_requirement:\n          items_found: '; assert.deepEqual(completionChoices(pack,wrong,wrong.length).map(x=>x.value),['none','exactly_one','one_or_more','zero_or_more']);
 });

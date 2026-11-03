@@ -44,8 +44,9 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:scapNg.assessmentStudio",
-    "onCommand:scapNg.showPin"
+    "onCommand:scapNg.openAssessmentStudio",
+    "onCommand:scapNg.showPin",
+    "onView:scapNg.assessmentStudio"
   ],
   "contributes": {
     "commands": [
@@ -56,6 +57,10 @@
       {
         "command": "scapNg.searchIndex",
         "title": "SCAP-NG: Search Assessment Studio"
+      },
+      {
+        "command": "scapNg.openAssessmentStudio",
+        "title": "SCAP-NG: Open Graphical Assessment editor"
       },
       {
         "command": "scapNg.configureYamlSchemas",
@@ -107,6 +112,22 @@
         ],
         "priority": "option"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@5"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation"
+        }
+      ]
+    }
   }
 }

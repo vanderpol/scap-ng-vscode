@@ -29,5 +29,5 @@ The host demo opened the canonical Windows Registry DWORD Assessment in the cust
 ## Current baseline observations
 
 - The VSIX must carry its runtime `yaml`/`ajv` dependency closure; VS Code does not run `npm install` for an installed extension.
-- The custom workbench currently still contains an embedded Source textarea. The next focused PR replaces that editable textarea workflow with the native YAML editor beside the Guided/Graphical workbench while retaining one TextDocument and existing range edits.
+- The current workbench uses Graphical controls for existing Assessments and opens the native YAML editor beside it. The read-only preview/textarea experiment is removed; Guided is reserved for the New Assessment Wizard.
 - Canonical Windows Registry, Linux `/home` nosuid, optional Input, SYSVOL and manual fixtures are available in the local demo workspace. No scanner/evaluator was invoked and no compliance result is claimed.
