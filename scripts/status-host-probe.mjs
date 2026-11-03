@@ -29,5 +29,5 @@ const receipt = read();
 if (!receipt) throw new Error('VS Code host timed out without status receipt');
 console.log(JSON.stringify(receipt, null, 2));
 if (packDir) {
-  if (receipt.status?.state !== 'healthy' || receipt.status?.visible !== true || receipt.status?.associationPresent !== true || receipt.status?.schemaVersion !== '0.4.0' || !receipt.status?.packPath || !receipt.status?.redhatInstalled || !receipt.status?.redhatActive || receipt.ordinaryStatus !== undefined || receipt.restoredStatus?.state !== 'healthy') process.exit(1);
+  if (receipt.status?.state !== 'healthy' || receipt.status?.visible !== true || receipt.status?.associationPresent !== true || receipt.status?.schemaVersion !== '0.4.0' || !receipt.status?.buildId || !receipt.status?.builtAt || !receipt.status?.sourceCommit || !receipt.status?.packPath || !receipt.status?.redhatInstalled || !receipt.status?.redhatActive || receipt.ordinaryStatus !== undefined || receipt.restoredStatus?.state !== 'healthy') process.exit(1);
 } else if (receipt.state !== 'error' || receipt.visible !== true || receipt.associationPresent !== false) process.exit(1);

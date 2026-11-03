@@ -422,7 +422,7 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
 function isAssessmentDocument(document: any): boolean {
   return Boolean(document && /\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? ''));
 }
-function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profile: Pin, api: any, packError?: string) {
+function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profile: Pin, api: any, build: BuildInfo, packError?: string) {
   const redhat = api.extensions?.getExtension?.('redhat.vscode-yaml');
   const schemaUri = pack ? assessmentSchemaUri(pack) : undefined;
   const schemas = document && api.workspace.getConfiguration ? api.workspace.getConfiguration('yaml', document.uri).get('schemas', {}) ?? {} : {};
@@ -433,7 +433,8 @@ function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profil
   const state = error ? 'error' : associated && !diagnostics.length ? 'healthy' : 'partial';
   return {
     visible: isAssessmentDocument(document), recognized: isAssessmentDocument(document), state,
-    text: state === 'healthy' ? `$(check) SCAP-NG ${profile.schemaVersion}` : state === 'error' ? '$(error) SCAP-NG YAML' : `$(warning) SCAP-NG ${profile.schemaVersion}`,
+    text: state === 'healthy' ? `$(check) SCAP-NG ${profile.schemaVersion} · ${build.buildId}` : state === 'error' ? `$(error) SCAP-NG YAML · ${build.buildId}` : `$(warning) SCAP-NG ${profile.schemaVersion} · ${build.buildId}`,
+    buildId: build.buildId, builtAt: build.builtAt, sourceCommit: build.sourceCommit,
     document: document?.uri?.fsPath ?? '', languageId: document?.languageId ?? '',
     schemaUri: schemaUri ?? '', schemaVersion: pack?.pin.schemaVersion ?? profile.schemaVersion,
     schemaPath: schemaPath ?? '', packPath: pack?.directory ?? '', packSha256: pack?.pin.manifestSha256 ?? '',
@@ -545,6 +546,7 @@ export function activate(context: vscode.ExtensionContext) {
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   registerYamlCompletionProvider(context, () => pack, api);
   registerYamlCodeActions(context, () => pack, api);
+  const build = readBuildInfo(context.extensionPath);
   const yamlStatus = api.window.createStatusBarItem(api.StatusBarAlignment?.Right ?? 2, 100);
   yamlStatus.command = 'scapNg.showYamlStatus';
   let currentYamlStatus: any;
@@ -552,9 +554,9 @@ export function activate(context: vscode.ExtensionContext) {
     if (!isAssessmentDocument(document)) { yamlStatus.hide(); currentYamlStatus = undefined; return undefined; }
     loadPack(document.uri.fsPath);
     if (packConfiguration) { try { await packConfiguration; } catch { /* status reports association state */ } }
-    currentYamlStatus = yamlStatusDetails(pack, document, profile, api, packError);
+    currentYamlStatus = yamlStatusDetails(pack, document, profile, api, build, packError);
     yamlStatus.text = currentYamlStatus.text;
-    yamlStatus.tooltip = `SCAP-NG ${profile.schemaVersion} · ${currentYamlStatus.state} · click for diagnostics`;
+    yamlStatus.tooltip = `SCAP-NG ${profile.schemaVersion} · build ${build.buildId} · ${currentYamlStatus.state} · click for diagnostics`;
     yamlStatus.show();
     return currentYamlStatus;
   };
@@ -584,7 +586,6 @@ export function activate(context: vscode.ExtensionContext) {
     await api.commands.executeCommand('vscode.openWith', uri, 'scapNg.assessment', { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
   }));
   context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
-  const build = readBuildInfo(context.extensionPath);
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(api.commands.registerCommand('scapNg.showYamlStatus', async () => {
@@ -592,7 +593,7 @@ export function activate(context: vscode.ExtensionContext) {
     const channel = api.window.createOutputChannel('SCAP-NG YAML Status'); channel.clear();
     if (!details) channel.appendLine('No recognized SCAP-NG Assessment document is active.');
     else for (const line of [
-      `State: ${details.state}`, `Document: ${details.document}`, `Language ID: ${details.languageId}`,
+      `State: ${details.state}`, `Build: ${details.buildId} · ${details.builtAt}`, `Source commit: ${details.sourceCommit}`, `Document: ${details.document}`, `Language ID: ${details.languageId}`,
       `Schema: ${details.schemaUri || 'unavailable'} (${details.schemaVersion})`, `Schema path: ${details.schemaPath || 'unavailable'}`,
       `Pack: ${details.packPath || 'unavailable'}`, `Pack manifest SHA-256: ${details.packSha256 || 'unavailable'}`,
       `Red Hat YAML: ${details.redhatInstalled ? `installed, active=${details.redhatActive}` : 'not installed'}`,
