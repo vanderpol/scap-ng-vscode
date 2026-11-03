@@ -216,6 +216,7 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
   const flowMapping = Math.max(text.lastIndexOf('{'), text.lastIndexOf(',')) >= 0;
   const adapterCardinality = (values: CompletionChoice[]) => redhatYaml && flowMapping ? [] : values;
   if (key === 'capability' && path.includes('tests')) return catalog.capabilities();
+  if (key === 'reported_elements' && path.includes('tests')) return catalog.reportedElements();
   if (key === 'items_satisfying' && path.at(-2) === 'item_requirement') return adapterCardinality(catalog.itemsSatisfying());
   if (key === 'values_matching' && path.at(-2) === 'field_requirement') return adapterCardinality(catalog.fieldValuesMatching());
   if (redhatYaml && !flowMapping) {

@@ -9,7 +9,8 @@ function object(value: unknown): value is Record<string, any> { return !!value &
 function choices(pack: MetadataPack, uri: string): GuidedOption[] {
   try {
     const help = pack.describe(uri, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] });
-    return help.choices.filter((value: Json): value is string => typeof value === 'string').map(value => ({
+    const values = help.choices.length ? help.choices : enumValues(pack.node(uri));
+    return values.filter((value: Json): value is string => typeof value === 'string').map(value => ({
       value,
       label: value,
       description: help.description || undefined,
@@ -36,6 +37,7 @@ export class GuidedCatalog {
   itemsSatisfying(): GuidedOption[] { return choices(this.pack, schemaBase + 'assessment-language.schema.json#/$defs/cardinality'); }
   fieldValuesFound(): GuidedOption[] { return choices(this.pack, schemaBase + 'assessment-language.schema.json#/$defs/paired_requirement/properties/values_found'); }
   fieldValuesMatching(): GuidedOption[] { return choices(this.pack, schemaBase + 'assessment-language.schema.json#/$defs/paired_requirement/properties/values_matching'); }
+  reportedElements(): GuidedOption[] { return choices(this.pack, schemaBase + 'reported-elements.schema.json'); }
   logicalOperators(): GuidedOption[] {
     return ['and', 'or', 'one', 'xor'].map(value => ({ value, label: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.label ?? value, description: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.description }));
   }
