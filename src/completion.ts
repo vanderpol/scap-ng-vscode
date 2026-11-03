@@ -162,11 +162,20 @@ function selectorOperatorChoices(pack: MetadataPack, capability: string, field: 
   if (!context) return [];
   return selectorOperators(pack, context.uri, context.spec).map(({ value, spec }) => propertyChoice(pack, context.uri, '', value, spec, `${value}: `));
 }
+function mappingEnumValues(pack: MetadataPack, capability: string, field: string, requireField: boolean): string[] {
+  const mappingUri = pack.manifest.capabilities[capability]?.mapping_uri;
+  if (!mappingUri) return [];
+  const mapping: any = pack.resource(mappingUri);
+  const values = requireField ? mapping.native?.state_value_enums?.[field] : mapping.native?.selector_value_enums?.[field];
+  return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
+}
 function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];
   const properties = schemaPropertyMap(pack, context.uri, context.spec);
-  return enumValues(pack, context.uri, properties[operator] ?? {}).map(value => ({ value, label: value, kind: 'value' }));
+  const schemaValues = enumValues(pack, context.uri, properties[operator] ?? {});
+  const values = schemaValues.length ? schemaValues : mappingEnumValues(pack, capability, field, requireField);
+  return values.map(value => ({ value, label: value, kind: 'value' }));
 }
 function capabilityObjectFields(pack: MetadataPack, capability: string): CompletionChoice[] {
   const uri = pack.manifest.capabilities[capability]?.schema_uri;

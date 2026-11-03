@@ -61,6 +61,8 @@ function schemaEnumsForProperty(node, name) {
 const hiveSchema = capabilitySchema.$defs?.object?.properties?.hive;
 const expectedHiveOperators = schemaPropertyNames(hiveSchema);
 const expectedHiveValues = schemaEnumsForProperty(hiveSchema, 'equals');
+const capabilityMapping = pack.resource(pack.manifest.capabilities['windows.registry'].mapping_uri);
+const expectedTypeValues = capabilityMapping.native?.state_value_enums?.type ?? [];
 
 function check(text, key, occurrence = 0) {
   const lines = text.split(/\r?\n/);
@@ -85,6 +87,7 @@ const flowDocument = join(workspace, 'incomplete-flow.assessment.yaml');
 const objectDocument = join(workspace, 'incomplete-object.assessment.yaml');
 const selectorDocument = join(workspace, 'incomplete-selector.assessment.yaml');
 const hiveValueDocument = join(workspace, 'incomplete-hive-value.assessment.yaml');
+const typeValueDocument = join(workspace, 'incomplete-type-value.assessment.yaml');
 const objectKeyDocument = join(workspace, 'incomplete-object-key.assessment.yaml');
 const objectNameDocument = join(workspace, 'incomplete-object-name.assessment.yaml');
 const fieldsDocument = join(workspace, 'incomplete-fields.assessment.yaml');
@@ -106,6 +109,7 @@ const flowIncomplete = incomplete;
 const objectIncomplete = unique(source.replace(/object: \{hive:.*?NoLockScreenSlideshow\}\}/, 'object: {'), 'object');
 const selectorIncomplete = unique(source.replace(/object: \{hive:.*?NoLockScreenSlideshow\}\}/, 'object: {hive: {'), 'selector');
 const hiveValueIncomplete = unique(source.replace('object: {hive: {equals: local_machine}, key:', 'object: {hive: {equals: , key:'), 'hive-value');
+const typeValueIncomplete = unique(source.replace('fields: {type: {equals: dword}, value:', 'fields: {type: {equals: , value:'), 'type-value');
 const objectKeyIncomplete = unique(source.replace('}, key:', '}, k:'), 'object-key');
 const objectNameIncomplete = unique(source.replace('}, name:', '}, n:'), 'object-name');
 const fieldsIncomplete = unique(source.replace('fields: {type: {equals: dword}, value: {equals: 1}}', 'fields: {'), 'fields');
@@ -116,6 +120,7 @@ writeFileSync(flowDocument, unique(flowIncomplete, 'flow'));
 writeFileSync(objectDocument, objectIncomplete);
 writeFileSync(selectorDocument, selectorIncomplete);
 writeFileSync(hiveValueDocument, hiveValueIncomplete);
+writeFileSync(typeValueDocument, typeValueIncomplete);
 writeFileSync(objectKeyDocument, objectKeyIncomplete);
 writeFileSync(objectNameDocument, objectNameIncomplete);
 writeFileSync(fieldsDocument, fieldsIncomplete);
@@ -134,13 +139,14 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, selectorDocument, hiveValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, typingDocument, canonicalDocuments })};
+const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, typingDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
 const expectedObjectFields=${JSON.stringify(expectedObjectFields)};
 const expectedRequireFields=${JSON.stringify(expectedRequireFields)};
 const expectedHiveOperators=${JSON.stringify(expectedHiveOperators)};
 const expectedHiveValues=${JSON.stringify(expectedHiveValues)};
+const expectedTypeValues=${JSON.stringify(expectedTypeValues)};
 const expectedSource=${JSON.stringify(source)};
 function itemText(item){return typeof item.insertText==='string'?item.insertText:item.insertText?.value||item.textEdit?.newText||item.additionalTextEdits?.[0]?.newText||'';}
 function itemLabel(item){return typeof item.label==='string'?item.label:item.label?.label;}
@@ -149,10 +155,10 @@ async function insert(uri, point, label){const list=await vscode.commands.execut
 function hoverText(values){return (values||[]).flatMap(value=>Array.isArray(value.contents)?value.contents:[value.contents]).map(value=>typeof value==='string'?value:value?.value||'').join('\\n');}
 function diagnostic(value){return {message:value.message,severity:value.severity,source:value.source||''};}
 exports.activate=()=>setTimeout(async()=>{try{
- const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), selector=vscode.Uri.file(files.selectorDocument), hiveValue=vscode.Uri.file(files.hiveValueDocument), objectKey=vscode.Uri.file(files.objectKeyDocument), objectName=vscode.Uri.file(files.objectNameDocument), fields=vscode.Uri.file(files.fieldsDocument), invalid=vscode.Uri.file(files.invalidDocument), typing=vscode.Uri.file(files.typingDocument);
+ const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), selector=vscode.Uri.file(files.selectorDocument), hiveValue=vscode.Uri.file(files.hiveValueDocument), typeValue=vscode.Uri.file(files.typeValueDocument), objectKey=vscode.Uri.file(files.objectKeyDocument), objectName=vscode.Uri.file(files.objectNameDocument), fields=vscode.Uri.file(files.fieldsDocument), invalid=vscode.Uri.file(files.invalidDocument), typing=vscode.Uri.file(files.typingDocument);
  const validDoc=await vscode.workspace.openTextDocument(valid); await vscode.window.showTextDocument(valid,vscode.ViewColumn.One);
  await new Promise(resolve=>setTimeout(resolve,${languageServerDelay}));
- const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), typingDoc=await vscode.workspace.openTextDocument(typing);
+ const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), typeValueDoc=await vscode.workspace.openTextDocument(typeValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), typingDoc=await vscode.workspace.openTextDocument(typing);
  await vscode.window.showTextDocument(blockDoc,vscode.ViewColumn.Two);
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
@@ -164,6 +170,10 @@ exports.activate=()=>setTimeout(async()=>{try{
  const hiveValueLine=hiveValueDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('hive: {equals: ,'));
  const hiveValuePoint={line:hiveValueLine,character:hiveValueDoc.lineAt(hiveValueLine).text.indexOf('equals: ,')+'equals: '.length};
  const hiveValues=await completion(hiveValue,hiveValuePoint);
+ const typeValueLine=typeValueDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('type: {equals: ,'));
+ const typeValuePoint={line:typeValueLine,character:typeValueDoc.lineAt(typeValueLine).text.indexOf('equals: ,')+'equals: '.length};
+ const typeValues=await completion(typeValue,typeValuePoint);
+ const typeValueInsertion=await insert(typeValue,typeValuePoint,'dword');
  const objectKeyLine=objectKeyDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes(', k:'));
  const objectKeyPoint={line:objectKeyLine,character:objectKeyDoc.lineAt(objectKeyLine).text.indexOf(', k:')+3};
  const objectKeyCompletions=await completion(objectKey,objectKeyPoint);
@@ -189,7 +199,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,hiveOperators,hiveValues,hiveOperatorInsertion,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -215,6 +225,8 @@ assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fi
 assertSet(receipt.hiveOperators, expectedHiveOperators, 'hive operators');
 assertSet(receipt.hiveValues, expectedHiveValues, 'hive values');
 if (!receipt.hiveOperatorInsertion?.found || !receipt.hiveOperatorInsertion?.applied || !/hive: \{equals: /.test(receipt.hiveOperatorInsertion?.line || '')) failures.push('hive operator insertion failed');
+assertSet(receipt.typeValues, expectedTypeValues, 'registry type values');
+if (!receipt.typeValueInsertion?.found || !receipt.typeValueInsertion?.applied || !/type: \{equals: dword/.test(receipt.typeValueInsertion?.line || '')) failures.push('registry type value insertion failed');
 assertSet(receipt.objectKeyCompletions, expectedObjectFields, 'capability object fields after comma');
 assertSet(receipt.objectNameCompletions, expectedObjectFields, 'capability object fields before name colon');
 if (!receipt.objectKeyInsertion?.found || !receipt.objectKeyInsertion?.applied || !/[, ]key:/.test(receipt.objectKeyInsertion?.line || '') || /key::/.test(receipt.objectKeyInsertion?.line || '')) failures.push('typed key property completion insertion failed');
@@ -233,7 +245,7 @@ if (process.env.SCAP_NG_EXPECT_HOVER_TEXT && !receipt.hoverText?.includes(proces
 if (process.env.SCAP_NG_EXPECT_CLASS_DEFAULT && !(receipt.blockCompletions?.class || []).some(item => item.label === process.env.SCAP_NG_EXPECT_CLASS_DEFAULT && /default/i.test(item.detail))) failures.push('schema completion did not reflect the mutated default');
 if ((receipt.validDiagnostics || []).length) failures.push('valid canonical document produced schema diagnostics');
 if (!(receipt.invalidDiagnostics || []).some(value => value.severity === 0)) failures.push('invalid enum edit produced no schema error diagnostic');
-console.log(JSON.stringify({expected,expectedObjectFields,expectedHiveOperators,expectedHiveValues,actual:receipt,failures},null,2));
+console.log(JSON.stringify({expected,expectedObjectFields,expectedHiveOperators,expectedHiveValues,expectedTypeValues,actual:receipt,failures},null,2));
 if (failures.length) process.exitCode=1;
 if (process.env.SCAP_NG_KEEP_HOST !== '1') { try { rmSync(workspace,{recursive:true,force:true,maxRetries:5,retryDelay:250}); } catch(error) { console.error('Host probe cleanup deferred: '+error.message); } } else console.error('Host probe workspace retained: '+workspace);
 function readFileSyncSafe(path) { try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; } }

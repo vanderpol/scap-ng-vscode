@@ -266,6 +266,11 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  assert.deepEqual(completionChoices(pack,registryFields,registryFields.length).map(x=>x.value),registryStateFields);
  const registryFlowFields='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require: {fields: {';
  assert.deepEqual(completionChoices(pack,registryFlowFields,registryFlowFields.length).map(x=>x.value),registryStateFields);
+ const registryTypeValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {type: {equals: ';
+ const registryMapping=pack.resource(pack.manifest.capabilities['windows.registry'].mapping_uri);
+ assert.deepEqual(completionChoices(pack,registryTypeValues,registryTypeValues.length).map(x=>x.value),registryMapping.native.state_value_enums.type);
+ const registryHiveStateValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {hive: {equals: ';
+ assert.deepEqual(completionChoices(pack,registryHiveStateValues,registryHiveStateValues.length).map(x=>x.value),registryMapping.native.state_value_enums.hive);
  const unixObject='assessment:\n  tests:\n    check-test:\n      capability: unix.file\n      object:\n        ';
  assert.deepEqual(completionChoices(pack,unixObject,unixObject.length).map(x=>x.value),['directory','full_path','name']);
 });
