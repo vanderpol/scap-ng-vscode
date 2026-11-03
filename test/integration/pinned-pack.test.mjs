@@ -246,3 +246,23 @@ test('native Rule discovery is derived metadata with current pointer grammar, pr
  // Shape validation does not prove pointer target/binding/dominance agreement;
  // those graph checks belong to the pinned compiler, never to AI or the UI.
 });
+
+test('bounded function schema preserves old expressions and rejects broader calls without changing source',()=>{
+ const uri=base+'variable-expression.schema.json';
+ const call=(name,args,options)=>({kind:'local',datatype:name==='arithmetic'?'integer':'string',
+  expression:{function:{name,arguments:args,options}}});
+ const declarations=[call('arithmetic',[{literal:[1,2]},{literal:[3,4,5]}],{arithmetic_operation:'add'}),
+  call('substring',[{literal:'abcdefg'}],{substring_start:3,substring_length:-1}),
+  call('split',[{literal:'-a-a-'}],{delimiter:'-'})];
+ for(const d of declarations){
+  const raw='# Constructed shape fixture; no collector or runtime outcome\n'+JSON.stringify(d,null,2)+'\n';
+  const buffer=new SourceBuffer(raw);
+  assert.equal(buffer.openOrSave(),raw);
+  assert.deepEqual(pack.validate(uri,buffer.json()),[]);
+ }
+ assert.deepEqual(pack.validate(uri,{kind:'constant',datatype:'record',expression:{literal:{datatype:'record',value:{function:'opaque'}}}}),[]);
+ for(const d of [call('count',[{literal:'x'}],{}),call('concat',[{literal:'a'},{literal:'b'}],{}),
+  call('split',[{literal:'x'}],{}),call('substring',[{literal:'x'}],{substring_start:true,substring_length:1}),
+  call('arithmetic',[{literal:1}],{arithmetic_operation:'add'})])assert.ok(pack.validate(uri,d).length>0);
+ // Shape validation is separate from compiler domain/status/runtime checks.
+});

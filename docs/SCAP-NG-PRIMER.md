@@ -7,15 +7,15 @@
 SCAP-NG is an evolving pre-alpha replacement for parts of the SCAP 1.4 ecosystem. The editor must **consume a pinned version** of the real project, never invent its own dialect.
 
 - [Canonical SCAP-NG repository](https://github.com/vanderpol/scap-ng)
-- [Frozen 0.4 schema README](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/schema/README.md)
-- [0.4 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/schema/assessment.schema.json)
-- [0.4 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/schema/rule.schema.json)
-- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/schema/authoring-vocabulary.en.json)
-- [Package identity and integrity schema](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/schema/package-manifest.schema.json)
-- [Specification status](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/specification/README.md)
-- [Generated structural reference](https://github.com/vanderpol/scap-ng/blob/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/docs/generated/schema-reference.md)
-- [Current 0.4 YAML authoring examples](https://github.com/vanderpol/scap-ng/tree/d4e477998cda438a1e53a7c3c84123ec92e5ba1f/examples)
-- [Separate 0.4 converter and authoring-tool boundary](https://github.com/vanderpol/scap-ng-tools/blob/1c8aa287808f3ad0aa3d5e8aa610d800e8862c22/docs/CONVERTER-CUTOVER.md)
+- [Frozen 0.4 schema README](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/schema/README.md)
+- [0.4 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/schema/assessment.schema.json)
+- [0.4 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/schema/rule.schema.json)
+- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/schema/authoring-vocabulary.en.json)
+- [Package identity and integrity schema](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/schema/package-manifest.schema.json)
+- [Specification status](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/specification/README.md)
+- [Generated structural reference](https://github.com/vanderpol/scap-ng/blob/246a8d37cc54875386768a7d76b60a6f9c01d013/docs/generated/schema-reference.md)
+- [Current 0.4 YAML authoring examples](https://github.com/vanderpol/scap-ng/tree/246a8d37cc54875386768a7d76b60a6f9c01d013/examples)
+- [Separate 0.4 converter and authoring-tool boundary](https://github.com/vanderpol/scap-ng-tools/blob/8f5251dcd1062ed29e33b8e9ef72f2f619d83a0d/docs/CONVERTER-CUTOVER.md)
 
 At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After an official 0.4.0 release, explicitly upgrade from the pinned candidate to its tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The new canonical repository physically stores 0.4 directly under flat `schema/`, even though the logical JSON Schema `$id` continues to contain `v0.4.0`.
 
