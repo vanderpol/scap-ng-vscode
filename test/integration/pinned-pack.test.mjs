@@ -264,9 +264,9 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='not_equal'));
  assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='matches_regex'));
  const registryKeyPrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, k';
- assert.deepEqual(completionChoices(pack,registryKeyPrefix,registryKeyPrefix.length).map(x=>x.value),registryObjectFields);
+ assert.deepEqual(completionChoices(pack,registryKeyPrefix,registryKeyPrefix.length).map(x=>x.value),registryObjectFields.filter(value=>value!=='hive'));
  const registryNamePrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, key: {equals: value}, n';
- assert.deepEqual(completionChoices(pack,registryNamePrefix,registryNamePrefix.length).map(x=>x.value),registryObjectFields);
+ assert.deepEqual(completionChoices(pack,registryNamePrefix,registryNamePrefix.length).map(x=>x.value),registryObjectFields.filter(value=>!['hive','key'].includes(value)));
  const registryFields='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {';
  const registrySchema=pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
  const registryStateFields=[...new Set((registrySchema.$defs.state_predicate.oneOf ?? []).flatMap(branch=>branch.required ?? []))];

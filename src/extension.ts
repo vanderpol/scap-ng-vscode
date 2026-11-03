@@ -91,10 +91,10 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
 }
 
 class AssessmentEditorProvider {
-  constructor(private readonly pack?: MetadataPack) {}
+  constructor(private readonly getPack: () => MetadataPack | undefined) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
     const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = structuredHtml();
-    const send = () => panel.webview.postMessage({ type: 'model', model: assessmentEditorModel(document, this.pack) });
+    const send = () => panel.webview.postMessage({ type: 'model', model: assessmentEditorModel(document, this.getPack()) });
     let editQueue = Promise.resolve();
     const applyMessage = async (message: any) => {
       if (message.type === 'ready') return send();
@@ -111,7 +111,7 @@ class AssessmentEditorProvider {
       if (message.type === 'editKey') {
         const currentRevision = sha256(document.getText());
         if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) { panel.webview.postMessage({ type: 'error', message: 'Document changed before this edit was applied; refreshed the editor.' }); return send(); }
-        try { const source = new SourceBuffer(document.getText()); const edit = source.editMappingKey(message.mappingPath, message.oldKey, message.newKey, currentRevision, message.allowedOperations); if (this.pack) { const root = this.pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && /\/assessment\.schema\.json$/.test(resource.uri))?.uri; const problems = root ? this.pack.validate(root, edit.document.json()) : []; if (problems.length) throw new Error(`Pinned schema rejected operation change: ${problems.join('; ')}`); } const workspaceEdit = new api.WorkspaceEdit(); workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement); if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit'); } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); } return;
+        try { const source = new SourceBuffer(document.getText()); const edit = source.editMappingKey(message.mappingPath, message.oldKey, message.newKey, currentRevision, message.allowedOperations); const pack = this.getPack(); if (pack) { const root = pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && /\/assessment\.schema\.json$/.test(resource.uri))?.uri; const problems = root ? pack.validate(root, edit.document.json()) : []; if (problems.length) throw new Error(`Pinned schema rejected operation change: ${problems.join('; ')}`); } const workspaceEdit = new api.WorkspaceEdit(); workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement); if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit'); } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); } return;
       }
       if (message.type !== 'edit' || !Array.isArray(message.path)) return;
       try {
@@ -135,7 +135,7 @@ class AssessmentEditorProvider {
     const onSelection = api.window.onDidChangeTextEditorSelection?.((event: any) => {
       if (event.textEditor?.document?.uri?.toString() !== document.uri.toString()) return;
       const active = event.selections?.[0]?.active; if (!active) return;
-      const offset = document.offsetAt(active); const model = assessmentEditorModel(document, this.pack);
+      const offset = document.offsetAt(active); const model = assessmentEditorModel(document, this.getPack());
       const match = model.fields?.find((field: any) => { try { const range = new SourceBuffer(document.getText()).scalarRange(field.path); return offset >= range[0] && offset <= range[1]; } catch { return false; } });
       if (match) panel.webview.postMessage({ type: 'selectGraphical', path: match.path, testId: match.path[0] === 'assessment' && match.path[1] === 'tests' ? match.path[2] : undefined });
     });
@@ -419,6 +419,28 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
   await rootConfiguration.update('yaml.schemaStore.enable', false, target);
   return true;
 }
+function isAssessmentDocument(document: any): boolean {
+  return Boolean(document && /\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? ''));
+}
+function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profile: Pin, api: any, packError?: string) {
+  const redhat = api.extensions?.getExtension?.('redhat.vscode-yaml');
+  const schemaUri = pack ? assessmentSchemaUri(pack) : undefined;
+  const schemas = document && api.workspace.getConfiguration ? api.workspace.getConfiguration('yaml', document.uri).get('schemas', {}) ?? {} : {};
+  const schemaPath = schemaUri && pack ? api.Uri.file(pack.resourcePath(schemaUri)).toString() : undefined;
+  const associated = Boolean(schemaPath && Object.hasOwn(schemas, schemaPath));
+  const diagnostics = document && api.languages?.getDiagnostics ? api.languages.getDiagnostics(document.uri) : [];
+  const error = packError || (!pack ? 'Verified offline SCAP-NG metadata pack is unavailable.' : undefined);
+  const state = error ? 'error' : associated && !diagnostics.length ? 'healthy' : 'partial';
+  return {
+    visible: isAssessmentDocument(document), recognized: isAssessmentDocument(document), state,
+    text: state === 'healthy' ? `$(check) SCAP-NG ${profile.schemaVersion}` : state === 'error' ? '$(error) SCAP-NG YAML' : `$(warning) SCAP-NG ${profile.schemaVersion}`,
+    document: document?.uri?.fsPath ?? '', languageId: document?.languageId ?? '',
+    schemaUri: schemaUri ?? '', schemaVersion: pack?.pin.schemaVersion ?? profile.schemaVersion,
+    schemaPath: schemaPath ?? '', packPath: pack?.directory ?? '', packSha256: pack?.pin.manifestSha256 ?? '',
+    redhatInstalled: Boolean(redhat), redhatActive: Boolean(redhat?.isActive), associationPresent: associated,
+    diagnostics: diagnostics.length, error: error ?? (associated ? '' : 'Pinned Assessment schema association is not present.')
+  };
+}
 function discoverPackPath(documentPath: string | undefined) {
   if (!documentPath) return undefined;
   let directory = dirname(documentPath);
@@ -494,18 +516,23 @@ function registerYamlCodeActions(context: vscode.ExtensionContext, getPack: () =
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  const api: any = vscode;
   const profile = readProfile(context.extensionPath);
   const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
   let pack: MetadataPack | undefined;
+  let packConfiguration: Promise<boolean> | undefined;
+  let packError: string | undefined;
   let packWarningShown = false;
   const loadPack = (documentPath?: string) => {
     if (pack) return pack;
+    packError = undefined;
     const candidate = configuredPack || discoverPackPath(documentPath);
-    if (!candidate) return undefined;
+    if (!candidate) { packError = 'No verified offline SCAP-NG metadata pack was found for this workspace.'; return undefined; }
     try {
       pack = new MetadataPack(candidate, profile);
-      void configureNativeYamlWorkspace(pack, vscode);
+      packConfiguration = configureNativeYamlWorkspace(pack, vscode);
     } catch (error) {
+      packError = error instanceof Error ? error.message : String(error);
       if (!packWarningShown) { packWarningShown = true; void vscode.window.showWarningMessage(`SCAP-NG metadata pack rejected: ${error instanceof Error ? error.message : String(error)}`); }
     }
     return pack;
@@ -516,9 +543,22 @@ export function activate(context: vscode.ExtensionContext) {
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
   const schemaDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-schema');
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
-  const api: any = vscode;
   registerYamlCompletionProvider(context, () => pack, api);
   registerYamlCodeActions(context, () => pack, api);
+  const yamlStatus = api.window.createStatusBarItem(api.StatusBarAlignment?.Right ?? 2, 100);
+  yamlStatus.command = 'scapNg.showYamlStatus';
+  let currentYamlStatus: any;
+  const refreshYamlStatus = async (document: any = api.window.activeTextEditor?.document) => {
+    if (!isAssessmentDocument(document)) { yamlStatus.hide(); currentYamlStatus = undefined; return undefined; }
+    loadPack(document.uri.fsPath);
+    if (packConfiguration) { try { await packConfiguration; } catch { /* status reports association state */ } }
+    currentYamlStatus = yamlStatusDetails(pack, document, profile, api, packError);
+    yamlStatus.text = currentYamlStatus.text;
+    yamlStatus.tooltip = `SCAP-NG ${profile.schemaVersion} · ${currentYamlStatus.state} · click for diagnostics`;
+    yamlStatus.show();
+    return currentYamlStatus;
+  };
+  context.subscriptions.push(yamlStatus);
   // Keep the suppression and schema association workspace-scoped. This avoids
   // changing ordinary YAML files in other workspaces or the user's global settings.
   context.subscriptions.push(diagnostics, schemaDiagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
@@ -543,10 +583,24 @@ export function activate(context: vscode.ExtensionContext) {
     if (!uri || !/\.assessment\.ya?ml$/i.test(uri.fsPath ?? '')) { await api.window.showWarningMessage('Open an *.assessment.yaml or *.assessment.yml document first.'); return; }
     await api.commands.executeCommand('vscode.openWith', uri, 'scapNg.assessment', { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
   }));
-  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   const build = readBuildInfo(context.extensionPath);
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
+  context.subscriptions.push(api.commands.registerCommand('scapNg.showYamlStatus', async () => {
+    const details = await refreshYamlStatus(api.window.activeTextEditor?.document);
+    const channel = api.window.createOutputChannel('SCAP-NG YAML Status'); channel.clear();
+    if (!details) channel.appendLine('No recognized SCAP-NG Assessment document is active.');
+    else for (const line of [
+      `State: ${details.state}`, `Document: ${details.document}`, `Language ID: ${details.languageId}`,
+      `Schema: ${details.schemaUri || 'unavailable'} (${details.schemaVersion})`, `Schema path: ${details.schemaPath || 'unavailable'}`,
+      `Pack: ${details.packPath || 'unavailable'}`, `Pack manifest SHA-256: ${details.packSha256 || 'unavailable'}`,
+      `Red Hat YAML: ${details.redhatInstalled ? `installed, active=${details.redhatActive}` : 'not installed'}`,
+      `Schema association: ${details.associationPresent ? 'present' : 'missing'}`, `Diagnostics: ${details.diagnostics}`,
+      `Error: ${details.error || 'none'}`, 'Commands: SCAP-NG: Diagnose native YAML; SCAP-NG: Configure native YAML schemas'
+    ]) channel.appendLine(line);
+    channel.show(true); return details;
+  }));
   context.subscriptions.push(api.commands.registerCommand('scapNg.diagnoseYaml', async () => {
     const editor = api.window.activeTextEditor; const document = editor?.document; const yaml = api.workspace.getConfiguration('yaml');
     const schemas = yaml.get('schemas', {}) ?? {}; const override = document ? api.workspace.getConfiguration('editor', document.uri).get('wordBasedSuggestions') : undefined;
@@ -582,10 +636,11 @@ export function activate(context: vscode.ExtensionContext) {
       validateDocument(document, profile, diagnostics);
       publishSchemaRequiredDiagnostics(document, pack, schemaDiagnostics);
     }
+    void refreshYamlStatus(document);
   };
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
   if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
-  if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { if (editor?.document) loadPack(editor.document.uri.fsPath); }));
-  if (api.window.activeTextEditor?.document) inspect(api.window.activeTextEditor.document);
+  if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { void refreshYamlStatus(editor?.document); }));
+  if (api.window.activeTextEditor?.document) { inspect(api.window.activeTextEditor.document); void refreshYamlStatus(api.window.activeTextEditor.document); }
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }

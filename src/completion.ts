@@ -319,6 +319,64 @@ function mappingMemberPosition(source: string, offset: number, path: string[], k
   const value = lineValueAfterCurrentKey(lineAt(source, offset).text, key).trim();
   return !value || value.startsWith('{');
 }
+function flowKeysBefore(source: string, offset: number): Set<string> | undefined {
+  const maps: Set<string>[] = [];
+  let quote: string | undefined;
+  let escaped = false;
+  const lineEnd = source.indexOf('\n', offset) >= 0 ? source.indexOf('\n', offset) : source.length;
+  const scanEnd = lineEnd;
+  let atCursor: Set<string> | undefined;
+  for (let index = 0; index < scanEnd; index++) {
+    if (index === offset) atCursor = maps.at(-1);
+    const character = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === '{') { maps.push(new Set()); continue; }
+    if (character === '}') { maps.pop(); continue; }
+    if (!maps.length || !/[A-Za-z_]/.test(character)) continue;
+    const match = source.slice(index, scanEnd).match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+    if (match) { maps.at(-1)!.add(match[1]); index += match[1].length - 1; }
+  }
+  if (offset === scanEnd) atCursor = maps.at(-1);
+  return atCursor;
+}
+
+function mappingKeysBefore(source: string, offset: number): Set<string> {
+  const flow = flowKeysBefore(source, offset);
+  if (flow) return flow;
+  const lines = source.split(/\r?\n/);
+  const currentIndex = source.slice(0, offset).split(/\r?\n/).length - 1;
+  const current = lines[currentIndex] ?? '';
+  const indent = current.match(/^\s*/)?.[0].replace(/\t/g, '  ').length ?? 0;
+  const keys = new Set<string>();
+  const collectBlockSiblings = (index: number, step: -1 | 1) => {
+    for (let cursor = index; cursor >= 0 && cursor < lines.length; cursor += step) {
+      const line = lines[cursor];
+      if (!line.trim() || /^\s*#/.test(line)) continue;
+      const lineIndent = line.match(/^\s*/)?.[0].replace(/\t/g, '  ').length ?? 0;
+      if (lineIndent < indent) break;
+      if (lineIndent !== indent) continue;
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+      if (match) keys.add(match[1]);
+    }
+  };
+  collectBlockSiblings(currentIndex - 1, -1);
+  collectBlockSiblings(currentIndex + 1, 1);
+  const currentKey = current.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/)?.[1];
+  if (currentKey) keys.delete(currentKey);
+  return keys;
+}
+function missingMappingChoices(source: string, offset: number, key: string | undefined, choices: CompletionChoice[]): CompletionChoice[] {
+  if (!choices.length) return choices;
+  const existing = mappingKeysBefore(source, offset);
+  if (key) existing.delete(key);
+  return choices.filter(choice => !existing.has(choice.value));
+}
 function capabilityObjectMappingChoices(pack: MetadataPack, capability: string, segments: string[] = []): CompletionChoice[] {
   const uri = pack.manifest.capabilities[capability]?.schema_uri;
   if (!uri) return [];
@@ -398,7 +456,15 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
   const capability = currentCapability(source, offset) ?? '';
   if (mappingMemberPosition(source, offset, path, key)) {
     const mapped = genericMappingChoices(pack, path, capability);
-    if (mapped) return mapped;
+    if (mapped) return missingMappingChoices(source, offset, key, mapped);
+    // A partially typed key (`k:`/`field_require:`) is not an AST property
+    // yet. Resolve the parent mapping so completion can replace the prefix
+    // instead of attempting to descend into an unknown schema member. Exact
+    // selector operators remain on the value-completion path below.
+    if (key && path.length > 1) {
+      const parent = genericMappingChoices(pack, path.slice(0, -1), capability);
+      if (parent && !parent.some(choice => choice.value === key)) return missingMappingChoices(source, offset, key, parent);
+    }
   }
 
   const objectIndex = path.lastIndexOf('object');

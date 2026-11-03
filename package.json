@@ -19,7 +19,8 @@
     "test:host:mutation": "npm run build && node scripts/schema-mutation-host-probe.mjs",
     "test:host:redhat": "npm run build && npm run verify:test-deps && node scripts/host-acceptance-probe.mjs",
     "verify:test-deps": "node scripts/verify-redhat-yaml.mjs",
-    "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs"
+    "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs",
+    "test:host:status": "npm run build && node scripts/status-host-probe.mjs"
   },
   "files": [
     "dist",
@@ -79,6 +80,10 @@
       {
         "command": "scapNg.showBuildInfo",
         "title": "SCAP-NG: Show installed build"
+      },
+      {
+        "command": "scapNg.showYamlStatus",
+        "title": "SCAP-NG: Show YAML status"
       },
       {
         "command": "scapNg.diagnoseYaml",

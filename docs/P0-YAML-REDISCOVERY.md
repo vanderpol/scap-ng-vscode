@@ -10,7 +10,9 @@ frozen while this P0 is evaluated.
   therefore show no suggestions. Completion also appears naturally after a
   valid property/value prefix.
 - Mapping completion is derived from the pinned assessment and selected
-  capability JSON Schemas. This includes `object`, nested Object mappings,
+  capability JSON Schemas and suppresses keys already present in the current
+  mapping. Prefix edits still replace the typed key rather than creating a
+  duplicate. This includes `object`, nested Object mappings,
   `require`, `item_requirement`, `field_requirement`, and capability-specific
   `require.fields` mappings.
 - Completion documentation comes from schema descriptions (or the existing
