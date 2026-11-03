@@ -15,7 +15,7 @@ Keep the native `yaml` language ID and integrate with Red Hat YAML through the s
 }
 ```
 
-The pinned offline pack remains authoritative. Red Hat owns ordinary JSON-Schema enum completion, hover, and schema diagnostics. A small SCAP-NG adapter is retained only for facts the JSON Schema cannot express or for behavior demonstrated missing in the host:
+The pinned offline pack remains authoritative. Red Hat owns schema hover and schema diagnostics. In the SCAP-NG workspace, `yaml.completion` is deliberately disabled and the small SCAP-NG adapter owns completion, because the real user host repeatedly returned an empty Red Hat completion result despite the service being active. This avoids an empty menu while preserving Red Hat's schema-backed hover/validation. The adapter is retained only for facts the JSON Schema cannot express or for behavior demonstrated missing in the host:
 
 - selecting the capability schema from the authored `tests.*.capability` value;
 - supplying capability identifiers from the pinned manifest catalog;
@@ -95,7 +95,7 @@ Red Hat YAML cannot infer a capability catalog from the assessment schema becaus
 
 In the same host evaluation, the tested Red Hat release returned cardinality values for flow mappings after the language server warmed, but did not return the blank scalar completion for the corresponding block mapping. The adapter supplies only the missing block context and suppresses those values in flow contexts, preventing duplicates. Re-run with `SCAP_NG_SKIP_SCAP_EXTENSION=1` to inspect Red Hat-only behavior; the probe intentionally exits nonzero when the documented gaps are present.
 
-The language service also cannot provide a schema-defined enum for an open catalog field or perform SCAP-NG semantic execution. Those are deliberately outside this integration. No network fetch is used for schemas or validation; all schema URIs resolve to the configured local pack.
+The language service also cannot provide a schema-defined enum for an open catalog field, and its completion channel was not reliable in the user's long-lived VS Code host even though an isolated host could return values. It cannot perform SCAP-NG semantic execution. Those are deliberately outside this integration. No network fetch is used for schemas or validation; all schema URIs resolve to the configured local pack.
 
 ## Schema-mutation acceptance
 

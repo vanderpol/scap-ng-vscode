@@ -235,6 +235,7 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
   const existing = yamlConfiguration.get('schemas', {}) ?? {};
   const associations = { ...(typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), ...yamlAssociationMap(pack) };
   await yamlConfiguration.update('schemas', associations, target);
+  await yamlConfiguration.update('completion', false, target);
   const resource = api.window.activeTextEditor?.document?.uri ?? api.workspace.workspaceFolders?.[0]?.uri;
   const rootConfiguration = api.workspace.getConfiguration(undefined, resource);
   const existingYaml = rootConfiguration.get('[yaml]', {}) ?? {};
@@ -257,9 +258,13 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
   const redhatExtension = api.extensions?.getExtension?.('redhat.vscode-yaml');
   if (redhatExtension && !redhatExtension.isActive) void redhatExtension.activate().catch(() => undefined);
   const redhatOwnsSchema = (pack: MetadataPack) => {
-    const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
+    const yamlConfiguration = api.workspace.getConfiguration('yaml');
+    const configuredSchemas = yamlConfiguration.get('schemas', {}) ?? {};
     const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
-    return Boolean(redhatExtension?.isActive && assessmentSchemaUri);
+    // Red Hat owns hover/validation. The schema-driven SCAP-NG adapter owns
+    // completion in this workspace so a broken/stale Red Hat completion channel
+    // cannot leave authors with an empty menu or duplicate entries.
+    return Boolean(redhatExtension?.isActive && assessmentSchemaUri && yamlConfiguration.get('completion') !== false);
   };
   const provider = {
     provideCompletionItems(document: any, position: any) {
@@ -270,6 +275,7 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
         item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
+        item.range = new api.Range(position, position);
         item.detail = choice.kind === 'property' ? 'Selected capability schema' : 'Pinned SCAP-NG metadata';
         item.documentation = choice.description;
         return item;
