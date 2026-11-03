@@ -253,14 +253,14 @@ function discoverPackPath(documentPath: string | undefined) {
 }
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: MetadataPack | undefined, api: any) {
   if (!pack || !api.languages?.registerCompletionItemProvider) return;
-  const redhatYaml = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
+  const redhatExtension = api.extensions?.getExtension?.('redhat.vscode-yaml');
   const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
   const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
-  const redhatOwnsSchema = redhatYaml && Boolean(assessmentSchemaUri);
+  const redhatOwnsSchema = () => Boolean(redhatExtension?.isActive && assessmentSchemaUri);
   const provider = {
     provideCompletionItems(document: any, position: any) {
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
-      return completionChoices(pack, document.getText(), offset, redhatOwnsSchema).map(choice => {
+      return completionChoices(pack, document.getText(), offset, redhatOwnsSchema()).map(choice => {
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
         item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
@@ -319,6 +319,23 @@ export function activate(context: vscode.ExtensionContext) {
   const build = readBuildInfo(context.extensionPath);
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.diagnoseYaml', () => {
+    const editor = api.window.activeTextEditor; const document = editor?.document; const yaml = api.workspace.getConfiguration('yaml');
+    const schemas = yaml.get('schemas', {}) ?? {}; const override = api.workspace.getConfiguration('[yaml]').get('editor.wordBasedSuggestions');
+    const redhat = api.extensions?.getExtension?.('redhat.vscode-yaml'); const expectedSchemas = pack ? Object.keys(yamlAssociationMap(pack)) : [];
+    const channel = api.window.createOutputChannel('SCAP-NG Diagnostics'); channel.clear();
+    for (const line of [
+      `Build: ${buildLabel(build)}`,
+      `Document: ${document?.uri?.fsPath ?? 'none'}`,
+      `Language ID: ${document?.languageId ?? 'none'}`,
+      `SCAP-NG pack: ${pack ? pack.directory : 'not loaded'}`,
+      `Red Hat YAML: ${redhat ? `installed ${redhat.packageJSON?.version ?? ''}, active=${redhat.isActive}` : 'not detected'}`,
+      `wordBasedSuggestions: ${override ?? 'not set in workspace'}`,
+      `SCAP-NG schema association: ${expectedSchemas.some(uri => Object.hasOwn(schemas, uri)) ? 'present' : 'missing'}`,
+      `Workspace folders: ${api.workspace.workspaceFolders?.length ?? 0}`
+    ]) channel.appendLine(line);
+    channel.show(true);
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
   const inspect = (document: vscode.TextDocument) => { if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics); };
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect)); if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));

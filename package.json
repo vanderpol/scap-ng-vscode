@@ -79,6 +79,10 @@
       {
         "command": "scapNg.showBuildInfo",
         "title": "SCAP-NG: Show installed build"
+      },
+      {
+        "command": "scapNg.diagnoseYaml",
+        "title": "SCAP-NG: Diagnose native YAML"
       }
     ],
     "viewsContainers": {
