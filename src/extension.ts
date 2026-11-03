@@ -222,13 +222,15 @@ function apiUriFile(resource: any, pack: MetadataPack) {
 }
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: MetadataPack | undefined, api: any) {
   if (!pack || !api.languages?.registerCompletionItemProvider) return;
+  const redhatYaml = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
   const provider = {
     provideCompletionItems(document: any, position: any) {
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
-      return completionChoices(pack, document.getText(), offset).map(choice => {
-        const item = new api.CompletionItem(choice.value, api.CompletionItemKind?.Value ?? 12);
-        item.insertText = choice.value;
-        item.detail = choice.label === choice.value ? 'Pinned SCAP-NG metadata' : choice.label;
+      return completionChoices(pack, document.getText(), offset, redhatYaml).map(choice => {
+        const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
+        const item = new api.CompletionItem(choice.value, kind);
+        item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
+        item.detail = choice.kind === 'property' ? 'Selected capability schema' : 'Pinned SCAP-NG metadata';
         item.documentation = choice.description;
         return item;
       });
