@@ -20,7 +20,10 @@ function pathAt(source: string, offset: number): string[] {
     if (!match) continue;
     const indent = match[1].replace(/\t/g, '  ').length;
     while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
-    if (!/[{}\[\]]/.test(raw.slice(match[0].length))) stack.push({ indent, key: match[2] });
+    const rest = raw.slice(match[0].length).trim();
+    // Only blank block-mapping keys establish ancestry. Scalar siblings such
+    // as `mode: automated` must not become parents of the next key.
+    if (!rest || rest.startsWith('#')) stack.push({ indent, key: match[2] });
   }
   const currentText = lineAt(source, offset).text;
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));

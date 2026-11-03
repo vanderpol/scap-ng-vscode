@@ -46,6 +46,7 @@
   "activationEvents": [
     "onCommand:scapNg.openAssessmentStudio",
     "onCommand:scapNg.showPin",
+    "onLanguage:yaml",
     "onView:scapNg.assessmentStudio"
   ],
   "contributes": {
