@@ -46,7 +46,7 @@ SCAP_NG_REDHAT_YAML_DIR=/approved/redhat.vscode-yaml-2.0.0 \
 npm run package:offline-bundle
 ```
 
-The bundle contains the SCAP-NG VSIX, Red Hat YAML extension files, the verified editor pack, the pin descriptor, and third-party notices. It does not run `npm install` or fetch schemas at install/runtime.
+The bundle contains the SCAP-NG VSIX, Red Hat YAML extension files, the verified editor pack, the pin descriptor, and third-party notices. It does not run `npm install` or fetch schemas at install/runtime. The VSIX embeds `dist/build-info.json`; use **SCAP-NG: Show installed build** after reload to confirm the installed short commit and UTC build timestamp.
 
 ## Real extension-host acceptance
 

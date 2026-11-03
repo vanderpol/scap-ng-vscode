@@ -6,7 +6,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/write-build-info.mjs",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:integration": "npm run build && node --test test/integration/*.test.mjs",
@@ -14,7 +14,7 @@
     "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
     "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
     "package": "npm run package:vsix",
-    "package:vsix": "node scripts/package-vsix.mjs",
+    "package:vsix": "npm run build && node scripts/package-vsix.mjs",
     "test:host": "npm run build && node scripts/host-acceptance-probe.mjs",
     "test:host:mutation": "npm run build && node scripts/schema-mutation-host-probe.mjs",
     "test:host:redhat": "npm run build && npm run verify:test-deps && node scripts/host-acceptance-probe.mjs",
@@ -75,6 +75,10 @@
       {
         "command": "scapNg.createGuidedAssessment",
         "title": "SCAP-NG: Create Guided Assessment"
+      },
+      {
+        "command": "scapNg.showBuildInfo",
+        "title": "SCAP-NG: Show installed build"
       }
     ],
     "viewsContainers": {
