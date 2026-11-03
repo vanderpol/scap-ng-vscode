@@ -83,7 +83,7 @@ writeFileSync(flowDocument, unique(flowIncomplete, 'flow'));
 writeFileSync(objectDocument, objectIncomplete);
 writeFileSync(invalidDocument, invalid);
 const canonicalDocuments = Object.fromEntries(Object.entries(canonicalInputs).map(([name, input]) => { if (name === 'windowsRegistry') return [name, validDocument]; const target = join(workspace, `${name}.assessment.yaml`); writeFileSync(target, readFileSync(input, 'utf8')); return [name, target]; }));
-writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c'), 'typing'));
+writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c').replace('mode: ', 'mode: aut'), 'typing'));
 const settings = {
   // Supported Red Hat YAML extension integration; no schema server is bundled
   // or reached over the network by this probe.
@@ -118,13 +118,16 @@ exports.activate=()=>setTimeout(async()=>{try{
  const typingLine=typingDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('class: c'));
  const typingPoint={line:typingLine,character:typingDoc.lineAt(typingLine).text.length};
  const naturalTyping=await completion(typing,typingPoint);
+ const modeLine=typingDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('mode: aut'));
+ const modePoint={line:modeLine,character:typingDoc.lineAt(modeLine).text.length};
+ const prefixInsertion=await insert(typing,modePoint,'automated');
  const insertion=await insert(block,checks.block.find(point=>point.key==='class'),expectedClass);
  await new Promise(resolve=>setTimeout(resolve,1000));
  const hover=await vscode.commands.executeCommand('vscode.executeHoverProvider',valid,new vscode.Position(${checks(source).find(point=>point.key==='class').line},${checks(source).find(point=>point.key==='class').character}));
  const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,naturalTyping,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -150,6 +153,7 @@ assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fi
 assertSet(receipt.naturalTyping, expected.class, 'natural typing class prefix');
 const canonicalExpectations={windowsRegistry:{tests:1,capabilities:['windows.registry']},unixFile:{tests:1,capabilities:['unix.file']},multipleTests:{tests:2,capabilities:['windows.registry','unix.file']}};
 for(const [name,wanted] of Object.entries(canonicalExpectations)){const actual=receipt.canonicalReceipts?.[name];if(!actual||actual.languageId!=='yaml'||actual.testCount!==wanted.tests||wanted.capabilities.some(value=>!actual.capabilities.includes(value))||(actual.diagnostics||[]).length) failures.push(`canonical ${name}: host verification mismatch`);}
+if (!receipt.prefixInsertion?.applied || receipt.prefixInsertion?.text !== 'automated' || !/mode:\s+automated/.test(receipt.prefixInsertion?.line || '')) failures.push('typed completion did not replace the existing prefix');
 if (!receipt.sourcePreserved) failures.push('opening the canonical Assessment changed its YAML source');
 if (!receipt.insertion?.found || !receipt.insertion?.applied || receipt.insertion?.text !== expected.class[0] || !/class:\s+compliance/.test(receipt.insertion?.line || '')) failures.push('completion insertion did not produce the selected SCAP-NG value');
 if (!receipt.hoverCount || !receipt.hoverText || !receipt.hoverText.includes('compliance')) failures.push('schema hover did not return canonical enum documentation');
