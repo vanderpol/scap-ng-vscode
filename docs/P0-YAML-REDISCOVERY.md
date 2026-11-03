@@ -5,6 +5,10 @@ frozen while this P0 is evaluated.
 
 ## Behavior
 
+- In VS Code, invoke the completion menu with **Ctrl+Space**. **Shift+Space**
+  inserts a literal space and is not the VS Code completion command; it will
+  therefore show no suggestions. Completion also appears naturally after a
+  valid property/value prefix.
 - Mapping completion is derived from the pinned assessment and selected
   capability JSON Schemas. This includes `object`, nested Object mappings,
   `require`, `item_requirement`, `field_requirement`, and capability-specific

@@ -38,6 +38,9 @@ const expected = {
 };
 const capabilitySchema = pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
 const expectedObjectFields = Object.keys(capabilitySchema.$defs?.object?.properties ?? {});
+const assessmentLanguage = pack.resource(pack.manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/assessment-language.schema.json')).uri);
+const expectedRequirementProperties = Object.keys(assessmentLanguage.$defs?.canonical_all_items_requirement?.properties ?? {});
+const expectedTestProperties = Object.keys(pack.resource(schema.uri).properties?.assessment?.properties?.tests?.additionalProperties?.properties ?? {});
 const expectedRequireFields = [...new Set(['oneOf', 'anyOf'].flatMap(key => (capabilitySchema.$defs?.state_predicate?.[key] ?? []).flatMap(branch => branch.required ?? [])))];
 function schemaWalk(node, visit) {
   if (!node || typeof node !== 'object') return;
@@ -96,6 +99,12 @@ const deletedRequireDocument = join(workspace, 'deleted-require.assessment.yaml'
 const deletedItemRequirementDocument = join(workspace, 'deleted-item-requirement.assessment.yaml');
 const deletedFieldRequirementDocument = join(workspace, 'deleted-field-requirement.assessment.yaml');
 const deletedFieldsDocument = join(workspace, 'deleted-fields.assessment.yaml');
+const blankObjectDocument = join(workspace, 'blank-object.assessment.yaml');
+const blankRequireDocument = join(workspace, 'blank-require.assessment.yaml');
+const blankItemRequirementDocument = join(workspace, 'blank-item-requirement.assessment.yaml');
+const blankFieldRequirementDocument = join(workspace, 'blank-field-requirement.assessment.yaml');
+const blankFieldsDocument = join(workspace, 'blank-fields.assessment.yaml');
+const blankCapabilityDocument = join(workspace, 'blank-capability.assessment.yaml');
 const typingDocument = join(workspace, 'typing.assessment.yaml');
 const unique = (text, suffix) => text.replace('windows-server-2025-shows-on-lock-screen-sv-278080-assessment', `host-probe-${suffix}-assessment`);
 const incomplete = source
@@ -124,6 +133,12 @@ const deletedRequire = unique(source.replace(/      require:\n        item_requi
 const deletedItemRequirement = unique(source.replace('        item_requirement: {items_found: one_or_more, items_satisfying: every}\n', ''), 'deleted-item-requirement');
 const deletedFieldRequirement = unique(source.replace('        field_requirement: {values_found: one_or_more, values_matching: every}\n', ''), 'deleted-field-requirement');
 const deletedFields = unique(source.replace('        fields: {type: {equals: dword}, value: {equals: 1}}\n', ''), 'deleted-fields');
+const blankObject = unique(source.replace(/^      object:.*$/m, '      '), 'blank-object');
+const blankRequire = unique(source.replace('      require:\n', '      \n'), 'blank-require');
+const blankItemRequirement = unique(source.replace('        item_requirement: {items_found: one_or_more, items_satisfying: every}', '        '), 'blank-item-requirement');
+const blankFieldRequirement = unique(source.replace('        field_requirement: {values_found: one_or_more, values_matching: every}', '        '), 'blank-field-requirement');
+const blankFields = unique(source.replace('        fields: {type: {equals: dword}, value: {equals: 1}}', '        '), 'blank-fields');
+const blankCapability = unique(source.replace('      capability: windows.registry', '      '), 'blank-capability');
 writeFileSync(validDocument, source);
 writeFileSync(blockDocument, unique(blockIncomplete, 'block'));
 writeFileSync(flowDocument, unique(flowIncomplete, 'flow'));
@@ -141,6 +156,12 @@ writeFileSync(deletedRequireDocument, deletedRequire);
 writeFileSync(deletedItemRequirementDocument, deletedItemRequirement);
 writeFileSync(deletedFieldRequirementDocument, deletedFieldRequirement);
 writeFileSync(deletedFieldsDocument, deletedFields);
+writeFileSync(blankObjectDocument, blankObject);
+writeFileSync(blankRequireDocument, blankRequire);
+writeFileSync(blankItemRequirementDocument, blankItemRequirement);
+writeFileSync(blankFieldRequirementDocument, blankFieldRequirement);
+writeFileSync(blankFieldsDocument, blankFields);
+writeFileSync(blankCapabilityDocument, blankCapability);
 const canonicalDocuments = Object.fromEntries(Object.entries(canonicalInputs).map(([name, input]) => { if (name === 'windowsRegistry') return [name, validDocument]; const target = join(workspace, `${name}.assessment.yaml`); writeFileSync(target, readFileSync(input, 'utf8')); return [name, target]; }));
 writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c').replace('mode: ', 'mode: aut'), 'typing'));
 const settings = {
@@ -155,7 +176,7 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, typingDocument, canonicalDocuments })};
+const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, blankObjectDocument, blankRequireDocument, blankItemRequirementDocument, blankFieldRequirementDocument, blankFieldsDocument, blankCapabilityDocument, typingDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
 const expectedObjectFields=${JSON.stringify(expectedObjectFields)};
@@ -193,10 +214,10 @@ async function missingReceipt(uri, document, property){
  return {diagnostics,actionTitles:actions.map(value=>value.title||''),actionFound:Boolean(action),applied,text,beforeText,afterDiagnostics,duplicateActionFound,undoText,redoText};
 }
 exports.activate=()=>setTimeout(async()=>{try{
- const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), traversal=vscode.Uri.file(files.traversalDocument), selector=vscode.Uri.file(files.selectorDocument), hiveValue=vscode.Uri.file(files.hiveValueDocument), typeValue=vscode.Uri.file(files.typeValueDocument), objectKey=vscode.Uri.file(files.objectKeyDocument), objectName=vscode.Uri.file(files.objectNameDocument), fields=vscode.Uri.file(files.fieldsDocument), invalid=vscode.Uri.file(files.invalidDocument), deletedObject=vscode.Uri.file(files.deletedObjectDocument), deletedRequire=vscode.Uri.file(files.deletedRequireDocument), deletedItemRequirement=vscode.Uri.file(files.deletedItemRequirementDocument), deletedFieldRequirement=vscode.Uri.file(files.deletedFieldRequirementDocument), deletedFields=vscode.Uri.file(files.deletedFieldsDocument), typing=vscode.Uri.file(files.typingDocument);
+ const valid=vscode.Uri.file(files.validDocument), block=vscode.Uri.file(files.blockDocument), flow=vscode.Uri.file(files.flowDocument), object=vscode.Uri.file(files.objectDocument), traversal=vscode.Uri.file(files.traversalDocument), selector=vscode.Uri.file(files.selectorDocument), hiveValue=vscode.Uri.file(files.hiveValueDocument), typeValue=vscode.Uri.file(files.typeValueDocument), objectKey=vscode.Uri.file(files.objectKeyDocument), objectName=vscode.Uri.file(files.objectNameDocument), fields=vscode.Uri.file(files.fieldsDocument), invalid=vscode.Uri.file(files.invalidDocument), deletedObject=vscode.Uri.file(files.deletedObjectDocument), deletedRequire=vscode.Uri.file(files.deletedRequireDocument), deletedItemRequirement=vscode.Uri.file(files.deletedItemRequirementDocument), deletedFieldRequirement=vscode.Uri.file(files.deletedFieldRequirementDocument), deletedFields=vscode.Uri.file(files.deletedFieldsDocument), blankObject=vscode.Uri.file(files.blankObjectDocument), blankRequire=vscode.Uri.file(files.blankRequireDocument), blankItemRequirement=vscode.Uri.file(files.blankItemRequirementDocument), blankFieldRequirement=vscode.Uri.file(files.blankFieldRequirementDocument), blankFields=vscode.Uri.file(files.blankFieldsDocument), blankCapability=vscode.Uri.file(files.blankCapabilityDocument), typing=vscode.Uri.file(files.typingDocument);
  const validDoc=await vscode.workspace.openTextDocument(valid); await vscode.window.showTextDocument(valid,vscode.ViewColumn.One);
  await new Promise(resolve=>setTimeout(resolve,${languageServerDelay}));
- const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), traversalDoc=await vscode.workspace.openTextDocument(traversal), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), typeValueDoc=await vscode.workspace.openTextDocument(typeValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), deletedObjectDoc=await vscode.workspace.openTextDocument(deletedObject), deletedRequireDoc=await vscode.workspace.openTextDocument(deletedRequire), deletedItemRequirementDoc=await vscode.workspace.openTextDocument(deletedItemRequirement), deletedFieldRequirementDoc=await vscode.workspace.openTextDocument(deletedFieldRequirement), deletedFieldsDoc=await vscode.workspace.openTextDocument(deletedFields), typingDoc=await vscode.workspace.openTextDocument(typing);
+ const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), traversalDoc=await vscode.workspace.openTextDocument(traversal), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), typeValueDoc=await vscode.workspace.openTextDocument(typeValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), deletedObjectDoc=await vscode.workspace.openTextDocument(deletedObject), deletedRequireDoc=await vscode.workspace.openTextDocument(deletedRequire), deletedItemRequirementDoc=await vscode.workspace.openTextDocument(deletedItemRequirement), deletedFieldRequirementDoc=await vscode.workspace.openTextDocument(deletedFieldRequirement), deletedFieldsDoc=await vscode.workspace.openTextDocument(deletedFields), blankObjectDoc=await vscode.workspace.openTextDocument(files.blankObjectDocument), blankRequireDoc=await vscode.workspace.openTextDocument(files.blankRequireDocument), blankItemRequirementDoc=await vscode.workspace.openTextDocument(files.blankItemRequirementDocument), blankFieldRequirementDoc=await vscode.workspace.openTextDocument(files.blankFieldRequirementDocument), blankFieldsDoc=await vscode.workspace.openTextDocument(files.blankFieldsDocument), blankCapabilityDoc=await vscode.workspace.openTextDocument(files.blankCapabilityDocument), typingDoc=await vscode.workspace.openTextDocument(typing);
  await vscode.window.showTextDocument(blockDoc,vscode.ViewColumn.Two);
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
@@ -212,6 +233,8 @@ exports.activate=()=>setTimeout(async()=>{try{
  const typeValuePoint={line:typeValueLine,character:typeValueDoc.lineAt(typeValueLine).text.indexOf('equals: ,')+'equals: '.length};
  const typeValues=await completion(typeValue,typeValuePoint);
  const typeValueInsertion=await insert(typeValue,typeValuePoint,'dword');
+ const blankPoint=doc=>{const line=doc.getText().split(/\\r?\\n/).findIndex(value=>/^\\s+$/.test(value));if(line<0)throw new Error('blank completion fixture has no whitespace-only row');return {line,character:doc.lineAt(line).text.length};};
+ const blankCompletions={object:await completion(blankObject,blankPoint(blankObjectDoc)),require:await completion(blankRequire,blankPoint(blankRequireDoc)),item_requirement:await completion(blankItemRequirement,blankPoint(blankItemRequirementDoc)),field_requirement:await completion(blankFieldRequirement,blankPoint(blankFieldRequirementDoc)),fields:await completion(blankFields,blankPoint(blankFieldsDoc)),capability:await completion(blankCapability,blankPoint(blankCapabilityDoc))};
  const missingObject=await missingReceipt(deletedObject,deletedObjectDoc,'hive');
  const missingRequire=await missingReceipt(deletedRequire,deletedRequireDoc,'require');
  const missingItemRequirement=await missingReceipt(deletedItemRequirement,deletedItemRequirementDoc,'item_requirement');
@@ -245,7 +268,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,objectCompletions,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -272,6 +295,10 @@ function assertSet(actual, wanted, name) {
 }
 for (const key of ['class','mode','capability','items_found','items_satisfying','values_found','values_matching']) assertSet(receipt.blockCompletions?.[key], expected[key], `block ${key}`);
 for (const key of ['items_satisfying','values_matching']) assertSet(receipt.flowCompletions?.[key], expected[key], `flow ${key}`);
+assertSet(receipt.blankCompletions?.object, expectedTestProperties, 'blank object mapping');
+assertSet(receipt.blankCompletions?.require, expectedTestProperties, 'blank require mapping');
+for (const key of ['item_requirement','field_requirement','fields']) assertSet(receipt.blankCompletions?.[key], expectedRequirementProperties, `blank ${key} mapping`);
+assertSet(receipt.blankCompletions?.capability, expectedTestProperties, 'blank capability mapping');
 assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fields');
 assertSet(receipt.hiveOperators, expectedHiveOperators, 'hive operators');
 assertSet(receipt.hiveValues, expectedHiveValues, 'hive values');
