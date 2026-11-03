@@ -342,7 +342,7 @@ export function activate(context: vscode.ExtensionContext) {
         const cursor = await api.commands.executeCommand('vscode.executeCompletionItemProvider', document.uri, editor.selection.active);
         cursorCompletion = (cursor?.items ?? []).map((item: any) => typeof item.label === 'string' ? item.label : item.label?.label).filter(Boolean).slice(0, 20).join(', ') || 'none';
         const classLine = [...Array(document.lineCount).keys()].find((line: number) => document.lineAt(line).text.includes('class:'));
-        if (classLine !== undefined) { const line = document.lineAt(classLine).text; const position = new api.Position(classLine, Math.min(line.length, line.indexOf('class:') + 'class:'.length + 1)); const result = await api.commands.executeCommand('vscode.executeCompletionItemProvider', document.uri, position); classCompletion = (result?.items ?? []).map((item: any) => typeof item.label === 'string' ? item.label : item.label?.label).filter(Boolean).slice(0, 20).join(', ') || 'none'; }
+        if (classLine !== undefined) { const line = document.lineAt(classLine).text; const position = new api.Position(classLine, line.length); const result = await api.commands.executeCommand('vscode.executeCompletionItemProvider', document.uri, position); classCompletion = (result?.items ?? []).map((item: any) => typeof item.label === 'string' ? item.label : item.label?.label).filter(Boolean).slice(0, 20).join(', ') || 'none'; }
       } catch (error) { cursorCompletion = `error: ${error instanceof Error ? error.message : String(error)}`; }
     }
     const channel = api.window.createOutputChannel('SCAP-NG Diagnostics'); channel.clear();
