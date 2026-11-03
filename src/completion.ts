@@ -143,6 +143,10 @@ export function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, s
       const serialized = new Set(values.map(value => JSON.stringify(value)));
       if (serialized.size === 1) return values[0];
     }
+    // An explicit union with no unanimous complete value is ambiguous. Do
+    // not continue into schemaNodes(), which would otherwise rediscover the
+    // first branch's required defaults and silently pick a meaning.
+    return undefined;
   }
   const nodes = schemaNodes(pack, uri, spec);
   for (const node of nodes) {
