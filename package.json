@@ -14,7 +14,8 @@
     "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
     "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
     "package": "npm run package:vsix",
-    "package:vsix": "node scripts/package-vsix.mjs"
+    "package:vsix": "node scripts/package-vsix.mjs",
+    "test:host": "npm run build && node scripts/host-acceptance-probe.mjs"
   },
   "files": [
     "dist",
