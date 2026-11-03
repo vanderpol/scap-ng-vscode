@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { parseDocument } from 'yaml';
+import { parseDocument, stringify } from 'yaml';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
@@ -7,7 +7,7 @@ import { SourceBuffer, sourceRevisionMatches } from './source.js';
 import { previewRegexSafe } from './playground.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
-import { completionChoices } from './completion.js';
+import { completionChoices, propertyChoicesForPath } from './completion.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -196,6 +196,175 @@ class GuidedPanel {
   }
 }
 
+function pointerPath(pointer: string): string[] {
+  return pointer.replace(/^\//, '').split('/').filter(Boolean).map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+}
+function valueAtPath(root: any, path: string[]) {
+  let value = root;
+  for (const key of path) value = value?.[key];
+  return value;
+}
+function yamlMapAtPath(node: any, path: string[], current: string[] = []): { map: any; pair?: any } | undefined {
+  if (path.length === current.length && node?.items) return { map: node };
+  if (!node?.items) return undefined;
+  for (const pair of node.items) {
+    const key = pair.key?.value;
+    if (typeof key !== 'string' || path[current.length] !== key) continue;
+    if (current.length + 1 === path.length && pair.value?.items) return { map: pair.value, pair };
+    const found = yamlMapAtPath(pair.value, path, [...current, key]);
+    if (found) return found;
+  }
+  return undefined;
+}
+function inlineYaml(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(inlineYaml).join(', ')}]`;
+  if (value && typeof value === 'object') return `{${Object.entries(value).map(([key, item]) => `${key}: ${inlineYaml(item)}`).join(', ')}}`;
+  return stringify(value).trim();
+}
+function quickFixFragment(choice: { value: string; insertText?: string; defaultValue?: unknown }): string {
+  if (choice.defaultValue !== undefined) return `${choice.value}: ${inlineYaml(choice.defaultValue)}`;
+  if (choice.insertText?.endsWith('{')) return `${choice.value}: {}`;
+  return choice.insertText ?? `${choice.value}: `;
+}
+function capabilityForPath(value: any, path: string[]): string {
+  const tests = path.indexOf('tests');
+  const testId = tests >= 0 ? path[tests + 1] : undefined;
+  return tests >= 0 && typeof testId === 'string' ? valueAtPath(value, ['assessment', 'tests', testId, 'capability']) ?? '' : '';
+}
+function isRelevantRequired(parent: any, parentPath: string[], missing: string): boolean {
+  if (parentPath.at(-1) === 'require' && ['and', 'or', 'one', 'xor'].includes(missing)) {
+    // The canonical comparison branch uses `fields`; Boolean condition
+    // alternatives are valid only when the authored branch selects them.
+    return Boolean(parent?.item_requirement && parent?.field_requirement && missing === 'fields');
+  }
+  return true;
+}
+function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
+  const schemaUri = assessmentSchemaUri(pack);
+  if (!schemaUri) return [];
+  const parsed = parseDocument(document.getText(), { uniqueKeys: true });
+  if (parsed.errors.length || !parsed.contents) return [];
+  let value: any;
+  try { value = parsed.toJS({ maxAliasCount: 50 }); } catch { return []; }
+  const errors = pack.validateDetailed(schemaUri, value).filter(error => error.keyword === 'required');
+  const tests = value?.assessment?.tests;
+  if (tests && typeof tests === 'object' && !Array.isArray(tests)) for (const [testId, test] of Object.entries(tests)) {
+    const capability = (test as any)?.capability;
+    const object = (test as any)?.object;
+    const capabilityUri = capability && pack.manifest.capabilities[capability]?.schema_uri;
+    if (!capabilityUri || !object || typeof object !== 'object' || Array.isArray(object)) continue;
+    const capabilitySchema: any = pack.resource(capabilityUri);
+    const objectSchema = capabilitySchema.$defs?.object;
+    const branches = Array.isArray(objectSchema?.oneOf) ? objectSchema.oneOf : [];
+    // AJV reports required errors from every oneOf branch. Only publish the
+    // branch best matched by authored keys; otherwise deleting hive from a
+    // Registry selector misleadingly reports the unrelated set branch too.
+    const selectedBranches = new Set<number>();
+    if (branches.length) {
+      let best = -1; let bestPresent = -1;
+      for (let index = 0; index < branches.length; index++) {
+        const present = (branches[index].required ?? []).filter((name: string) => Object.hasOwn(object, name)).length;
+        if (present > bestPresent) { bestPresent = present; best = index; }
+      }
+      if (best >= 0) selectedBranches.add(best);
+    }
+    for (const error of pack.validateDetailed(`${capabilityUri}#/$defs/object`, object)) if (error.keyword === 'required') {
+      const branch = String(error.schemaPath).match(/^#\/oneOf\/(\d+)\/required$/);
+      if (branches.length && (!branch || !selectedBranches.has(Number(branch[1])))) continue;
+      if (!branches.length && !/^#\/oneOf\/\d+\/required$/.test(error.schemaPath)) continue;
+      errors.push({
+        ...error,
+        instancePath: `/assessment/tests/${String(testId).replace(/~/g, '~0').replace(/\//g, '~1')}/object${error.instancePath}`
+      });
+    }
+  }
+  return errors;
+}
+function publishSchemaRequiredDiagnostics(document: any, pack: MetadataPack | undefined, diagnostics: any) {
+  if (!pack || !/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) { diagnostics.delete(document.uri); return; }
+  const parsed = parseDocument(document.getText(), { uniqueKeys: true });
+  if (parsed.errors.length) { diagnostics.delete(document.uri); return; }
+  let value: any;
+  try { value = parsed.toJS({ maxAliasCount: 50 }); } catch { diagnostics.delete(document.uri); return; }
+  const values: any[] = [];
+  const seen = new Set<string>();
+  for (const error of schemaRequiredErrors(document, pack)) {
+    const key = `${error.instancePath}|${error.params?.missingProperty}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const path = pointerPath(error.instancePath);
+    const parent = valueAtPath(value, path);
+    if (!isRelevantRequired(parent, path, error.params?.missingProperty)) continue;
+    const located = yamlMapAtPath(parsed.contents, path);
+    const start = located?.map?.range?.[0] ?? 0;
+    const position = document.positionAt(start);
+    values.push(new vscode.Diagnostic(new vscode.Range(position.line, position.character, position.line, position.character + 1), `Missing required property '${error.params?.missingProperty}'`, vscode.DiagnosticSeverity.Error));
+  }
+  diagnostics.set(document.uri, values);
+}
+
+function missingRequiredActions(document: any, pack: MetadataPack, api: any): any[] {
+  if (!/\.assessment\.ya?ml$/i.test(document.fileName ?? document.uri?.fsPath ?? '')) return [];
+  const schemaUri = assessmentSchemaUri(pack);
+  if (!schemaUri) return [];
+  const parsed = parseDocument(document.getText(), { uniqueKeys: true });
+  if (parsed.errors.length || !parsed.contents) return [];
+  let value: any;
+  try { value = parsed.toJS({ maxAliasCount: 50 }); } catch { return []; }
+  const actions: any[] = [];
+  const seen = new Set<string>();
+  for (const error of schemaRequiredErrors(document, pack)) {
+    if (typeof error.params?.missingProperty !== 'string') continue;
+    const parentPath = pointerPath(error.instancePath);
+    const parent = valueAtPath(value, parentPath);
+    if (!isRelevantRequired(parent, parentPath, error.params.missingProperty)) continue;
+    const key = `${parentPath.join('/')}\0${error.params.missingProperty}`;
+    if (seen.has(key) || parent?.[error.params.missingProperty] !== undefined) continue;
+    seen.add(key);
+    const choices = propertyChoicesForPath(pack, parentPath, capabilityForPath(value, parentPath));
+    const choice = choices.find(candidate => candidate.value === error.params.missingProperty);
+    if (!choice) continue;
+    const located = yamlMapAtPath(parsed.contents, parentPath);
+    if (!located) continue;
+    const map = located.map;
+    const source = document.getText();
+    const mapStart = map.range?.[0];
+    const mapEnd = map.range?.[1];
+    if (!Array.isArray(map.range) || typeof mapStart !== 'number' || typeof mapEnd !== 'number') continue;
+    const flow = source[mapStart] === '{' && source[mapEnd - 1] === '}';
+    const fragment = quickFixFragment(choice);
+    let position: any;
+    let text: string;
+    if (flow) {
+      position = document.positionAt(mapEnd - 1);
+      text = `${map.items?.length ? ', ' : ''}${fragment}`;
+    } else {
+      // yaml's collection range consumes the newline after the last pair, so
+      // the insertion point is normally already at the beginning of the next
+      // line. Add a separator only for an inline/EOF range and always finish
+      // the inserted pair before an existing sibling. This prevents
+      // `require: {}  evaluate:`-style corruption.
+      const indent = document.positionAt(mapStart).character;
+      const before = source.slice(0, mapEnd);
+      const after = source.slice(mapEnd);
+      const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
+      const suffix = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
+      position = document.positionAt(mapEnd);
+      text = `${prefix}${' '.repeat(indent)}${fragment}${suffix}`;
+    }
+    const edit = new api.WorkspaceEdit();
+    edit.insert(document.uri, position, text);
+    const action = new api.CodeAction(`Insert missing '${error.params.missingProperty}'`, api.CodeActionKind?.QuickFix ?? 'quickfix');
+    action.edit = edit;
+    action.isPreferred = choice.defaultValue !== undefined;
+    actions.push(action);
+  }
+  return actions;
+}
+function assessmentSchemaUri(pack: MetadataPack) {
+  return pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && resource.uri.endsWith('/assessment.schema.json'))?.uri;
+}
+
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
@@ -268,6 +437,10 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
   };
   const provider = {
     provideCompletionItems(document: any, position: any) {
+      // Do not inject SCAP-NG vocabulary into ordinary YAML documents. The
+      // native YAML language id remains intact; this provider is resource
+      // scoped to Assessment authoring files only.
+      if (!/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) return [];
       const pack = getPack();
       if (!pack) return [];
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
@@ -297,6 +470,15 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
   context.subscriptions.push(api.languages.registerCompletionItemProvider({ language: 'yaml', scheme: 'file' }, provider, ':', '_'));
 }
 
+function registerYamlCodeActions(context: vscode.ExtensionContext, getPack: () => MetadataPack | undefined, api: any) {
+  if (!api.languages?.registerCodeActionsProvider) return;
+  const provider = { provideCodeActions(document: any) {
+    const pack = getPack();
+    return pack ? missingRequiredActions(document, pack, api) : [];
+  }};
+  context.subscriptions.push(api.languages.registerCodeActionsProvider({ language: 'yaml', scheme: 'file' }, provider, { providedCodeActionKinds: [api.CodeActionKind?.QuickFix ?? 'quickfix'] }));
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const profile = readProfile(context.extensionPath);
   const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
@@ -318,12 +500,14 @@ export function activate(context: vscode.ExtensionContext) {
   const index = new WorkspaceIndex();
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
+  const schemaDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-schema');
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   const api: any = vscode;
   registerYamlCompletionProvider(context, () => pack, api);
+  registerYamlCodeActions(context, () => pack, api);
   // Keep the suppression and schema association workspace-scoped. This avoids
   // changing ordinary YAML files in other workspaces or the user's global settings.
-  context.subscriptions.push(diagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
+  context.subscriptions.push(diagnostics, schemaDiagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
   void indexWorkspace(index, tree, api, indexDiagnostics);
   if (api.workspace.createFileSystemWatcher) {
     for (const pattern of ['**/*.yaml', '**/*.yml']) {
@@ -380,7 +564,10 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
   const inspect = (document: vscode.TextDocument) => {
     loadPack(document.uri.fsPath);
-    if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics);
+    if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) {
+      validateDocument(document, profile, diagnostics);
+      publishSchemaRequiredDiagnostics(document, pack, schemaDiagnostics);
+    }
   };
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
   if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));

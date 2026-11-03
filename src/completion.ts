@@ -1,6 +1,8 @@
 import { MetadataPack } from './metadata.js';
 import { GuidedCatalog } from './guided.js';
 
+const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
+
 export interface CompletionChoice {
   value: string;
   label: string;
@@ -8,6 +10,7 @@ export interface CompletionChoice {
   kind?: 'value' | 'property';
   isDefault?: boolean;
   insertText?: string;
+  defaultValue?: unknown;
 }
 
 function lineAt(source: string, offset: number) {
@@ -78,6 +81,50 @@ function currentCapability(source: string, offset: number) {
   const matches = [...prefix.matchAll(/(?:^|\n)\s*capability\s*:\s*([^\s#},]+)/g)];
   return matches.at(-1)?.[1];
 }
+function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): unknown {
+  if (!spec || typeof spec !== 'object') return undefined;
+  if (Object.hasOwn(spec, 'default')) return spec.default;
+  // A oneOf/anyOf default is usable only when one complete branch can be
+  // materialized from schema defaults. Never invent a branch or a value.
+  for (const key of ['oneOf', 'anyOf']) {
+    for (const branch of spec[key] ?? []) {
+      const value = schemaDefaultValue(pack, uri, branch, seen);
+      if (value !== undefined) return value;
+    }
+  }
+  const nodes = schemaNodes(pack, uri, spec);
+  for (const node of nodes) {
+    if (node === spec && typeof spec.$ref === 'string') continue;
+    const required = Array.isArray(node.required) ? node.required : [];
+    const properties = node.properties ?? {};
+    if (!required.length) continue;
+    const values: Record<string, unknown> = {};
+    let complete = true;
+    for (const name of required) {
+      const child = properties[name];
+      const childKey = `${uri}#${name}`;
+      if (seen.has(childKey)) { complete = false; break; }
+      seen.add(childKey);
+      const value = schemaDefaultValue(pack, uri, child, seen);
+      seen.delete(childKey);
+      if (value === undefined) { complete = false; break; }
+      values[name] = value;
+    }
+    if (complete) {
+      const alternatives = [...(node.oneOf ?? []), ...(node.anyOf ?? [])];
+      if (alternatives.length && !alternatives.some((branch: any) =>
+        (Array.isArray(branch.required) ? branch.required : []).every((name: string) => Object.hasOwn(values, name)))) continue;
+      return values;
+    }
+  }
+  return undefined;
+}
+function yamlTemplateValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(yamlTemplateValue).join(', ')}]`;
+  if (value && typeof value === 'object') return `{${Object.entries(value).map(([key, item]) => `${key}: ${yamlTemplateValue(item)}`).join(', ')}}`;
+  if (typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(value)) return value;
+  return JSON.stringify(value);
+}
 function propertyChoice(pack: MetadataPack, uri: string, path: string, value: string, spec: any, insertText?: string): CompletionChoice {
   let description = typeof spec?.description === 'string' ? spec.description : undefined;
   if (!description) {
@@ -90,7 +137,23 @@ function propertyChoice(pack: MetadataPack, uri: string, path: string, value: st
       }).description || undefined;
     } catch { /* A schema-defined property may intentionally have no description. */ }
   }
-  return { value, label: spec?.title ?? value, description, kind: 'property', insertText };
+  if (!description) {
+    try {
+      const parentPath = path.replace(/\/properties\/[^/]+$/, '');
+      const parentDescription = pack.describe(`${uri}#${parentPath}`, {
+        documentVersion: pack.pin.schemaVersion,
+        schemaValid: true,
+        isOverride: false,
+        diagnostics: []
+      }).description;
+      description = parentDescription ? `Schema property '${value}'. ${parentDescription}` : `Schema-defined property '${value}'.`;
+    } catch { description = `Schema-defined property '${value}'.`; }
+  }
+  const defaultValue = schemaDefaultValue(pack, uri, spec);
+  const template = defaultValue !== undefined && insertText?.endsWith('{')
+    ? `${value}: ${yamlTemplateValue(defaultValue)}`
+    : insertText;
+  return { value, label: spec?.title ?? value, description, kind: 'property', insertText: template, defaultValue };
 }
 function schemaNodes(pack: MetadataPack, baseUri: string, root: any, seen = new Set<string>()): any[] {
   if (!root || typeof root !== 'object') return [];
@@ -177,18 +240,108 @@ function selectorValueChoices(pack: MetadataPack, capability: string, field: str
   const values = schemaValues.length ? schemaValues : mappingEnumValues(pack, capability, field, requireField);
   return values.map(value => ({ value, label: value, kind: 'value' }));
 }
-function capabilityObjectFields(pack: MetadataPack, capability: string): CompletionChoice[] {
+function schemaObjectLike(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): boolean {
+  if (!spec || typeof spec !== 'object') return false;
+  if (spec.type === 'object' || spec.properties || spec.additionalProperties !== undefined) return true;
+  if (typeof spec.$ref === 'string') {
+    const target = new URL(spec.$ref, uri).href;
+    if (!seen.has(target)) { seen.add(target); try { if (schemaObjectLike(pack, target, pack.node(target), seen)) return true; } catch { /* unresolved branch */ } }
+  }
+  for (const key of ['allOf', 'oneOf', 'anyOf']) for (const child of spec[key] ?? []) if (schemaObjectLike(pack, uri, child, seen)) return true;
+  return false;
+}
+function schemaMappingChoices(pack: MetadataPack, uri: string, spec: any, pointer: string): CompletionChoice[] {
+  // Union branches can expose the same property with different required
+  // shapes (for example comparison versus existence-only requirements). Keep
+  // the richer schema declaration so defaults/templates are not discarded by
+  // a later branch.
+  const properties: Record<string, any> = {};
+  const richness = (value: any) => JSON.stringify(value ?? {}).length;
+  for (const node of schemaNodes(pack, uri, spec)) for (const [name, property] of Object.entries(node.properties ?? {})) {
+    if (!properties[name] || richness(property) > richness(properties[name])) properties[name] = property;
+  }
+  return Object.entries(properties).map(([value, property]: [string, any]) => propertyChoice(
+    pack,
+    uri,
+    `${pointer}/${value.replace(/~/g, '~0').replace(/\\/g, '~1')}`,
+    value,
+    property,
+    schemaObjectLike(pack, uri, property) ? `${value}: {` : `${value}: `
+  ));
+}
+function assessmentSchema(pack: MetadataPack) {
+  return pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && resource.uri.endsWith('/assessment.schema.json'))?.uri;
+}
+function genericMappingChoices(pack: MetadataPack, path: string[], capability: string): CompletionChoice[] | undefined {
+  const uri = assessmentSchema(pack);
+  if (!uri) return undefined;
+  const schema: any = pack.resource(uri);
+  const assessment = schema.properties?.assessment;
+  if (path.at(-1) === 'assessment') return schemaMappingChoices(pack, uri, assessment, '#/properties/assessment/properties');
+  if (path.at(-1) === 'tests') return [];
+  const test = assessment?.properties?.tests?.additionalProperties;
+  const testIndex = path.indexOf('tests');
+  if (testIndex >= 0 && path.length === testIndex + 2) return schemaMappingChoices(pack, uri, test, '#/properties/assessment/properties/tests/additionalProperties/properties');
+  const last = path.at(-1);
+  if (last === 'require') {
+    const requireUri = schemaBase + 'assessment-language.schema.json#/$defs/test/properties/require';
+    return schemaMappingChoices(pack, requireUri, pack.node(requireUri), '#/$defs/canonical_all_items_requirement/properties');
+  }
+  if (last === 'item_requirement') {
+    const itemUri = schemaBase + 'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
+    return schemaMappingChoices(pack, itemUri, pack.node(itemUri), '#/$defs/item_requirement/properties');
+  }
+  if (last === 'field_requirement') {
+    const fieldUri = schemaBase + 'assessment-language.schema.json#/$defs/paired_requirement';
+    return schemaMappingChoices(pack, fieldUri, pack.node(fieldUri), '#/$defs/paired_requirement/properties');
+  }
+  if (last === 'object') return capabilityObjectFields(pack, capability);
+  if (last === 'fields') return capabilityRequireFields(pack, capability);
+  const objectIndex = path.lastIndexOf('object');
+  if (objectIndex >= 0 && path.length > objectIndex + 1) {
+    const firstObjectMember = path[objectIndex + 1];
+    const capabilitySchema: any = pack.manifest.capabilities[capability]?.schema_uri
+      ? pack.resource(pack.manifest.capabilities[capability].schema_uri)
+      : undefined;
+    const firstSpec = capabilitySchema?.$defs?.object?.properties?.[firstObjectMember];
+    const selectorValue = path.length > objectIndex + 2 && firstSpec?.['x-scap-ng-authoring']?.context === 'selector_comparison';
+    if (!selectorValue) {
+      const nested = capabilityObjectMappingChoices(pack, capability, path.slice(objectIndex + 1));
+      if (nested.length) return nested;
+    }
+  }
+  return undefined;
+}
+function mappingMemberPosition(source: string, offset: number, path: string[], key: string | undefined) {
+  const last = path.at(-1);
+  if (!last || (key && key !== last)) return false;
+  if (!key) return true;
+  const value = lineValueAfterCurrentKey(lineAt(source, offset).text, key).trim();
+  return !value || value.startsWith('{');
+}
+function capabilityObjectMappingChoices(pack: MetadataPack, capability: string, segments: string[] = []): CompletionChoice[] {
   const uri = pack.manifest.capabilities[capability]?.schema_uri;
   if (!uri) return [];
   const schema: any = pack.resource(uri);
-  const properties = schema.$defs?.object?.properties ?? {};
-  // Canonical generated capability schemas mark selector members with the
-  // versioned authoring context. Generic object controls (set, filters,
-  // traversal, and so on) are intentionally not selector-field suggestions.
-  return Object.entries(properties)
-    .filter(([, spec]: [string, any]) => spec?.['x-scap-ng-authoring']?.context === 'selector_comparison')
-    .map(([value, spec]: [string, any]) => propertyChoice(pack, uri, '/$defs/object/properties/' + value.replace(/~/g, '~0').replace(/\//g, '~1'), value, spec, `${value}: {`));
+  let spec: any = schema.$defs?.object;
+  let pointer = '/$defs/object/properties';
+  for (const segment of segments) {
+    const properties = schemaPropertyMap(pack, uri, spec);
+    spec = properties[segment];
+    if (!spec) return [];
+    pointer += `/${segment.replace(/~/g, '~0').replace(/\\/g, '~1')}/properties`;
+    if (segments.length === 1 && spec?.['x-scap-ng-authoring']?.context === 'selector_comparison') {
+      return selectorOperatorChoices(pack, capability, segment, false);
+    }
+  }
+  return schemaMappingChoices(pack, uri, spec, pointer);
 }
+function capabilityObjectFields(pack: MetadataPack, capability: string): CompletionChoice[] {
+  // Every member comes from the selected capability Object schema. This
+  // includes advanced controls so a deleted property can be rediscovered.
+  return capabilityObjectMappingChoices(pack, capability);
+}
+
 function predicateBranches(predicate: any): any[] {
   return ['oneOf', 'anyOf'].flatMap(key => Array.isArray(predicate?.[key]) ? predicate[key] : []);
 }
@@ -206,6 +359,10 @@ function capabilityRequireFields(pack: MetadataPack, capability: string): Comple
     }
   });
   return [...choices.values()];
+}
+
+export function propertyChoicesForPath(pack: MetadataPack, path: string[], capability = ''): CompletionChoice[] {
+  return genericMappingChoices(pack, path, capability) ?? [];
 }
 
 /**
@@ -239,10 +396,10 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
     if (key === 'values_found' && path.at(-2) === 'field_requirement') return catalog.fieldValuesFound();
   }
   const capability = currentCapability(source, offset) ?? '';
-  const objectMemberPosition = path.at(-1) === 'object' && !key;
-  const requireFieldPosition = path.at(-1) === 'fields' && path.includes('require') && !key;
-  if (objectMemberPosition) return capabilityObjectFields(pack, capability);
-  if (requireFieldPosition) return capabilityRequireFields(pack, capability);
+  if (mappingMemberPosition(source, offset, path, key)) {
+    const mapped = genericMappingChoices(pack, path, capability);
+    if (mapped) return mapped;
+  }
 
   const objectIndex = path.lastIndexOf('object');
   const fieldsIndex = path.lastIndexOf('fields');
