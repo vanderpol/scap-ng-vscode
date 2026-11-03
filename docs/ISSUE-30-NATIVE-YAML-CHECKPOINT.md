@@ -17,3 +17,5 @@ The Source pane is now a read-only synchronized preview with an explicit **Open 
 A real VS Code 1.128.0 host run opened the canonical Windows Registry Assessment in the custom workbench and the native YAML editor in a neighboring group. Extension-host activation completed without missing runtime dependencies. The captured receipt is [the Issue #30 demo image](evidence/issue-30-vsix-native-source-1920x968.png).
 
 The current increment intentionally does not claim schema IntelliSense, Red Hat YAML interoperability, or live schema diagnostics. Those are the next native-source productivity increment. The extension remains usable without Red Hat YAML, and no network/schema download is required.
+
+A second host receipt was captured after resizing the extension-development window to approximately 1100×820, exercising the smaller-window layout and native editor separation: [small-window receipt](evidence/issue-30-vsix-native-source-small-window.png).

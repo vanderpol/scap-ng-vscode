@@ -11,6 +11,7 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.customEditors[0].viewType, 'scapNg.assessment');
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.searchIndex'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.createGuidedAssessment'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.deepEqual(packageJson.contributes.customEditors[0].selector.map(s => s.filenamePattern), ['**/*.assessment.yaml', '**/*.assessment.yml']);
   assert.equal(profile.schemaVersion, '0.4.0');
   assert.match(profile.sourceCommit, /^[a-f0-9]{40}$/);

@@ -56,7 +56,7 @@ This editor repository is licensed under **Apache License 2.0** (see [LICENSE](L
 
 ## Issue #30 real VSIX and native YAML checkpoint
 
-A real VS Code 1.128.0 host receipt is documented in [docs/ISSUE-30-VSIX-DEMO.md](docs/ISSUE-30-VSIX-DEMO.md). The VSIX now stages its pinned runtime dependency closure for cold offline activation; the native YAML editor architecture is documented in [docs/ISSUE-30-NATIVE-YAML-CHECKPOINT.md](docs/ISSUE-30-NATIVE-YAML-CHECKPOINT.md).
+A real VS Code 1.128.0 host receipt is documented in [docs/ISSUE-30-VSIX-DEMO.md](docs/ISSUE-30-VSIX-DEMO.md). The VSIX now stages its pinned runtime dependency closure for cold offline activation; the native YAML editor architecture is documented in [docs/ISSUE-30-NATIVE-YAML-CHECKPOINT.md](docs/ISSUE-30-NATIVE-YAML-CHECKPOINT.md). The explicit native schema-association follow-on is documented in [docs/ISSUE-30-NATIVE-SCHEMA-CHECKPOINT.md](docs/ISSUE-30-NATIVE-SCHEMA-CHECKPOINT.md).
 
 ## Issue #18 desktop UX checkpoint
 
