@@ -89,8 +89,9 @@ function evaluationControl(value: any) {
 }
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
-function objectFieldLabel(capability: string, name: string, fallback: string) {
-  if (capability === 'windows.registry') return ({ hive: 'Registry hive', key: 'Registry key', name: 'Value name' } as Record<string, string>)[name] ?? fallback;
+function objectFieldLabel(_capability: string, _name: string, fallback: string) {
+  // Labels come from the pinned capability vocabulary/schema at the call site.
+  // Keep this adapter only for future presentation-only fallbacks.
   return fallback;
 }
 function operationKey(value: any) { return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).find(key => !['datatype', 'values_found', 'values_matching', 'value_match', 'redact_result'].includes(key)) : undefined; }

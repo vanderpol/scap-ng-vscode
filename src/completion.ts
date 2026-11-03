@@ -77,10 +77,43 @@ function lineValueAfterCurrentKey(text: string, key: string | undefined): string
   const match = text.match(new RegExp(`(?:^|[,{}])\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*(.*)$`));
   return match?.[1] ?? '';
 }
-function currentCapability(source: string, offset: number) {
-  const prefix = source.slice(0, offset);
-  const matches = [...prefix.matchAll(/(?:^|\n)\s*capability\s*:\s*([^\s#},]+)/g)];
-  return matches.at(-1)?.[1];
+function mappingPair(node: any, key: string): any | undefined {
+  if (!node?.items) return undefined;
+  return node.items.find((pair: any) => pair?.key?.value === key);
+}
+
+/**
+ * Resolve capability from the enclosing Assessment Test, never from the last
+ * textual `capability:` token in the document. YAML node ranges keep sibling
+ * Tests and quoted/commented text separate; an invalid/incomplete document
+ * deliberately falls back to no capability rather than borrowing a sibling.
+ */
+function currentCapability(source: string, offset: number): string | undefined {
+  try {
+    const document = parseDocument(source, { keepSourceTokens: true, uniqueKeys: false });
+    const assessment = mappingPair(document.contents, 'assessment')?.value;
+    const tests = mappingPair(assessment, 'tests');
+    const testItems = tests?.value?.items;
+    if (!tests?.value?.range || !Array.isArray(testItems) || offset < tests.value.range[0]) return undefined;
+    if (offset > tests.value.range[1]) {
+      // YAML omits trailing indentation from a node range. Permit a cursor
+      // after an incomplete child only while the remainder is whitespace or a
+      // comment at a deeper indentation; never bleed into evaluate/siblings.
+      const lineStart = source.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+      const testsLineStart = source.lastIndexOf('\n', Math.max(0, (tests.key?.range?.[0] ?? 0) - 1)) + 1;
+      const currentIndent = source.slice(lineStart, offset).match(/^\s*/)?.[0].replace(/\t/g, '  ').length ?? 0;
+      const testsIndent = source.slice(testsLineStart, tests.key?.range?.[0] ?? 0).match(/^\s*/)?.[0].replace(/\t/g, '  ').length ?? 0;
+      if (currentIndent <= testsIndent || !/^[\s#]*$/.test(source.slice(tests.value.range[1], offset))) return undefined;
+    }
+    const active = testItems.filter((pair: any) => pair?.key?.range?.[0] <= offset).at(-1);
+    if (!active?.value?.items) return undefined;
+    const capability = mappingPair(active.value, 'capability')?.value;
+    return typeof capability?.value === 'string' ? capability.value : undefined;
+  } catch {
+    // Parsing is intentionally authoritative. Heuristics are not safe here:
+    // a malformed Test must not inherit selectors from a neighboring Test.
+    return undefined;
+  }
 }
 function authoredTestChoices(source: string): CompletionChoice[] {
   let tests: Record<string, any> | undefined;
@@ -96,15 +129,19 @@ function authoredTestChoices(source: string): CompletionChoice[] {
     kind: 'value'
   }));
 }
-function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): unknown {
+export function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): unknown {
   if (!spec || typeof spec !== 'object') return undefined;
   if (Object.hasOwn(spec, 'default')) return spec.default;
-  // A oneOf/anyOf default is usable only when one complete branch can be
-  // materialized from schema defaults. Never invent a branch or a value.
+  // A oneOf/anyOf default is usable only when every alternative yields the
+  // same complete value. A constructible first branch is not evidence of
+  // author intent, so ambiguous alternatives remain an editable skeleton.
   for (const key of ['oneOf', 'anyOf']) {
-    for (const branch of spec[key] ?? []) {
-      const value = schemaDefaultValue(pack, uri, branch, seen);
-      if (value !== undefined) return value;
+    const branches = Array.isArray(spec[key]) ? spec[key] : [];
+    if (!branches.length) continue;
+    const values = branches.map((branch: any) => schemaDefaultValue(pack, uri, branch, seen));
+    if (values.every(value => value !== undefined)) {
+      const serialized = new Set(values.map(value => JSON.stringify(value)));
+      if (serialized.size === 1) return values[0];
     }
   }
   const nodes = schemaNodes(pack, uri, spec);
@@ -266,14 +303,14 @@ function schemaObjectLike(pack: MetadataPack, uri: string, spec: any, seen = new
   return false;
 }
 function schemaMappingChoices(pack: MetadataPack, uri: string, spec: any, pointer: string): CompletionChoice[] {
-  // Union branches can expose the same property with different required
-  // shapes (for example comparison versus existence-only requirements). Keep
-  // the richer schema declaration so defaults/templates are not discarded by
-  // a later branch.
+  // Union branches can expose the same property with different shapes.
+  // Without an authored discriminator, do not pretend one branch is more
+  // applicable because its JSON happens to be longer. Keep the first
+  // declaration in canonical traversal order as a conservative presentation
+  // fallback; branch-specific validation remains authoritative.
   const properties: Record<string, any> = {};
-  const richness = (value: any) => JSON.stringify(value ?? {}).length;
   for (const node of schemaNodes(pack, uri, spec)) for (const [name, property] of Object.entries(node.properties ?? {})) {
-    if (!properties[name] || richness(property) > richness(properties[name])) properties[name] = property;
+    if (!Object.hasOwn(properties, name)) properties[name] = property;
   }
   return Object.entries(properties).map(([value, property]: [string, any]) => propertyChoice(
     pack,

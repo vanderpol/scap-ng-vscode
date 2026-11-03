@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
-import { completionChoices } from '../../dist/completion.js';
+import { completionChoices, schemaDefaultValue } from '../../dist/completion.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -256,6 +256,34 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const registryObjectSchema=pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
  const registryObjectFields=Object.keys(registryObjectSchema.$defs.object.properties);
  assert.deepEqual(completionChoices(pack,registryObject,registryObject.length).map(x=>x.value),registryObjectFields);
+ assert.equal(schemaDefaultValue(pack, registryObjectSchema.$id, { oneOf: [{ default: { first_branch: true } }, { default: { second_branch: true } }] }), undefined);
+ assert.deepEqual(schemaDefaultValue(pack, registryObjectSchema.$id, { oneOf: [{ default: { same: true } }, { default: { same: true } }] }), { same: true });
+ const unixObjectSchema=pack.resource(pack.manifest.capabilities['unix.file'].schema_uri);
+ const scopedCapabilities=`assessment:
+  note: "capability: windows.registry"
+  tests:
+    registry-test:
+      capability: windows.registry
+      object: {
+    unix-test:
+      object: {
+      # capability: windows.registry
+      capability: unix.file
+`;
+ const registryScopedOffset=scopedCapabilities.indexOf('object: {')+'object: {'.length;
+ const unixScopedOffset=scopedCapabilities.lastIndexOf('object: {')+'object: {'.length;
+ assert.deepEqual(completionChoices(pack,scopedCapabilities,registryScopedOffset).map(x=>x.value),registryObjectFields);
+ assert.deepEqual(completionChoices(pack,scopedCapabilities,unixScopedOffset).map(x=>x.value),Object.keys(unixObjectSchema.$defs.object.properties));
+ const missingCapability=`assessment:
+  tests:
+    registry-test:
+      capability: windows.registry
+      object: {
+    missing-capability-test:
+      object: {
+`;
+ const missingCapabilityOffset=missingCapability.lastIndexOf('object: {')+'object: {'.length;
+ assert.deepEqual(completionChoices(pack,missingCapability,missingCapabilityOffset),[]);
  const requirementProperties='assessment:\n  tests:\n    check-test:\n      require: {';
  const requirementChoices=completionChoices(pack,requirementProperties,requirementProperties.length);
  assert.equal(requirementChoices.find(x=>x.value==='item_requirement')?.insertText,'item_requirement: {items_found: one_or_more, items_satisfying: every}');

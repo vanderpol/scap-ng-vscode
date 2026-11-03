@@ -31,6 +31,10 @@ if (!schema) throw new Error('Pinned assessment schema is not present in the met
 const expectedEvaluateTests = Object.keys(parseDocument(source).toJS().assessment.tests);
 const multipleSource = readFileSync(canonicalInputs.multipleTests, 'utf8');
 const expectedMultipleEvaluateTests = Object.keys(parseDocument(multipleSource).toJS().assessment.tests);
+const scopedSource = multipleSource
+  .replace('id: p0-multiple-tests-assessment', 'id: host-scoped-capability-assessment')
+  .replace(/      object: \{[^\n]+\}\n/, '      object: {}\n')
+  .replace('      object:\n        full_path:\n          equals: /etc/passwd\n', '      object:\n');
 const expected = {
   class: catalog.classes().map(option => option.value),
   mode: catalog.modes().map(option => option.value),
@@ -42,6 +46,8 @@ const expected = {
 };
 const capabilitySchema = pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
 const expectedObjectFields = Object.keys(capabilitySchema.$defs?.object?.properties ?? {});
+const unixCapabilitySchema = pack.resource(pack.manifest.capabilities['unix.file'].schema_uri);
+const expectedUnixObjectFields = Object.keys(unixCapabilitySchema.$defs?.object?.properties ?? {});
 const assessmentLanguage = pack.resource(pack.manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/assessment-language.schema.json')).uri);
 const expectedRequirementProperties = Object.keys(assessmentLanguage.$defs?.canonical_all_items_requirement?.properties ?? {});
 const expectedTestProperties = Object.keys(pack.resource(schema.uri).properties?.assessment?.properties?.tests?.additionalProperties?.properties ?? {});
@@ -96,6 +102,7 @@ const traversalDocument = join(workspace, 'incomplete-traversal.assessment.yaml'
 const selectorDocument = join(workspace, 'incomplete-selector.assessment.yaml');
 const hiveValueDocument = join(workspace, 'incomplete-hive-value.assessment.yaml');
 const typeValueDocument = join(workspace, 'incomplete-type-value.assessment.yaml');
+const scopedDocument = join(workspace, 'scoped-capabilities.assessment.yaml');
 const objectKeyDocument = join(workspace, 'incomplete-object-key.assessment.yaml');
 const objectNameDocument = join(workspace, 'incomplete-object-name.assessment.yaml');
 const fieldsDocument = join(workspace, 'incomplete-fields.assessment.yaml');
@@ -154,6 +161,7 @@ writeFileSync(traversalDocument, traversalIncomplete);
 writeFileSync(selectorDocument, selectorIncomplete);
 writeFileSync(hiveValueDocument, hiveValueIncomplete);
 writeFileSync(typeValueDocument, typeValueIncomplete);
+writeFileSync(scopedDocument, scopedSource);
 writeFileSync(objectKeyDocument, objectKeyIncomplete);
 writeFileSync(objectNameDocument, objectNameIncomplete);
 writeFileSync(fieldsDocument, fieldsIncomplete);
@@ -184,12 +192,13 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, ordinaryYamlDocument, blankObjectDocument, blankRequireDocument, blankItemRequirementDocument, blankFieldRequirementDocument, blankFieldsDocument, blankCapabilityDocument, typingDocument, canonicalDocuments })};
+const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, ordinaryYamlDocument, blankObjectDocument, blankRequireDocument, blankItemRequirementDocument, blankFieldRequirementDocument, blankFieldsDocument, blankCapabilityDocument, typingDocument, scopedDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
 const expectedEvaluateTests=${JSON.stringify(expectedEvaluateTests)};
 const expectedMultipleEvaluateTests=${JSON.stringify(expectedMultipleEvaluateTests)};
 const expectedObjectFields=${JSON.stringify(expectedObjectFields)};
+const expectedUnixObjectFields=${JSON.stringify(expectedUnixObjectFields)};
 const expectedRequireFields=${JSON.stringify(expectedRequireFields)};
 const expectedHiveOperators=${JSON.stringify(expectedHiveOperators)};
 const expectedHiveValues=${JSON.stringify(expectedHiveValues)};
@@ -291,9 +300,13 @@ exports.activate=()=>setTimeout(async()=>{try{
  const multipleUri=vscode.Uri.file(files.canonicalDocuments.multipleTests),multipleDoc=await vscode.workspace.openTextDocument(multipleUri);
  const multipleEvaluateLine=multipleDoc.getText().split(/\\r?\\n/).findIndex(line=>/^\\s*-\\s*test:\\s*/.test(line));
  const multipleEvaluateCompletions=await completion(multipleUri,{line:multipleEvaluateLine,character:multipleDoc.lineAt(multipleEvaluateLine).text.length});
+ const scopedUri=vscode.Uri.file(files.scopedDocument),scopedDoc=await vscode.workspace.openTextDocument(scopedUri);
+ const scopedObjectLines=scopedDoc.getText().split(/\\r?\\n/).map((line,index)=>({line,index})).filter(value=>/\\bobject:\\s*(?:\\{|$)/.test(value.line));
+ const multipleRegistryObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[0].index,character:scopedDoc.lineAt(scopedObjectLines[0].index).text.indexOf('{')+1});
+ const multipleUnixObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[1].index,character:scopedDoc.lineAt(scopedObjectLines[1].index).text.length});
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,evaluateCompletions,multipleEvaluateCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -334,6 +347,8 @@ assertSet(receipt.blankCompletions?.item_requirement, requirementMissingAfter('f
 assertSet(receipt.blankCompletions?.field_requirement, requirementMissingAfter('item_requirement','fields'), 'blank field_requirement mapping');
 assertSet(receipt.blankCompletions?.fields, requirementMissingAfter('item_requirement','field_requirement'), 'blank fields mapping');
 assertSet(receipt.objectCompletions, expectedObjectFields, 'capability object fields');
+assertSet(receipt.multipleRegistryObjectCompletions, expectedObjectFields, 'registry Test object fields');
+assertSet(receipt.multipleUnixObjectCompletions, expectedUnixObjectFields.filter(value => value !== 'capability'), 'unix Test object fields');
 assertSet(receipt.hiveOperators, expectedHiveOperators, 'hive operators');
 assertSet(receipt.hiveValues, expectedHiveValues, 'hive values');
 if (!receipt.hiveOperatorInsertion?.found || !receipt.hiveOperatorInsertion?.applied || !/hive: \{equals: /.test(receipt.hiveOperatorInsertion?.line || '')) failures.push('hive operator insertion failed');
