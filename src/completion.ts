@@ -1,3 +1,4 @@
+import { parseDocument } from 'yaml';
 import { MetadataPack } from './metadata.js';
 import { GuidedCatalog } from './guided.js';
 
@@ -48,7 +49,7 @@ function pathAt(source: string, offset: number): string[] {
   const stack: Array<{ indent: number; key: string }> = [];
   for (const raw of before.slice(0, -1)) {
     if (!raw.trim() || /^\s*#/.test(raw)) continue;
-    const match = raw.match(/^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+    const match = raw.match(/^(\s*)(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
     if (!match) continue;
     const indent = match[1].replace(/\t/g, '  ').length;
     while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
@@ -62,14 +63,14 @@ function pathAt(source: string, offset: number): string[] {
   while (stack.length && stack.at(-1)!.indent >= currentIndent) stack.pop();
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
   const segment = currentText.slice(delimiter + 1);
-  const current = segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+  const current = segment.match(/^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
   return [...stack.map(entry => entry.key), ...inlineMappingPath(currentText), ...(current ? [current[1]] : [])];
 }
 function currentKey(source: string, offset: number) {
   const { text } = lineAt(source, offset);
   const delimiter = Math.max(text.lastIndexOf('{'), text.lastIndexOf(','));
   const segment = text.slice(delimiter + 1);
-  return segment.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*[^#]*$/)?.[1];
+  return segment.match(/^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*[^#]*$/)?.[1];
 }
 function lineValueAfterCurrentKey(text: string, key: string | undefined): string {
   if (!key) return '';
@@ -80,6 +81,20 @@ function currentCapability(source: string, offset: number) {
   const prefix = source.slice(0, offset);
   const matches = [...prefix.matchAll(/(?:^|\n)\s*capability\s*:\s*([^\s#},]+)/g)];
   return matches.at(-1)?.[1];
+}
+function authoredTestChoices(source: string): CompletionChoice[] {
+  let tests: Record<string, any> | undefined;
+  try {
+    const value = parseDocument(source, { uniqueKeys: false }).toJS({ maxAliasCount: 50 }) as any;
+    tests = value?.assessment?.tests;
+  } catch { /* Incomplete YAML may not be parseable yet; return no invented values. */ }
+  if (!tests || typeof tests !== 'object' || Array.isArray(tests)) return [];
+  return Object.entries(tests).map(([id, test]: [string, any]) => ({
+    value: id,
+    label: id,
+    description: typeof test?.test_title === 'string' ? test.test_title : 'Test defined in this Assessment',
+    kind: 'value'
+  }));
 }
 function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): unknown {
   if (!spec || typeof spec !== 'object') return undefined;
@@ -439,6 +454,9 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
   const key = currentKey(source, offset);
   const flowMapping = Math.max(text.lastIndexOf('{'), text.lastIndexOf(',')) >= 0;
   const adapterCardinality = (values: CompletionChoice[]) => redhatYaml && flowMapping ? [] : values;
+  // Test references are instance-defined vocabulary: offer only keys authored
+  // under assessment.tests, including nested expression branches.
+  if (key === 'test' && path.includes('evaluate')) return authoredTestChoices(source);
   if (key === 'capability' && path.includes('tests')) return catalog.capabilities();
   if (key === 'reported_elements' && path.includes('tests')) return catalog.reportedElements();
   if (key === 'items_satisfying' && path.at(-2) === 'item_requirement') return adapterCardinality(catalog.itemsSatisfying());

@@ -240,6 +240,12 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  assert.deepEqual(completionChoices(pack,prefix(''),prefix('').length).map(x=>x.value),['compliance','vulnerability','patch','inventory','miscellaneous']);
  const mode='assessment:\n  mode: '; assert.deepEqual(completionChoices(pack,mode,mode.length).map(x=>x.value),['manual','automated']);
  const reported='assessment:\n  tests:\n    check-test:\n      reported_elements: '; assert.deepEqual(completionChoices(pack,reported,reported.length).map(x=>x.value),['all','compared']);
+ const linuxAssessment=readFileSync(join(currentSamples,'linux-home-nosuid.assessment.yaml'),'utf8');
+ const linuxEvaluateOffset=linuxAssessment.lastIndexOf('test:')+'test:'.length+1;
+ assert.deepEqual(completionChoices(pack,linuxAssessment,linuxEvaluateOffset).map(x=>x.value),Object.keys(new SourceBuffer(linuxAssessment).json().assessment.tests));
+ const multiple=readFileSync(join(fixtureRoot,'p0-multiple-tests.assessment.yaml'),'utf8');
+ const multipleEvaluateOffset=multiple.lastIndexOf('test:')+'test:'.length+1;
+ assert.deepEqual(completionChoices(pack,multiple,multipleEvaluateOffset).map(x=>x.value),Object.keys(new SourceBuffer(multiple).json().assessment.tests));
  const canonical=readFileSync(join(currentSamples,'windows-server-2025-lock-screen.assessment.yaml'),'utf8'); const classOffset=canonical.indexOf('class:')+'class:'.length+1; assert.deepEqual(completionChoices(pack,canonical,classOffset).map(x=>x.value),['compliance','vulnerability','patch','inventory','miscellaneous']); const canonicalCapabilityOffset=canonical.indexOf('capability:')+'capability:'.length+1; assert.deepEqual(completionChoices(pack,canonical,canonicalCapabilityOffset).map(x=>x.value),Object.keys(pack.manifest.capabilities).sort());
  const cap='assessment:\n  tests:\n    check-test:\n      capability: '; const caps=completionChoices(pack,cap,cap.length).map(x=>x.value); assert.deepEqual(caps,Object.keys(pack.manifest.capabilities).sort());
  const found='assessment:\n  tests:\n    check-test:\n      require:\n        field_requirement:\n          values_found: '; assert.deepEqual(completionChoices(pack,found,found.length).map(x=>x.value),['none','exactly_one','one_or_more','every','zero_or_more']);
