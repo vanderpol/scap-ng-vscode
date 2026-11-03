@@ -365,13 +365,19 @@ function assessmentSchemaUri(pack: MetadataPack) {
   return pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && resource.uri.endsWith('/assessment.schema.json'))?.uri;
 }
 
+function parseDiagnosticMessage(message: string): string {
+  if (/Missing , between flow map items/.test(message)) {
+    return `${message} Flow-style mappings require commas between entries; use block mapping syntax (remove the opening and matching closing braces) when entries are on separate lines.`;
+  }
+  return message;
+}
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
   for (const error of parsed.errors) {
     const offset = error.pos?.[0] ?? 0;
     const position = (document as any).positionAt ? (document as any).positionAt(offset) : { line: 0, character: 0 };
-    output.push(new vscode.Diagnostic(new vscode.Range(position.line, position.character, position.line, position.character + 1), error.message, vscode.DiagnosticSeverity.Error));
+    output.push(new vscode.Diagnostic(new vscode.Range(position.line, position.character, position.line, position.character + 1), parseDiagnosticMessage(error.message), vscode.DiagnosticSeverity.Error));
   }
   if (!output.length) {
     const value = parsed.toJS({ maxAliasCount: 50 }) as Record<string, unknown>;
@@ -447,14 +453,22 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
       return completionChoices(pack, document.getText(), offset, redhatOwnsSchema(pack)).map(choice => {
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
-        const nextCharacter = choice.kind === 'property' && typeof document.getText === 'function'
-          ? document.getText().slice(offset, offset + 1)
+        const documentText = typeof document.getText === 'function' ? document.getText() : '';
+        const nextCharacter = choice.kind === 'property' ? documentText.slice(offset, offset + 1) : '';
+        const linePrefix = typeof document.lineAt === 'function'
+          ? document.lineAt(position.line).text.slice(0, position.character)
           : '';
+        const flowMapping = linePrefix.lastIndexOf('{') > linePrefix.lastIndexOf('}');
+        let propertyInsert = choice.insertText ?? `${choice.value}: `;
+        // A schema object must not force authors into flow syntax. In a block
+        // mapping, `require: {` followed by newline-authored children is
+        // invalid YAML unless commas are added. Keep the flow template only
+        // when the cursor is actually inside a flow mapping.
+        if (!flowMapping && propertyInsert.endsWith('{')) propertyInsert = `${choice.value}:`;
         // If the user deleted only the property name, preserve the existing
-        // colon (`k: ...`) instead of producing `key: : ...`. For a blank map
-        // member position, insert the complete `key: ` authoring fragment.
+        // colon (`k: ...`) instead of producing `key: : ...`.
         item.insertText = choice.kind === 'property'
-          ? (nextCharacter === ':' ? choice.value : (choice.insertText ?? `${choice.value}: `))
+          ? (nextCharacter === ':' ? choice.value : propertyInsert)
           : choice.value;
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))
