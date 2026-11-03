@@ -204,6 +204,23 @@ function validateDocument(document: vscode.TextDocument, profile: Pin, diagnosti
   }
   diagnostics.set(document.uri, output);
 }
+function yamlAssociationMap(pack: MetadataPack) {
+  const byFile: Array<{ suffix: string; patterns: string[] }> = [
+    { suffix: '/assessment.schema.json', patterns: ['**/*.assessment.yaml', '**/*.assessment.yml'] },
+    { suffix: '/rule.schema.json', patterns: ['**/*.rule.yaml', '**/*.rule.yml'] },
+    { suffix: '/benchmark.schema.json', patterns: ['**/*.benchmark.yaml', '**/*.benchmark.yml'] }
+  ];
+  const result: Record<string, string[]> = {};
+  for (const entry of byFile) {
+    const resource: any = pack.manifest.resources.find((candidate: any) => candidate.kind === 'schema' && candidate.uri.endsWith(entry.suffix));
+    if (resource) result[apiUriFile(resource, pack)] = entry.patterns;
+  }
+  return result;
+}
+function apiUriFile(resource: any, pack: MetadataPack) {
+  return vscode.Uri.file(pack.resourcePath(resource.uri)).toString();
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const profile = readProfile(context.extensionPath);
   const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
@@ -226,10 +243,18 @@ export function activate(context: vscode.ExtensionContext) {
     }
   }
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
+  context.subscriptions.push(api.commands.registerCommand('scapNg.configureYamlSchemas', async () => {
+    if (!pack) { await api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before associating native YAML schemas.'); return; }
+    const yamlConfiguration = api.workspace.getConfiguration('yaml'); const existing = yamlConfiguration.get('schemas', {}) ?? {};
+    const associations = { ...(typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), ...yamlAssociationMap(pack) };
+    await yamlConfiguration.update('schemas', associations, api.ConfigurationTarget?.Workspace ?? 2);
+    const installed = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
+    await api.window.showInformationMessage(`Pinned SCAP-NG ${pack.pin.schemaVersion} YAML schema associations saved for the workspace${installed ? ' (Red Hat YAML detected).' : '. Install Red Hat YAML to activate language-service completion/hover.'}`);
+  }));
   context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
   const inspect = (document: vscode.TextDocument) => { if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) validateDocument(document, profile, diagnostics); };
-  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect)); if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }

@@ -46,6 +46,7 @@ function at(root: any, pointer: string): any {
 
 export class MetadataPack {
   readonly pin: Readonly<Pin>;
+  readonly directory: string;
   readonly manifest: Readonly<Schema>;
   private readonly documents = new Map<string, Schema>();
   private readonly ajv: InstanceType<typeof Ajv2020.default>;
@@ -58,7 +59,7 @@ export class MetadataPack {
     const manifest = JSON.parse(raw.toString());
     if (manifest.format !== 'scap-ng/offline-editor-pack/1' || manifest.schema_version !== expected.schemaVersion ||
         manifest.source_commit !== expected.sourceCommit || manifest.authoring_metadata_version !== 1 || manifest.unpublished_worktree === true) throw new Error('Schema pack version/commit mismatch');
-    const root = realpathSync(directory);
+    const root = realpathSync(directory); this.directory = root;
     this.ajv = new Ajv2020.default({ strict: false, useDefaults: false, coerceTypes: false, allErrors: true, validateFormats: false });
     for (const resource of manifest.resources) {
       if (typeof resource.path !== 'string' || resource.path.includes('\\') || resource.path.split('/').includes('..'))
@@ -82,6 +83,11 @@ export class MetadataPack {
     this.pin = frozen({ ...expected }); this.manifest = frozen(manifest);
   }
 
+  resourcePath(uri: string): string {
+    const resource = this.manifest.resources.find((candidate: any) => candidate.uri === uri);
+    if (!resource) throw new Error('Unavailable offline resource: ' + uri);
+    return resolve(this.directory, resource.path);
+  }
   resource(uri: string): Readonly<Schema> {
     const doc = this.documents.get(uri); if (!doc) throw new Error('Unavailable offline resource: ' + uri);
     return doc;

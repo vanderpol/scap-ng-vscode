@@ -58,6 +58,10 @@
         "title": "SCAP-NG: Search Assessment Studio"
       },
       {
+        "command": "scapNg.configureYamlSchemas",
+        "title": "SCAP-NG: Configure native YAML schemas"
+      },
+      {
         "command": "scapNg.createGuidedAssessment",
         "title": "SCAP-NG: Create Guided Assessment"
       }
