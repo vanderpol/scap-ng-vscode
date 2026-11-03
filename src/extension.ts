@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { parseDocument } from 'yaml';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer, sourceRevisionMatches } from './source.js';
 import { previewRegexSafe } from './playground.js';
@@ -242,13 +242,25 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
   await rootConfiguration.update('yaml.schemaStore.enable', false, target);
   return true;
 }
+function discoverPackPath(documentPath: string | undefined) {
+  if (!documentPath) return undefined;
+  let directory = dirname(documentPath);
+  for (;;) {
+    const candidate = join(directory, '.external', 'editor-pack');
+    if (existsSync(join(candidate, 'manifest.json'))) return candidate;
+    const parent = dirname(directory); if (parent === directory) return undefined; directory = parent;
+  }
+}
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: MetadataPack | undefined, api: any) {
   if (!pack || !api.languages?.registerCompletionItemProvider) return;
   const redhatYaml = Boolean(api.extensions?.getExtension?.('redhat.vscode-yaml'));
+  const configuredSchemas = api.workspace.getConfiguration('yaml').get('schemas', {}) ?? {};
+  const assessmentSchemaUri = Object.keys(yamlAssociationMap(pack)).find(uri => Object.hasOwn(configuredSchemas, uri));
+  const redhatOwnsSchema = redhatYaml && Boolean(assessmentSchemaUri);
   const provider = {
     provideCompletionItems(document: any, position: any) {
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
-      return completionChoices(pack, document.getText(), offset, redhatYaml).map(choice => {
+      return completionChoices(pack, document.getText(), offset, redhatOwnsSchema).map(choice => {
         const kind = choice.kind === 'property' ? api.CompletionItemKind?.Property ?? 10 : api.CompletionItemKind?.Value ?? 12;
         const item = new api.CompletionItem(choice.value, kind);
         item.insertText = choice.kind === 'property' ? `${choice.value}: ` : choice.value;
@@ -266,9 +278,10 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, pack: 
 export function activate(context: vscode.ExtensionContext) {
   const profile = readProfile(context.extensionPath);
   const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
+  const discoveredPack = configuredPack ? undefined : discoverPackPath((vscode.window as any).activeTextEditor?.document.uri.fsPath);
   let pack: MetadataPack | undefined;
-  if (configuredPack) {
-    try { pack = new MetadataPack(configuredPack, profile); }
+  if (configuredPack || discoveredPack) {
+    try { pack = new MetadataPack(configuredPack ?? discoveredPack!, profile); }
     catch (error) { void vscode.window.showWarningMessage(`SCAP-NG metadata pack rejected: ${error instanceof Error ? error.message : String(error)}`); }
   }
   const index = new WorkspaceIndex();
