@@ -37,7 +37,8 @@ lookups and does not execute authored commands or scanner logic.
 ### P1 — approved, not implemented in this checkpoint
 
 - An optional, persistent documentation panel using the exact descriptions and
-  constraints already used by hover.
+  constraints already used by hover. See [P1 authoring sidebar](P1-AUTHORING-SIDEBAR.md)
+  for the tracked sidebar plan.
 - Conservative schema-aware code actions beyond missing required properties.
 
 ### P2 — investigate later
