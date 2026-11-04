@@ -53,7 +53,8 @@
     "onCommand:scapNg.openAssessmentStudio",
     "onCommand:scapNg.showPin",
     "onLanguage:yaml",
-    "onView:scapNg.assessmentStudio"
+    "onView:scapNg.assessmentStudio",
+    "onCommand:scapNg.testRegex"
   ],
   "contributes": {
     "commands": [
@@ -88,6 +89,10 @@
       {
         "command": "scapNg.diagnoseYaml",
         "title": "SCAP-NG: Diagnose native YAML"
+      },
+      {
+        "command": "scapNg.testRegex",
+        "title": "SCAP-NG: Test Regex"
       }
     ],
     "viewsContainers": {
@@ -145,6 +150,11 @@
           "command": "scapNg.openAssessmentStudio",
           "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
           "group": "navigation"
+        },
+        {
+          "command": "scapNg.testRegex",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@10"
         }
       ]
     }

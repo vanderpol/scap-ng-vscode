@@ -4,7 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer, sourceRevisionMatches } from './source.js';
-import { previewRegexSafe } from './playground.js';
+import { previewRegexSafe, regexSafetyError } from './playground.js';
+import { findRegexContext, replaceRegexScalar } from './regex-tester.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
@@ -81,6 +82,62 @@ function render(model){current=model;revision=model.revision||null;version=model
 document.getElementById('openSource').onclick=()=>vscode.postMessage({type:'openSource'});document.getElementById('toggleDefaults').onclick=()=>{showDefaults=!showDefaults;if(current)render(current);};window.addEventListener('message',event=>{if(event.data.type==='model')render(event.data.model);if(event.data.type==='selectGraphical'&&Array.isArray(event.data.path)){if(event.data.testId&&selected!==event.data.testId&&current?.assessment?.tests?.some(test=>test.id===event.data.testId)){selected=event.data.testId;render(current);}const target=[...document.querySelectorAll('[data-path]')].find(node=>node.dataset.path===JSON.stringify(event.data.path));if(target){target.scrollIntoView({behavior:'smooth',block:'center'});target.style.outline='2px solid var(--vscode-focusBorder)';setTimeout(()=>{target.style.outline='';},1200);}}if(event.data.type==='regexPreviewResult'){const previews=event.data.previews||[];const text=previews.map(result=>result.error?result.pattern+': '+result.error:result.pattern+': '+(result.matched?'matched sample':'did not match sample')+(result.timedOut?' (cancelled)':'')).join(' · ');document.querySelectorAll('.predicate .muted').forEach(node=>{if(node.textContent==='Previewing in an isolated, time-limited worker…')node.textContent=text;});}if(event.data.type==='error'){status.className='error';status.textContent=event.data.message;}});vscode.postMessage({type:'ready'});
 </script></body></html>`;
 }
+
+function regexTesterHtml() {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-regex-tester';"><style>
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:1100px}h1{margin-top:0}.hint,.muted{color:var(--vscode-descriptionForeground)}label{display:block;font-weight:600;margin:12px 0 4px}textarea,input,select{box-sizing:border-box;width:100%;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}textarea{font-family:var(--vscode-editor-font-family);min-height:85px}.row{display:grid;grid-template-columns:minmax(0,1fr) 120px 100px;gap:8px;align-items:end;margin:8px 0}.row .sample{min-height:40px}.button{padding:7px 12px;margin:12px 8px 10px 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.banner,.result{border:1px solid var(--vscode-panel-border);padding:12px;margin:12px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background)}.warning{color:var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.pass{color:var(--vscode-testing-iconPassed)}.fail{color:var(--vscode-testing-iconFailed)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--vscode-textCodeBlock-background);padding:8px}.highlight{white-space:pre-wrap;overflow-wrap:anywhere}.highlight mark{color:var(--vscode-editor-foreground);background:var(--vscode-editor-findMatchHighlightBackground)}.capture{margin:4px 0}@media(max-width:700px){.row{grid-template-columns:1fr}.row select{width:100%}}
+</style></head><body><h1>SCAP-NG Regex Tester</h1><div class="banner"><p id="source">Loading selected schema regex…</p><p class="hint">Offline bounded preview only. The engine is <strong>ECMAScript-safe-preview</strong>; it is not a scanner, does not execute commands, and does not prove SCAP-NG runtime dialect parity.</p></div><label for="pattern">Regular expression</label><textarea id="pattern" spellcheck="false" aria-label="Regular expression"></textarea><div class="row"><label>Flags<input id="flags" value="" aria-label="Regular expression flags" spellcheck="false"></label><span class="hint">Allowed preview flags: i, m, s, u</span><span></span></div><h2>Sample strings</h2><p class="hint">Use several representative samples. Expected positive/negative is an author test expectation; it does not create compliance evidence.</p><div id="samples"></div><button class="button secondary" id="add">Add sample</button><button class="button" id="run">Test samples</button><button class="button secondary" id="apply">Apply expression to YAML</button><p id="status" role="status" aria-live="polite"></p><section id="results" aria-live="polite"></section><script nonce="regex-tester">
+const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const samples=$('samples');let initial=[];function addSample(value='',expected='positive'){const row=document.createElement('div');row.className='row';const input=document.createElement('textarea');input.className='sample';input.rows=2;input.value=value;input.setAttribute('aria-label','Sample text');const select=document.createElement('select');select.setAttribute('aria-label','Expected result');for(const x of ['positive','negative']){const o=document.createElement('option');o.value=x;o.textContent='Expected '+x;o.selected=x===expected;select.append(o);}const remove=document.createElement('button');remove.className='button secondary';remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(input,select,remove);samples.append(row);}function readSamples(){return [...samples.children].map(row=>({input:row.querySelector('textarea').value,expected:row.querySelector('select').value}));}function showText(node,text){node.replaceChildren(document.createTextNode(text??''));}function highlight(node,text,span){node.replaceChildren();if(!span||span[0]<0){node.append(document.createTextNode(text));return;}node.append(document.createTextNode(text.slice(0,span[0])));const mark=document.createElement('mark');mark.textContent=text.slice(span[0],span[1]);node.append(mark,document.createTextNode(text.slice(span[1])));}function renderResults(results){const root=$('results');root.replaceChildren();for(const r of results){const box=document.createElement('article');box.className='result';const heading=document.createElement('h3');heading.className=r.error?'error':(r.expectedMatch===r.matched?'pass':'fail');heading.textContent=r.error?'Preview error':(r.expectedMatch===r.matched?(r.matched?'Matched as expected':'Did not match as expected'):(r.matched?'Matched unexpectedly':'Did not match unexpectedly'));box.append(heading);const detail=document.createElement('p');detail.textContent='Expected '+(r.expectedMatch?'match':'nonmatch')+' · observed '+(r.matched?'match':'nonmatch')+(r.limited?' · input was truncated by the safety limit':'');box.append(detail);if(r.error){const err=document.createElement('p');err.className='error';err.textContent=r.error;box.append(err);}else{const label=document.createElement('strong');label.textContent='Matched text / span';box.append(label);const span=document.createElement('div');span.className='highlight';highlight(span,r.input,r.matchSpan);box.append(span);const cap=document.createElement('div');cap.className='capture';cap.textContent='Captures: '+(r.captures?.length?JSON.stringify(r.captures):'none');box.append(cap);if(r.namedCaptures&&Object.keys(r.namedCaptures).length){const named=document.createElement('div');named.className='capture';named.textContent='Named captures: '+JSON.stringify(r.namedCaptures);box.append(named);}}root.append(box);}}$('add').onclick=()=>addSample();$('run').onclick=()=>{const pattern=$('pattern').value;const flags=$('flags').value;const rows=readSamples();$('status').textContent='Testing in an isolated, time-limited worker…';vscode.postMessage({type:'run',pattern,flags,samples:rows});};$('apply').onclick=()=>{if(confirm('Apply this expression to the selected YAML scalar?'))vscode.postMessage({type:'apply',pattern:$('pattern').value});};window.addEventListener('message',event=>{const m=event.data;if(m.type==='init'){showText($('source'),'Source: '+m.context.kind+' · '+(m.context.capability||'capability not present')+' · '+(m.context.path?.join('.')||''));$('pattern').value=m.context.pattern;initial=m.samples||[];samples.replaceChildren();(initial.length?initial:[{input:'',expected:'positive'}]).forEach(x=>addSample(x.input,x.expected));}if(m.type==='results')renderResults(m.results||[]);if(m.type==='status'){$('status').className=m.error?'error':'';$('status').textContent=m.message||'';}});</script></body></html>`;
+}
+
+class RegexTesterPanel {
+  static open(context: vscode.ExtensionContext, document: any, pack: MetadataPack | undefined) {
+    const api: any = vscode;
+    const editor = api.window.activeTextEditor;
+    if (!document || !editor) return void api.window.showWarningMessage('Open an Assessment YAML document and place the caret inside a regex scalar first.');
+    if (!pack) return void api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using the Regex Tester.');
+    const start = document.offsetAt(editor.selection.start); const end = document.offsetAt(editor.selection.end);
+    const selected = findRegexContext(document.getText(), start, end);
+    if (!selected) return void api.window.showWarningMessage('Place the caret inside a schema-recognized matches_regex value or regex_capture pattern.');
+    const panel = api.window.createWebviewPanel('scapNg.regexTester', 'SCAP-NG Regex Tester', api.ViewColumn?.Beside ?? 2, { enableScripts: true, retainContextWhenHidden: true });
+    panel.webview.html = regexTesterHtml();
+    panel.webview.onDidReceiveMessage(async (message: any) => {
+      if (message.type === 'run') {
+        const pattern = typeof message.pattern === 'string' ? message.pattern : '';
+        const flags = typeof message.flags === 'string' ? message.flags : '';
+        const rows = Array.isArray(message.samples) ? message.samples.filter((row: any) => row && typeof row.input === 'string') : [];
+        const previews = await Promise.all(rows.map(async (row: any) => {
+          const result = (await previewRegexSafe([pattern], row.input, flags, 100))[0];
+          return { ...result, expectedMatch: row.expected === 'positive' };
+        }));
+        panel.webview.postMessage({ type: 'results', results: previews }); return;
+      }
+      if (message.type === 'apply') {
+        try {
+          const pattern = typeof message.pattern === 'string' ? message.pattern : '';
+          const safety = regexSafetyError(pattern, '');
+          if (safety) throw new Error(safety);
+          const current = document.getText();
+          if (sha256(current) !== selected.documentRevision) throw new Error('The YAML document changed; reopen the Regex Tester before applying.');
+          const edit = replaceRegexScalar(current, selected, pattern);
+          const parsed = parseDocument(edit.nextText, { uniqueKeys: true });
+          const root = assessmentSchemaUri(pack);
+          if (root) {
+            const problems = pack.validate(root, parsed.toJS({ maxAliasCount: 50 }));
+            if (problems.length) throw new Error(`Pinned schema rejected the expression: ${problems.join('; ')}`);
+          }
+          const workspaceEdit = new api.WorkspaceEdit();
+          workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement);
+          if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
+          panel.webview.postMessage({ type: 'status', message: 'Expression applied with a native undoable source edit.' });
+        } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
+      }
+    });
+    panel.webview.postMessage({ type: 'init', context: selected, samples: [{ input: '', expected: 'positive' }] });
+    context.subscriptions.push(panel);
+  }
+}
+
 async function revealNativeSource(api: any, document: any, range?: [number, number]) {
   const editor = await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Beside ?? 2, preserveFocus: false, preview: false });
   if (range) {
@@ -732,6 +789,7 @@ export function activate(context: vscode.ExtensionContext) {
     channel.show(true);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', () => RegexTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
   const inspect = (document: vscode.TextDocument) => {
     loadPack(document.uri.fsPath);
     if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) {
