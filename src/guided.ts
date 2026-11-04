@@ -1,11 +1,28 @@
 import { stringify } from 'yaml';
 import { MetadataPack, type Json } from './metadata.js';
+import { schemaNodes } from './schema-resolver.js';
 
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
+export interface GuidedObjectField {
+  name: string;
+  label: string;
+  description?: string;
+  datatype: string;
+  datatypes: string[];
+  operations: GuidedOption[];
+  enumValues: string[];
+}
+export interface GuidedObjectRequirement { fields: string[]; description?: string; }
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; }
 export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; }
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
+const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
+function schemaDefaultOrObjectDefaults(pack: MetadataPack, uri: string): Json {
+  const help = pack.describe(uri, schemaContext(pack));
+  if (help.hasSuggestion) return structuredClone(help.suggested as Json);
+  return pack.newObjectDefaults(uri, {}, schemaContext(pack));
+}
 function choices(pack: MetadataPack, uri: string): GuidedOption[] {
   try {
     const help = pack.describe(uri, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] });
@@ -22,6 +39,27 @@ function vocabulary(pack: MetadataPack): any { return pack.resource(pack.manifes
 function datatypeValues(node: any): string[] { const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const [key, child] of Object.entries(value)) if (key === 'datatype') visit(child); else if (child && typeof child === 'object') visit(child); }; visit(node); return [...values]; }
 function enumValues(node: any): string[] {
   const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const child of Object.values(value)) visit(child); }; visit(node); return [...values];
+}
+function selectorEnumValues(pack: MetadataPack, uri: string): string[] {
+  const values = new Set<string>();
+  const visit = (value: any) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item);
+    for (const child of Object.values(value)) visit(child);
+  };
+  for (const location of schemaNodes(pack, uri)) visit(location.node.properties?.equals);
+  return [...values];
+}
+function schemaTypes(node: any): string[] {
+  const values = new Set<string>();
+  const visit = (value: any) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value.properties?.datatype?.enum)) for (const item of value.properties.datatype.enum) if (typeof item === 'string') values.add(item);
+    if (Array.isArray(value.enum) && value.type === 'string' && value.enum.includes('string')) values.add('string');
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(node);
+  return [...values];
 }
 
 export class GuidedCatalog {
@@ -42,17 +80,28 @@ export class GuidedCatalog {
     return ['and', 'or', 'one', 'xor'].map(value => ({ value, label: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.label ?? value, description: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.description }));
   }
   capabilityObjectSchema(capability: string) { return this.pack.manifest.capabilities[capability]?.schema_uri; }
-  objectFields(capability: string) {
+  objectFields(capability: string): GuidedObjectField[] {
     const uri = this.capabilityObjectSchema(capability); if (!uri) return [];
     const schema: any = this.pack.resource(uri); const properties = schema.$defs?.object?.properties ?? {};
-    // Generated capability schemas identify the primary object selectors with
-    // the versioned authoring context. Do not keep a parallel list of generic
-    // object members here; schema changes must flow into Guided and native YAML
-    // authoring together.
+    // Generated capability schemas identify primary selectors with the pinned
+    // authoring context. This keeps Guided and native YAML on one metadata path.
     return Object.entries(properties).filter(([, spec]: [string, any]) => spec?.['x-scap-ng-authoring']?.context === 'selector_comparison').map(([name, spec]: [string, any]) => {
-      const help = this.pack.describe(uri + '#/$defs/object/properties/' + name.replace(/~/g, '~0').replace(/\//g, '~1'), { documentVersion: this.pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] });
-      return { name, label: help.title || name, description: help.description, datatype: 'string', operations: this.operations(), enumValues: enumValues(spec) };
+      const pointer = uri + '#/$defs/object/properties/' + name.replace(/~/g, '~0').replace(/\//g, '~1');
+      const help = this.pack.describe(pointer, schemaContext(this.pack));
+      const datatypes = datatypeValues(spec).length ? datatypeValues(spec) : schemaTypes(spec);
+      const operations = help.choices.filter((value: Json): value is string => typeof value === 'string').map(value => ({ value, label: value, description: help.description || undefined }));
+      return { name, label: help.title || name, description: help.description, datatype: datatypes[0] ?? 'string', datatypes, operations, enumValues: selectorEnumValues(this.pack, pointer) };
     });
+  }
+  objectRequirements(capability: string): GuidedObjectRequirement[] {
+    const uri = this.capabilityObjectSchema(capability); if (!uri) return [];
+    const schema: any = this.pack.resource(uri); const objectSchema = schema.$defs?.object;
+    const fields = new Set(this.objectFields(capability).map(field => field.name));
+    const branches = Array.isArray(objectSchema?.oneOf) ? objectSchema.oneOf : [objectSchema];
+    return branches.map((branch: any) => ({
+      fields: (branch?.required ?? []).filter((name: any) => typeof name === 'string' && fields.has(name)),
+      description: typeof branch?.description === 'string' ? branch.description : undefined
+    })).filter((requirement: GuidedObjectRequirement) => requirement.fields.length > 0);
   }
   resultFields(capability: string) {
     const uri = this.capabilityObjectSchema(capability); if (!uri) return [];
@@ -91,8 +140,16 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
     const tests: Record<string, Json> = {};
     for (const test of draft.tests) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*-test$/.test(test.id)) throw new Error(`Test ID must be lowercase kebab-case and end in -test: ${test.id}`);
-      const require: Record<string, Json> = { item_requirement: { items_found: 'one_or_more', ...(test.presenceOnly ? {} : { items_satisfying: 'every' }) } };
-      if (!test.presenceOnly) { require.field_requirement = { values_found: 'one_or_more', values_matching: 'every' }; if (test.fields && Object.keys(test.fields).length) require.fields = test.fields; }
+      const itemRequirementUri = schemaBase + 'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
+      const fieldRequirementUri = schemaBase + 'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
+      const itemDefaults = schemaDefaultOrObjectDefaults(pack, itemRequirementUri);
+      const require: Record<string, Json> = { item_requirement: test.presenceOnly
+        ? { items_found: (itemDefaults as Record<string, Json>).items_found }
+        : itemDefaults };
+      if (!test.presenceOnly) {
+        require.field_requirement = schemaDefaultOrObjectDefaults(pack, fieldRequirementUri);
+        if (test.fields && Object.keys(test.fields).length) require.fields = test.fields;
+      }
       tests[test.id] = { test_title: test.title, capability: test.capability, reported_elements: 'all', object: test.object, require };
     }
     assessment.tests = tests;

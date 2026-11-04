@@ -295,19 +295,19 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  assert.equal(itemChoice?.isDefault,true); assert.equal(itemChoice?.isPlaceholder,false);
  assert.equal(fieldsChoice?.isDefault,false); assert.equal(fieldsChoice?.isPlaceholder,true);
  const hiveOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {';
- assert.deepEqual(completionChoices(pack,hiveOperators,hiveOperators.length).map(x=>x.value),['equals','datatype','value_match','redact_result']);
+ assert.deepEqual(completionChoices(pack,hiveOperators,hiveOperators.length).map(x=>x.value),['equals']);
  const hiveValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';
  assert.deepEqual(completionChoices(pack,hiveValues,hiveValues.length).map(x=>x.value),['classes_root','current_config','current_user','current_user_local_settings','local_machine','users']);
  const keyOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {key: {';
- assert.deepEqual(completionChoices(pack,keyOperators,keyOperators.length),[]);
+ assert.deepEqual(completionChoices(pack,keyOperators,keyOperators.length).map(x=>x.value),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex']);
  const partitionMountOperators=`assessment:
   tests:
     check-test:
       capability: linux.partition
       object: {mount_point: {`;
- assert.deepEqual(completionChoices(pack,partitionMountOperators,partitionMountOperators.length),[]);
- // Neither field has a field-specific native operator subset in the pinned
- // capability schema; broad shared operators must not leak into completion.
+ assert.deepEqual(completionChoices(pack,partitionMountOperators,partitionMountOperators.length).map(x=>x.value),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex']);
+ // Reviewed overlay contracts supply only the field-specific operators;
+ // broad shared operators must not leak into completion.
  const registryKeyPrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, k';
  assert.deepEqual(completionChoices(pack,registryKeyPrefix,registryKeyPrefix.length).map(x=>x.value),registryObjectFields.filter(value=>value!=='hive'));
  const registryNamePrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, key: {equals: value}, n';

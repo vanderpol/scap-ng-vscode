@@ -1,5 +1,16 @@
 {
   "schemaVersion": "0.4.0",
-  "sourceCommit": "463675f3b931e596c922352a131cb3c515ab2265",
-  "manifestSha256": "0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f"
+  "sourceCommit": "7b9b61108aa30a601828268576308e510477094e",
+  "manifestSha256": "2aa28f9926d4d7774edcf48b991f1f48b121e34a7dce9006b1db129a6301727e",
+  "channel": "unmerged-schema-candidate",
+  "candidatePullRequest": 21,
+  "candidateStatus": "draft",
+  "stableRollbackCommit": "463675f3b931e596c922352a131cb3c515ab2265",
+  "stableRollbackManifestSha256": "0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f",
+  "packResourceCount": 236,
+  "candidateSchemaDigest": "2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843",
+  "candidateSchemaJsonCount": 145,
+  "candidateRootSchemaCount": 35,
+  "candidateRootRefCount": 652,
+  "packGeneratorRevision": "temporary candidate compatibility overlay over scap-ng-tools@1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42"
 }

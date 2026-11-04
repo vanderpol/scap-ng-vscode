@@ -29,6 +29,7 @@ frozen while this P0 is evaluated.
 - Existing properties are checked before a Quick Fix is created. Re-running a
   Quick Fix cannot duplicate a key, and the host acceptance probe verifies
   undo/redo restores the exact before/after document text.
+- When an Object is missing multiple required members, one additional schema-derived Quick Fix can insert the missing sibling skeletons together; individual fixes remain available. No selector values or operators are invented.
 
 ## Verification
 

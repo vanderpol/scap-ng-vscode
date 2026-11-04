@@ -1,7 +1,7 @@
 import { parseDocument } from 'yaml';
 import { MetadataPack } from './metadata.js';
 import { GuidedCatalog } from './guided.js';
-import { schemaNodes as resolveSchemaNodes, schemaPropertiesAtPath } from './schema-resolver.js';
+import { schemaCapabilityObjectProperties, schemaNodes as resolveSchemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 
@@ -271,37 +271,44 @@ function schemaPropertyMap(pack: MetadataPack, uri: string, spec: any): Record<s
   return result;
 }
 function declaredSelectorOperators(pack: MetadataPack, uri: string, spec: any): string[] {
-  const values = new Set<string>();
-  const documentUri = uri.split('#')[0];
+  const declared = new Set<string>();
+  const genericOperators = new Set<string>();
   const visit = (node: any, nodeUri: string, seen: Set<string>) => {
     if (!node || typeof node !== 'object') return;
     if (typeof node.$ref === 'string') {
       const target = new URL(node.$ref, nodeUri).href;
-      // Follow only references within the selected capability schema. Shared
-      // capability-common references intentionally do not define a field's
-      // native operator subset.
-      if (target.split('#')[0] === documentUri && !seen.has(target)) {
+      if (!seen.has(target)) {
         seen.add(target);
         try { visit(pack.node(target), target, seen); } catch { /* unresolved optional branch */ }
       }
-      return;
     }
-    for (const value of node.propertyNames?.enum ?? []) if (typeof value === 'string') values.add(value);
+    for (const value of node.propertyNames?.enum ?? []) if (typeof value === 'string') declared.add(value);
+    for (const branch of node.oneOf ?? []) {
+      const required = Array.isArray(branch?.required) ? branch.required : [];
+      if (required.length === 1 && typeof required[0] === 'string') genericOperators.add(required[0]);
+    }
     for (const key of ['allOf', 'oneOf', 'anyOf', 'if', 'then', 'else']) {
       const branches = Array.isArray(node[key]) ? node[key] : node[key] ? [node[key]] : [];
-      for (let index = 0; index < branches.length; index++) visit(branches[index], `${nodeUri}${nodeUri.includes('#') ? '' : '#'}/${key}/${index}`, seen);
+      for (let index = 0; index < branches.length; index++) {
+        visit(branches[index], `${nodeUri}${nodeUri.includes('#') ? '' : '#'}${nodeUri.includes('#') ? '' : '/'}${key}/${index}`, seen);
+      }
     }
   };
   visit(spec, uri, new Set<string>());
-  return [...values];
+  // propertyNames also contains schema metadata keys. Keep only names that
+  // the resolved shared selector predicate declares as comparison operators;
+  // this prevents metadata and the broad generic vocabulary from leaking into
+  // a field-specific operator completion list.
+  return [...declared].filter(value => genericOperators.has(value));
 }
+
 function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ value: string; spec: any }> {
   // Do not inherit the broad shared scalar operator vocabulary for a
   // capability field. A field-specific native subset must be declared by the
   // capability schema itself; otherwise an empty list is safer than offering
   // syntactically possible but semantically unsupported operators.
   const names = declaredSelectorOperators(pack, uri, spec);
-  const properties = Object.assign({}, ...[spec, ...(spec?.oneOf ?? []), ...(spec?.anyOf ?? [])].map((node: any) => node?.properties ?? {}));
+  const properties = schemaPropertyMap(pack, uri, spec);
   return names.map(value => ({ value, spec: properties[value] ?? {} }));
 }
 
@@ -330,6 +337,12 @@ function selectorFieldSpec(pack: MetadataPack, capability: string, field: string
   if (!uri) return undefined;
   const schema: any = pack.resource(uri);
   if (!requireField) {
+    // PR #21 supplies reviewed selector contracts as conditional overlays in
+    // assessment-language.schema.json. Prefer that resolved schema location
+    // when present; generated capability schemas remain the compatibility
+    // fallback for capabilities without an overlay.
+    const overlay = schemaCapabilityObjectProperties(pack, capability).get(field);
+    if (overlay) return { uri: overlay.uri, spec: overlay.node };
     const spec = schema.$defs?.object?.properties?.[field];
     return spec ? { uri, spec } : undefined;
   }

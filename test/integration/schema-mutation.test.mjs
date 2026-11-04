@@ -50,10 +50,21 @@ function mutatedPack() {
   const variableBytes = readFileSync(variablePath);
   variableResource.bytes = variableBytes.length;
   variableResource.sha256 = createHash('sha256').update(variableBytes).digest('hex');
+  // Mutate the candidate's native selector overlay as well as a generated
+  // capability schema. This proves the editor consumes the conditional
+  // overlay resource instead of a capability/operator list in TypeScript.
+  const overlayResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/native-selector.schema.json'));
+  const overlayPath = join(root, overlayResource.path);
+  const overlaySchema = JSON.parse(readFileSync(overlayPath, 'utf8'));
+  const overlayEquals = overlaySchema.$defs.windows_registry_hive_selector.allOf[2].properties.equals.oneOf[0];
+  overlayEquals.enum = ['fixture-hive'];
+  writeFileSync(overlayPath, JSON.stringify(overlaySchema, null, 2) + '\n');
+  const overlayBytes = readFileSync(overlayPath);
+  overlayResource.bytes = overlayBytes.length;
+  overlayResource.sha256 = createHash('sha256').update(overlayBytes).digest('hex');
   const capabilityResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/capabilities/windows.registry.schema.json'));
   const capabilityPath = join(root, capabilityResource.path);
   const capabilitySchema = JSON.parse(readFileSync(capabilityPath, 'utf8'));
-  capabilitySchema.$defs.object.properties.hive.oneOf[0].allOf[2].properties.equals.oneOf[0].enum.push('fixture-hive');
   capabilitySchema.$defs.object.properties.fixture_selector = {
     description: 'Fixture selector from the mutated capability schema.',
     type: 'object',

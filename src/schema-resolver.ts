@@ -4,6 +4,7 @@ type SchemaNode = Record<string, any>;
 export interface SchemaLocation { uri: string; node: SchemaNode; }
 
 const nodeCache = new WeakMap<MetadataPack, Map<string, SchemaLocation[]>>();
+const capabilityOverlayCache = new WeakMap<MetadataPack, Map<string, Map<string, SchemaLocation>>>();
 
 export function escapeSchemaPointer(value: string) {
   return value.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -90,6 +91,43 @@ export function resolveSchemaPath(pack: MetadataPack, rootUri: string, path: rea
     return [];
   }
   return locations;
+}
+
+/**
+ * Resolve a capability-specific Test Object overlay when the canonical
+ * assessment-language schema supplies one through a capability discriminator.
+ * This deliberately walks the conditional schema rather than deriving a
+ * capability/definition name, so new overlays become available without an
+ * editor code change. An absent overlay returns an empty map and callers can
+ * retain the generated capability-schema fallback.
+ */
+export function schemaCapabilityObjectProperties(pack: MetadataPack, capability: string) {
+  const cachedByCapability = capabilityOverlayCache.get(pack) ?? new Map<string, Map<string, SchemaLocation>>();
+  capabilityOverlayCache.set(pack, cachedByCapability);
+  const cached = cachedByCapability.get(capability);
+  if (cached) return cached;
+  const result = new Map<string, SchemaLocation>();
+  cachedByCapability.set(capability, result);
+  const assessment = pack.manifest.resources.find((resource: any) =>
+    resource.kind === 'schema' && resource.uri.endsWith('/assessment-language.schema.json'))?.uri;
+  if (!assessment) return result;
+  const testUri = `${assessment}#/$defs/test`;
+  let testLocations: SchemaLocation[];
+  try { testLocations = schemaNodes(pack, testUri); } catch { return result; }
+  for (const location of testLocations) {
+    const node = location.node;
+    const condition = node.if;
+    const matches = condition?.properties?.capability?.const === capability &&
+      (!condition.required || condition.required.includes('capability'));
+    if (!matches || !node.then?.properties?.object) continue;
+    const objectUri = schemaChildUri(schemaChildUri(location.uri, 'then', ''), 'properties', 'object');
+    for (const objectLocation of schemaNodes(pack, objectUri)) {
+      for (const [name, property] of schemaPropertyEntries(pack, [objectLocation])) {
+        if (!result.has(name)) result.set(name, property);
+      }
+    }
+  }
+  return result;
 }
 
 export function schemaPropertiesAtPath(pack: MetadataPack, rootUri: string, path: readonly string[]) {
