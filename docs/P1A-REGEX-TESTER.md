@@ -13,3 +13,7 @@ The tester uses the existing worker-backed `ECMAScript-safe-preview` adapter. It
 `Apply expression to YAML` is explicit. It validates the bounded preview, checks the original SHA-256 document revision, parses the proposed scalar splice, validates the resulting document against the pinned Assessment schema, and applies one native `WorkspaceEdit`. This gives normal VS Code undo/redo and preserves surrounding comments, line endings, mappings and untouched source bytes. Preview and dismissal are no-op operations.
 
 P1A does not evaluate Objects, requirements, Variables, scanner evidence or compliance outcomes. Sample Object selection is the separate P1B increment.
+
+### Multiple `matches_regex` entries
+
+`matches_regex` can be a YAML sequence. Select from the first scalar through the last scalar in the native editor before invoking **SCAP-NG: Test Regex**. The panel then shows each selected alternative separately, runs every alternative against each sample, and applies edits back to the corresponding YAML scalars in one undoable source edit. Selecting only one entry tests/applies only that entry.

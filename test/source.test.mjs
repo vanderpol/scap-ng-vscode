@@ -98,3 +98,14 @@ test('P1A regex preview exposes spans and named captures', () => {
  assert.equal(result.matched, true); assert.deepEqual(result.namedCaptures, { user: 'alice' });
  assert.deepEqual(result.matchSpan, [0, 12]); assert.equal(result.spans[0].text, 'alice:secret');
 });
+
+test('P1A treats a selected matches_regex sequence as one editable expression set', async () => {
+ const { findRegexContext, replaceRegexScalars } = await import('../dist/regex-tester.js');
+ const raw = `assessment:\n  tests:\n    t:\n      capability: independent.shellcommand\n      require:\n        fields:\n          stdout_line:\n            matches_regex:\n              - 'first'\n              - 'second'\n              - 'third'\n`;
+ const start = raw.indexOf("'first'"); const end = raw.indexOf("'third'") + "'third'".length;
+ const context = findRegexContext(raw, start, end);
+ assert.deepEqual(context?.patterns, ['first', 'second', 'third']);
+ assert.equal(context?.sourceRanges.length, 3);
+ const edit = replaceRegexScalars(raw, context, ['one', 'two', 'three']);
+ assert.match(edit.nextText, /- 'one'\n\s+- 'two'\n\s+- 'three'/);
+});
