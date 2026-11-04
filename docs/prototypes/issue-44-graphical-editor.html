@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SCAP-NG Graphical Editor — Issue 44 interactive R&amp;D</title>
+<style>
+:root{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:#213047;background:#e8edf5}
+*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #74aafb;outline-offset:1px}
+.shell{min-height:100vh;display:grid;grid-template-rows:44px 1fr 32px}
+.top{display:flex;align-items:center;gap:18px;background:#f8fafd;border-bottom:1px solid #cbd5e3;padding:0 16px}
+.top strong{font-size:14px}.top small{color:#71829a}.top .far{margin-left:auto}
+.workspace{min-height:0;display:grid;grid-template-columns:246px minmax(630px,1fr) 300px}
+nav{background:#f8fafe;border-right:1px solid #d0dae8;padding:14px 10px}
+nav h4{margin:12px 8px 8px;text-transform:uppercase;letter-spacing:.09em;font-size:10px;color:#73849c}
+.navitem{display:block;width:100%;padding:9px 11px;text-align:left;border:0;border-radius:6px;background:transparent;color:#304259;font-size:12px}
+.navitem:hover{background:#ecf3fd}.navitem.selected{background:#d7e8ff;color:#145baa;font-weight:700}.navitem.child{padding-left:21px}
+.filename{overflow-wrap:anywhere;color:#315fa8;font-size:11px;padding:7px 10px;background:#e6f0ff;border-radius:5px}
+.main{overflow:auto;padding:15px 17px 28px;background:#f1f5fa}
+.tab{display:inline-block;background:white;border:1px solid #d1dce9;border-bottom:none;border-radius:7px 7px 0 0;padding:9px 12px;font-size:11px}
+.hero{display:flex;align-items:center;justify-content:space-between;gap:12px;background:white;border:1px solid #d1dce9;border-radius:0 8px 8px 8px;padding:15px}
+h1{font-size:17px;margin:0 0 4px}.sub{font-size:11px;color:#728399}.token{display:inline-block;padding:3px 8px;background:#e7effe;border-radius:12px;color:#2a61a9}
+.metrics{display:flex}.metric{padding:0 12px;border-left:1px solid #e0e7f1;text-align:center}.metric strong{font-size:20px;display:block}.metric span{color:#687b91;font-size:10px}
+.strip{background:white;border:1px solid #d4dfeb;border-radius:8px;margin-top:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.testheading{display:flex;align-items:center;justify-content:space-between;margin:17px 0 9px}.testheading h2{font-size:16px;margin:0}
+.panel{background:white;border:1px solid #cfdbe9;border-radius:8px;margin:9px 0;overflow:hidden;box-shadow:0 1px 2px #ccd6e444}
+.panelheader{width:100%;background:#e1eeff;border:0;border-bottom:1px solid #d0dfef;padding:10px 13px;font-weight:700;text-align:left;display:flex;justify-content:space-between;color:#25406a}
+.panelbody{padding:13px 14px}.hint{font-size:11px;color:#718399;margin:0 0 10px}
+.grid{display:grid;gap:11px}.three{grid-template-columns:1.1fr 2fr 1.2fr}.two{grid-template-columns:1fr 1fr}
+label{display:block;font-size:11px;font-weight:650;margin-bottom:4px}
+input,select{min-height:34px;width:100%;border:1px solid #c6d3e5;border-radius:5px;background:white;color:#213047;padding:6px 8px}
+.req{padding:12px;border:1px solid #e2eaf5;border-radius:7px;background:#fbfdff}.req b{font-size:12px}.req .two{margin-top:10px}
+table{width:100%;border-spacing:0 6px;table-layout:fixed}th{text-align:left;font-size:11px;color:#687c93}td{padding-right:9px}td:last-child,th:last-child{width:42px}td button{border:1px solid #c6d3e5;border-radius:5px;background:#fff;padding:7px 11px}
+.add{border:1px solid #a8c6f6;background:#f4f9ff;color:#2165bf;padding:7px 12px;border-radius:5px;font-size:12px;font-weight:700}
+.summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.summary .flow{border:1px solid #bcd0f2;background:#eef5ff;padding:9px;border-radius:6px;font-size:11px;font-weight:650}.summary .result{background:#eaf8f0;border-color:#98d7b1;color:#207d4b}
+aside{background:#f8fafe;border-left:1px solid #cfd9e8;padding:14px 12px;overflow:auto}
+.tabs{display:flex;gap:18px;padding:0 7px 11px;border-bottom:1px solid #cbd6e5;margin-bottom:12px;font-size:12px}.tabs b{color:#1c64c4}
+.sidecard{background:white;border:1px solid #d1dce9;border-radius:9px;padding:13px;margin-bottom:12px}.sidecard.tint{background:#eaf3ff}.sidecard.cream{background:#fff8e8;border-color:#eadbb6}
+.sidecard h3{margin:0 0 9px;font-size:13px}.sidecard p,.sidecard li{font-size:12px;line-height:1.6}.sidecard ul{padding-left:18px}
+.foot{background:#f8fafd;border-top:1px solid #cbd5e3;padding:8px 15px;color:#61738c;font-size:11px}
+.demo{background:#fff8e9;border-left:3px solid #deb04d;padding:9px 12px;margin-top:10px;font-size:11px;color:#654b18}
+.hidden{display:none}.rightButton{border:1px solid #b8cbe3;background:#fff;color:#355577;padding:6px 11px;border-radius:5px}
+body.hidehelp .workspace{grid-template-columns:246px minmax(630px,1fr)}body.hidehelp aside{display:none}
+@media(max-width:1220px){.workspace{grid-template-columns:196px minmax(630px,1fr)}aside{display:none}}@media(max-width:880px){.workspace,body.hidehelp .workspace{grid-template-columns:minmax(630px,1fr)}nav{display:none}}@media(max-width:750px){.metrics{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="top"><strong>▣ SCAP-NG Assessment Studio</strong><span>File</span><span>Edit</span><span>Assessment</span><span>Preview</span><small>Issue #44 interactive design research</small><button class="rightButton far" id="helpToggle">Toggle help sidebar</button></header>
+<div class="workspace">
+<nav aria-label="Assessment outline">
+<h4>Workspace</h4><div class="filename">▤ firewall-domain-profile.assessment.yaml</div>
+<h4>Assessment outline</h4><button class="navitem">ⓘ &nbsp; Overview</button><button class="navitem">☷ &nbsp; Inputs (1)</button><button class="navitem">{} &nbsp; Variables (0)</button><button class="navitem">◎ &nbsp; Applicability</button>
+<div class="navitem" style="font-weight:700">▾ &nbsp; Tests (3)</div><div id="outline"></div>
+<button class="navitem">▸ &nbsp; Manual Assessments (separate)</button><button class="navitem">✓ &nbsp; Validation</button><button class="navitem">◉ &nbsp; Preview</button>
+</nav>
+<main class="main">
+<div class="tab">▤ &nbsp;firewall-domain-profile.assessment.yaml &nbsp; ×</div>
+<div class="hero"><div><h1>Windows Defender Firewall — Domain Profile</h1><div class="sub">Assessment: win-firewall-domain-profile &nbsp; • &nbsp; compliance &nbsp; • &nbsp; automated &nbsp; <span class="token">SCAP-NG 0.4 design reference</span></div></div><div class="metrics"><div class="metric"><strong>3</strong><span>Tests</span></div><div class="metric"><strong>1</strong><span>Sample Input</span></div><div class="metric"><strong>—</strong><span>Not validated</span></div></div></div>
+<div class="demo"><b>Interactive UX prototype only.</b> Changes stay in browser memory. Not connected to YAML, JSON Schema, a scanner, or compliance evidence. The values shown are illustrative.</div>
+<div class="strip"><span>▸ &nbsp; Inputs (1) &nbsp; <span class="token">expected_domain_profile_state</span></span><small class="sub">Conceptual overview</small></div>
+<div class="testheading"><h2 id="testHeading"></h2><div><button id="previous" class="rightButton">‹ Previous</button> <span id="position" class="sub"></span> <button id="next" class="rightButton">Next ›</button></div></div>
+<section class="panel" data-section="header"><button class="panelheader" data-collapse="header" aria-expanded="true">▤ &nbsp; Test header <span>⌃</span></button><div class="panelbody" id="headerFields"></div></section>
+<section class="panel" data-section="object"><button class="panelheader" data-collapse="object" aria-expanded="true">◎ &nbsp; Object / collection target <span>⌃</span></button><div class="panelbody"><p class="hint">Selectors identify data to collect. They are not compliance requirements.</p><div id="objectFields"></div></div></section>
+<section class="panel" data-section="require"><button class="panelheader" data-collapse="require" aria-expanded="true">☑ &nbsp; Require / matching conditions <span>⌃</span></button><div class="panelbody"><p class="hint">Order: item_requirement → field_requirement → fields. Available enum values must be taken from the exact pinned contract in production.</p>
+<div class="grid two"><div class="req"><b>item_requirement</b><div class="grid two"><div><label for="itemsFound">items_found</label><select id="itemsFound" data-path="items_found"></select></div><div><label for="itemsSatisfying">items_satisfying</label><select id="itemsSatisfying" data-path="items_satisfying"></select></div></div></div>
+<div class="req"><b>field_requirement</b><div class="grid two"><div><label for="valuesFound">values_found</label><select id="valuesFound" data-path="values_found"></select></div><div><label for="valuesMatching">values_matching</label><select id="valuesMatching" data-path="values_matching"></select></div></div></div></div>
+<h3 style="font-size:13px;margin-bottom:5px">Fields</h3>
+<table><thead><tr><th>Field</th><th>Operator</th><th>Expected value</th><th></th></tr></thead><tbody id="predicates"></tbody></table>
+<button class="add" id="addField">+ Add field</button>
+</div></section>
+<section class="panel" data-section="logic"><button class="panelheader" data-collapse="logic" aria-expanded="true">⑂ &nbsp; Evaluation structure <span>⌃</span></button><div class="panelbody summary"><span class="flow">Select Object Items</span> → <span class="flow">Apply Require</span> → <span class="flow result">Explain intended check</span><small class="hint">This diagram is illustrative, not a normative evaluate expression or result.</small></div></section>
+<section class="panel" data-section="preview"><button class="panelheader" data-collapse="preview" aria-expanded="true">◉ &nbsp; Human-readable preview <span>⌃</span></button><div class="panelbody"><p id="humanPreview" style="margin:0;line-height:1.6"></p><small class="sub">Description only — no runtime pass/fail decision.</small></div></section>
+</main>
+<aside aria-label="Help and diagnostics"><div class="tabs"><b>Help</b><span>Diagnostics</span><span>Summary</span></div><div class="sidecard tint"><h3 id="helpCapability">Capability help</h3><p><b>Object</b> specifies what to inspect; <b>Require</b> describes acceptable collected values. The production help text and property enumerations should be extracted from pinned schema/capability metadata.</p><p id="helpField"></p></div>
+<div class="sidecard cream"><h3>ⓘ &nbsp;Authoring guidance</h3><p>Keep every schema-valid property editable. Show <b>why</b> counts and fields matter. Render nested alternatives as readable groups rather than inventing simplified logic.</p></div><div class="sidecard"><h3>☑ &nbsp;Validation channels</h3><p>YAML parsing: <b>not connected</b></p><p>Schema validation: <b>not connected</b></p><p>Runtime scan: <b>not available</b></p></div><div class="sidecard"><h3>Changes in this prototype</h3><p id="changeCount">No edits yet.</p><p>Controls demonstrate UI behavior only. They deliberately do not write YAML.</p></div></aside>
+</div>
+<footer class="foot">SCAP-NG • issue #44 prototype • no external assets • no network • no schema assertions • no scanner execution</footer>
+</div>
+<script>
+'use strict';
+/* This is isolated, non-production UI research. Never treat this fixture/catalog as a schema. */
+const demoTests=[
+ {id:'verify-domain-firewall-enabled',title:'Verify Windows Defender Firewall Domain Profile is enabled',capability:'windows.registry',selectors:{hive:'local_machine',key:'SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile',name:'EnableFirewall'},items_found:'one_or_more',items_satisfying:'every',values_found:'one_or_more',values_matching:'every',fields:[{name:'type',op:'equals',value:'dword'},{name:'value',op:'equals',value:'1'}]},
+ {id:'verify-domain-notifications-disabled',title:'Verify firewall Domain Profile notifications are disabled',capability:'windows.registry',selectors:{hive:'local_machine',key:'SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile',name:'DisableNotifications'},items_found:'one_or_more',items_satisfying:'every',values_found:'one_or_more',values_matching:'every',fields:[{name:'type',op:'equals',value:'dword'},{name:'value',op:'equals',value:'1'}]},
+ {id:'verify-domain-default-inbound',title:'Verify default inbound action for the Domain Profile',capability:'windows.registry',selectors:{hive:'local_machine',key:'SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile',name:'DefaultInboundAction'},items_found:'one_or_more',items_satisfying:'every',values_found:'one_or_more',values_matching:'every',fields:[{name:'type',op:'equals',value:'dword'},{name:'value',op:'equals',value:'1'}]}
+];
+let index=0,editCount=0;
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const vals=['one_or_more','none','one','every']; /* illustrative only; not a canonical enum list */
+const ops=['equals','not_equal','matches_regex']; /* illustrative only; not a canonical enum list */
+function options(list,selected){return list.map(v=>'<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(v)+'</option>').join('');}
+function fieldControl(label,val,path,choices){
+ const id='edit-'+path.replace(/[^a-zA-Z0-9]/g,'-');
+ return '<div><label for="'+esc(id)+'">'+esc(label)+'</label>'+(choices?
+ '<select id="'+esc(id)+'" data-field="'+esc(path)+'">'+options(choices,val)+'</select>':
+ '<input id="'+esc(id)+'" data-field="'+esc(path)+'" value="'+esc(val)+'">')+'</div>';
+}
+function render(){
+ const t=demoTests[index];
+ $('testHeading').textContent='Test: '+t.title;$('position').textContent=(index+1)+' of '+demoTests.length;
+ $('outline').innerHTML=demoTests.map((item,i)=>'<button class="navitem child'+(i===index?' selected':'')+'" data-test="'+i+'">▤ &nbsp; '+esc(item.title)+'</button>').join('');
+ $('headerFields').innerHTML='<div class="grid three">'+fieldControl('test_id',t.id,'id')+fieldControl('test_title',t.title,'title')+fieldControl('capability',t.capability,'capability',[t.capability])+'</div>';
+ $('objectFields').innerHTML='<div class="grid three">'+Object.entries(t.selectors).map(([k,v])=>fieldControl(k,v,'selector.'+k)).join('')+'</div>';
+ for(const name of ['items_found','items_satisfying','values_found','values_matching']){
+ const el=$({items_found:'itemsFound',items_satisfying:'itemsSatisfying',values_found:'valuesFound',values_matching:'valuesMatching'}[name]);
+ el.innerHTML=options(vals,t[name]);
+ }
+ $('predicates').innerHTML=t.fields.map((f,i)=>
+ '<tr><td><input aria-label="Field name" data-row="'+i+'" data-col="name" value="'+esc(f.name)+'"></td><td><select aria-label="Comparison operator" data-row="'+i+'" data-col="op">'+options(ops,f.op)+'</select></td><td><input aria-label="Expected value" data-row="'+i+'" data-col="value" value="'+esc(f.value)+'"></td><td><button aria-label="Remove field" data-remove="'+i+'">×</button></td></tr>').join('');
+ $('humanPreview').textContent='Collect '+t.capability+' data at '+t.selectors.key+' / '+t.selectors.name+'. Require '+t.items_found+' found items and '+t.items_satisfying+' items satisfying: '+t.fields.map(f=>f.name+' '+f.op+' '+JSON.stringify(f.value)).join('; ')+'.';
+ $('helpCapability').textContent=t.capability+' — contextual help';
+ $('helpField').textContent='Current Object selector: '+t.selectors.name+'. Selecting a field in the real editor should reveal its pinned description, examples and allowed values.';
+ $('changeCount').textContent=editCount===0?'No edits yet.':editCount+' local prototype edit(s). Not saved to YAML.';
+}
+document.addEventListener('change',ev=>{
+ const el=ev.target,t=demoTests[index];if(!el.matches('input,select'))return;
+ if(el.dataset.field){
+ const p=el.dataset.field;if(p.startsWith('selector.'))t.selectors[p.slice(9)]=el.value;else t[p]=el.value;
+ }else if(el.dataset.row!==undefined){t.fields[Number(el.dataset.row)][el.dataset.col]=el.value;}
+ else if(el.dataset.path)t[el.dataset.path]=el.value;else return;
+ editCount++;render();
+});
+document.addEventListener('click',ev=>{
+ const control=ev.target.closest('button');if(!control)return;
+ if(control.dataset.test!==undefined){index=Number(control.dataset.test);render();}
+ if(control.dataset.remove!==undefined){demoTests[index].fields.splice(Number(control.dataset.remove),1);editCount++;render();}
+ if(control.dataset.collapse){const p=control.closest('.panel'),body=p.querySelector('.panelbody');body.classList.toggle('hidden');const expanded=!body.classList.contains('hidden');control.setAttribute('aria-expanded',String(expanded));control.lastElementChild.textContent=expanded?'⌃':'⌄';}
+});
+$('addField').onclick=()=>{demoTests[index].fields.push({name:'value',op:'equals',value:''});editCount++;render();};
+$('previous').onclick=()=>{index=(index+demoTests.length-1)%demoTests.length;render();};
+$('next').onclick=()=>{index=(index+1)%demoTests.length;render();};
+$('helpToggle').onclick=()=>document.body.classList.toggle('hidehelp');
+render();
+</script>
+</body>
+</html>
