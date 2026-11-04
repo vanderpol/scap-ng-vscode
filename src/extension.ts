@@ -6,6 +6,7 @@ import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer, sourceRevisionMatches } from './source.js';
 import { previewRegexSafe, regexSafetyError } from './playground.js';
 import { findRegexContext, replaceRegexScalars } from './regex-tester.js';
+import { evaluateObjectSamples, findObjectContext, starterSampleItems } from './sample-object.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
@@ -136,6 +137,33 @@ class RegexTesterPanel {
       }
     });
     panel.webview.postMessage({ type: 'init', context: selected, samples: [{ input: '', expected: 'positive' }] });
+    context.subscriptions.push(panel);
+  }
+}
+
+function sampleObjectTesterHtml() {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-object-tester';"><style>
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:1200px}h1{margin-top:0}.layout{display:grid;grid-template-columns:minmax(260px,1fr) minmax(360px,2fr);gap:16px}.card,.result{border:1px solid var(--vscode-panel-border);padding:12px;margin:10px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background);padding:10px}.muted{color:var(--vscode-descriptionForeground)}textarea{box-sizing:border-box;width:100%;min-height:420px;padding:8px;font-family:var(--vscode-editor-font-family);color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}button{padding:7px 12px;margin:10px 8px 0 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.matched{border-left:4px solid var(--vscode-testing-iconPassed)}.mismatched{border-left:4px solid var(--vscode-testing-iconFailed)}.indeterminate,.missing,.invalid{border-left:4px solid var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.status{font-weight:600}.trace{padding:8px;margin:8px 0;background:var(--vscode-textCodeBlock-background)}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px}dt{font-weight:600}dd{margin:0;overflow-wrap:anywhere}@media(max-width:850px){.layout{display:block}}
+</style></head><body><h1>SCAP-NG Sample Object Tester</h1><div class="banner"><p id="source">Loading selected Object…</p><p class="muted"><strong>Offline sample data only.</strong> This tool previews Object selector traces. It does not collect evidence, execute a scanner, evaluate <code>require</code>, or produce compliance PASS/FAIL.</p></div><div class="layout"><section><div class="card"><h2>Selected Object</h2><pre id="object"></pre></div><div class="card"><label for="samples"><strong>Canonical collected Item samples (YAML or JSON)</strong></label><p class="muted">Use an Item, an array, or <code>{items: [...]}</code>. Each canonical Item has <code>id</code>, <code>capability</code>, <code>status</code>, <code>fields</code>, and <code>provenance</code>. Starter data is editable and is not scanner evidence.</p><textarea id="samples" spellcheck="false" aria-label="Sample collected Items"></textarea><button id="test">Test Object</button><button class="secondary" id="reset">Reset starter sample</button><p id="status" class="status" role="status" aria-live="polite"></p></div></section><section><h2>Selector trace</h2><div id="results" aria-live="polite"><p class="muted">Run the tester to see each Item and selector decision.</p></div></section></div><script nonce="object-tester">
+const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);let starter='';function text(node,value){node.replaceChildren(document.createTextNode(value??''));}function statusClass(value){return value==='matched'?'matched':value==='mismatched'?'mismatched':value;}function renderTrace(result){const root=$('results');root.replaceChildren();if(result.inputDiagnostics?.length){const box=document.createElement('div');box.className='result invalid';const h=document.createElement('h3');h.textContent='Sample input unavailable';box.append(h);for(const x of result.inputDiagnostics){const p=document.createElement('p');p.className='error';p.textContent=x;box.append(p);}root.append(box);return;}const summary=document.createElement('div');summary.className='banner';summary.textContent='Selected Item indices: '+(result.selectedItemIndices.length?result.selectedItemIndices.join(', '):'none')+' · '+result.items.length+' Item(s) inspected';root.append(summary);for(const item of result.items){const box=document.createElement('article');box.className='result '+statusClass(item.status);const h=document.createElement('h3');h.textContent='Item '+item.index+(item.id?' ('+item.id+')':'')+' — '+item.status;box.append(h);if(item.schemaDiagnostics?.length){const p=document.createElement('p');p.className='error';p.textContent='Canonical schema diagnostics: '+item.schemaDiagnostics.join('; ');box.append(p);}for(const trace of item.selectors){const t=document.createElement('div');t.className='trace '+statusClass(trace.status);const title=document.createElement('strong');title.textContent=trace.field+' · '+trace.operator+' · '+trace.status;t.append(title);const dl=document.createElement('dl');for(const pair of [['Expected',trace.expected],['Actual',trace.actual],['Datatype',trace.datatype],['Reason',trace.reason]]){const dt=document.createElement('dt');dt.textContent=pair[0];const dd=document.createElement('dd');dd.textContent=pair[1]===undefined?'(not present)':typeof pair[1]==='string'?pair[1]:JSON.stringify(pair[1]);dl.append(dt,dd);}t.append(dl);box.append(t);}root.append(box);}for(const warning of result.warnings||[]){const p=document.createElement('p');p.className='muted';p.textContent=warning;root.append(p);}}$('test').onclick=()=>{const textValue=$('samples').value;$('status').textContent='Validating sample structure and evaluating selectors offline…';vscode.postMessage({type:'test',source:textValue});};$('reset').onclick=()=>{$('samples').value=starter;};window.addEventListener('message',event=>{const m=event.data;if(m.type==='init'){text($('source'),'Source: '+m.context.capability+(m.context.testId?' · Test '+m.context.testId:'')+' · '+m.context.path.join('.'));text($('object'),JSON.stringify(m.context.object,null,2));starter=m.starter;$('samples').value=starter;}if(m.type==='result'){renderTrace(m.result);$('status').textContent='Preview complete. Assessment evaluation remains unavailable.';}if(m.type==='error'){$('status').className='status error';$('status').textContent=m.message;}});</script></body></html>`;
+}
+
+class SampleObjectTesterPanel {
+  static open(context: vscode.ExtensionContext, document: any, pack: MetadataPack | undefined) {
+    const api: any = vscode; const editor = api.window.activeTextEditor;
+    if (!document || !editor) return void api.window.showWarningMessage('Open an Assessment YAML document and place the caret inside an Object first.');
+    if (!pack) return void api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using the Sample Object Tester.');
+    const start = document.offsetAt(editor.selection.start); const end = document.offsetAt(editor.selection.end);
+    const selected = findObjectContext(document.getText(), start, end);
+    if (!selected) return void api.window.showWarningMessage('Place the caret inside an inline Test Object with a schema-resolved capability.');
+    const panel = api.window.createWebviewPanel('scapNg.sampleObjectTester', 'SCAP-NG Sample Object Tester', api.ViewColumn?.Beside ?? 2, { enableScripts: true, retainContextWhenHidden: true });
+    panel.webview.html = sampleObjectTesterHtml();
+    panel.webview.onDidReceiveMessage(async (message: any) => {
+      if (message.type !== 'test' || typeof message.source !== 'string') return;
+      try { const result = await evaluateObjectSamples(selected.object, selected.capability, message.source, pack); panel.webview.postMessage({ type: 'result', result }); }
+      catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }
+    });
+    panel.webview.postMessage({ type: 'init', context: selected, starter: starterSampleItems(selected.object, selected.capability) });
     context.subscriptions.push(panel);
   }
 }
@@ -792,6 +820,7 @@ export function activate(context: vscode.ExtensionContext) {
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', () => RegexTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.testObject', () => SampleObjectTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
   const inspect = (document: vscode.TextDocument) => {
     loadPack(document.uri.fsPath);
     if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) {
