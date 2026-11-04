@@ -109,7 +109,7 @@ async function evaluateSelector(field: string, predicate: unknown, item: any): P
   if (Array.isArray(expected)) return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: 'indeterminate', reason: 'Multiple selector operands require canonical runtime semantics and are not approximated by this adapter.' };
   if (operator === 'equals' || operator === 'not_equal') {
     const equal = sameValue(actual.value, expected);
-    return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: operator === 'equals' ? (equal ? 'matched' : 'mismatched') : (!equal ? 'matched' : 'mismatched'), reason: equal === (operator === 'equals') ? 'Values are equal under strict typed comparison.' : 'Values differ under strict typed comparison.' };
+    return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: operator === 'equals' ? (equal ? 'matched' : 'mismatched') : (!equal ? 'matched' : 'mismatched'), reason: equal ? 'Values are equal under strict typed comparison.' : 'Values differ under strict typed comparison.' };
   }
   if (operator === 'case_insensitive_equals' || operator === 'case_insensitive_not_equal') {
     if (typeof actual.value !== 'string' || typeof expected !== 'string') return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: 'indeterminate', reason: 'Case-insensitive comparison is defined here only for string values; datatype coercion is not performed.' };
