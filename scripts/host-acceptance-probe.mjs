@@ -19,6 +19,9 @@ const pack = new MetadataPack(packDir, pin);
 const catalog = new GuidedCatalog(pack);
 const sample = resolve(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml');
 const source = readFileSync(sample, 'utf8');
+const variableInput = resolve(sampleRoot, 'fixtures/current-v04/windows-server-2025-sysvol-permissions.assessment.yaml');
+const variableSource = readFileSync(variableInput, 'utf8');
+const variableIncomplete = variableSource.replace(/\n        concat:\n[\s\S]*?\n  tests:/, '\n        concat:\n        - \n  tests:');
 const fixtureRoot = resolve(process.env.SCAP_NG_P0_FIXTURE_ROOT ?? 'test/fixtures');
 const canonicalInputs = {
   windowsRegistry: sample,
@@ -53,6 +56,8 @@ const expectedRequirementProperties = Object.keys(assessmentLanguage.$defs?.cano
 const expectedTestProperties = Object.keys(pack.resource(schema.uri).properties?.assessment?.properties?.tests?.additionalProperties?.properties ?? {});
 const expectedObjectFieldsAfterKey = expectedObjectFields.filter(value => value !== 'hive' && value !== 'name');
 const expectedObjectFieldsAfterName = expectedObjectFields.filter(value => value !== 'hive' && value !== 'key');
+const variableSchema = pack.resource(pack.manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/variable-expression.schema.json')).uri);
+const expectedVariableExpressions = [...new Set((variableSchema.$defs?.expression?.oneOf ?? []).flatMap(branch => branch.required ?? []))];
 const expectedRequireFields = [...new Set(['oneOf', 'anyOf'].flatMap(key => (capabilitySchema.$defs?.state_predicate?.[key] ?? []).flatMap(branch => branch.required ?? [])))];
 function schemaWalk(node, visit) {
   if (!node || typeof node !== 'object') return;
@@ -119,6 +124,7 @@ const blankItemRequirementDocument = join(workspace, 'blank-item-requirement.ass
 const blankFieldRequirementDocument = join(workspace, 'blank-field-requirement.assessment.yaml');
 const blankFieldsDocument = join(workspace, 'blank-fields.assessment.yaml');
 const blankCapabilityDocument = join(workspace, 'blank-capability.assessment.yaml');
+const variableDocument = join(workspace, 'variable-expressions.assessment.yaml');
 const typingDocument = join(workspace, 'typing.assessment.yaml');
 const unique = (text, suffix) => text.replace('windows-server-2025-shows-on-lock-screen-sv-278080-assessment', `host-probe-${suffix}-assessment`);
 const incomplete = source
@@ -178,6 +184,7 @@ writeFileSync(blankItemRequirementDocument, blankItemRequirement);
 writeFileSync(blankFieldRequirementDocument, blankFieldRequirement);
 writeFileSync(blankFieldsDocument, blankFields);
 writeFileSync(blankCapabilityDocument, blankCapability);
+writeFileSync(variableDocument, variableIncomplete);
 const canonicalDocuments = Object.fromEntries(Object.entries(canonicalInputs).map(([name, input]) => { if (name === 'windowsRegistry') return [name, validDocument]; const target = join(workspace, `${name}.assessment.yaml`); writeFileSync(target, readFileSync(input, 'utf8')); return [name, target]; }));
 writeFileSync(typingDocument, unique(blockIncomplete.replace('class: ', 'class: c').replace('mode: ', 'mode: aut'), 'typing'));
 const settings = {
@@ -192,7 +199,7 @@ mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-host-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
 const allChecks = { block: checks(blockIncomplete), flow: checks(flowIncomplete) };
 const helperSource = `const vscode=require('vscode'); const fs=require('fs');
-const files=${JSON.stringify({ validDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, ordinaryYamlDocument, blankObjectDocument, blankRequireDocument, blankItemRequirementDocument, blankFieldRequirementDocument, blankFieldsDocument, blankCapabilityDocument, typingDocument, scopedDocument, canonicalDocuments })};
+const files=${JSON.stringify({ validDocument, variableDocument, blockDocument, flowDocument, objectDocument, traversalDocument, selectorDocument, hiveValueDocument, typeValueDocument, objectKeyDocument, objectNameDocument, fieldsDocument, invalidDocument, deletedObjectDocument, deletedRequireDocument, deletedItemRequirementDocument, deletedFieldRequirementDocument, deletedFieldsDocument, ordinaryYamlDocument, blankObjectDocument, blankRequireDocument, blankItemRequirementDocument, blankFieldRequirementDocument, blankFieldsDocument, blankCapabilityDocument, typingDocument, scopedDocument, canonicalDocuments })};
 const checks=${JSON.stringify(allChecks)};
 const expectedClass=${JSON.stringify(expected.class[0])};
 const expectedEvaluateTests=${JSON.stringify(expectedEvaluateTests)};
@@ -241,7 +248,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const defaultOpen={nativeTextEditor:Boolean(defaultEditor?.document?.uri?.toString()===valid.toString()),languageId:defaultEditor?.document?.languageId||'',activeUri:defaultEditor?.document?.uri?.fsPath||''};
  await vscode.window.showTextDocument(valid,vscode.ViewColumn.One);
  await new Promise(resolve=>setTimeout(resolve,${languageServerDelay}));
- const blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), traversalDoc=await vscode.workspace.openTextDocument(traversal), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), typeValueDoc=await vscode.workspace.openTextDocument(typeValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), deletedObjectDoc=await vscode.workspace.openTextDocument(deletedObject), deletedRequireDoc=await vscode.workspace.openTextDocument(deletedRequire), deletedItemRequirementDoc=await vscode.workspace.openTextDocument(deletedItemRequirement), deletedFieldRequirementDoc=await vscode.workspace.openTextDocument(deletedFieldRequirement), deletedFieldsDoc=await vscode.workspace.openTextDocument(deletedFields), blankObjectDoc=await vscode.workspace.openTextDocument(files.blankObjectDocument), blankRequireDoc=await vscode.workspace.openTextDocument(files.blankRequireDocument), blankItemRequirementDoc=await vscode.workspace.openTextDocument(files.blankItemRequirementDocument), blankFieldRequirementDoc=await vscode.workspace.openTextDocument(files.blankFieldRequirementDocument), blankFieldsDoc=await vscode.workspace.openTextDocument(files.blankFieldsDocument), blankCapabilityDoc=await vscode.workspace.openTextDocument(files.blankCapabilityDocument), typingDoc=await vscode.workspace.openTextDocument(typing);
+ const variableDoc=await vscode.workspace.openTextDocument(vscode.Uri.file(files.variableDocument)), blockDoc=await vscode.workspace.openTextDocument(block), flowDoc=await vscode.workspace.openTextDocument(flow), objectDoc=await vscode.workspace.openTextDocument(object), traversalDoc=await vscode.workspace.openTextDocument(traversal), selectorDoc=await vscode.workspace.openTextDocument(selector), hiveValueDoc=await vscode.workspace.openTextDocument(hiveValue), typeValueDoc=await vscode.workspace.openTextDocument(typeValue), objectKeyDoc=await vscode.workspace.openTextDocument(objectKey), objectNameDoc=await vscode.workspace.openTextDocument(objectName), fieldsDoc=await vscode.workspace.openTextDocument(files.fieldsDocument), invalidDoc=await vscode.workspace.openTextDocument(invalid), deletedObjectDoc=await vscode.workspace.openTextDocument(deletedObject), deletedRequireDoc=await vscode.workspace.openTextDocument(deletedRequire), deletedItemRequirementDoc=await vscode.workspace.openTextDocument(deletedItemRequirement), deletedFieldRequirementDoc=await vscode.workspace.openTextDocument(deletedFieldRequirement), deletedFieldsDoc=await vscode.workspace.openTextDocument(deletedFields), blankObjectDoc=await vscode.workspace.openTextDocument(files.blankObjectDocument), blankRequireDoc=await vscode.workspace.openTextDocument(files.blankRequireDocument), blankItemRequirementDoc=await vscode.workspace.openTextDocument(files.blankItemRequirementDocument), blankFieldRequirementDoc=await vscode.workspace.openTextDocument(files.blankFieldRequirementDocument), blankFieldsDoc=await vscode.workspace.openTextDocument(files.blankFieldsDocument), blankCapabilityDoc=await vscode.workspace.openTextDocument(files.blankCapabilityDocument), typingDoc=await vscode.workspace.openTextDocument(typing);
  await vscode.window.showTextDocument(validDoc,vscode.ViewColumn.One);
  const directEvaluateLine=validDoc.getText().split(/\\r?\\n/).findIndex(line=>/^\\s+test:\\s*/.test(line));
  const evaluateCompletions=await completion(valid,{line:directEvaluateLine,character:validDoc.lineAt(directEvaluateLine).text.length});
@@ -249,6 +256,8 @@ exports.activate=()=>setTimeout(async()=>{try{
  const ordinary=await vscode.workspace.openTextDocument(vscode.Uri.file(files.ordinaryYamlDocument)); await vscode.window.showTextDocument(ordinary,vscode.ViewColumn.One);
  const unrelatedStatus=await vscode.commands.executeCommand('scapNg.showYamlStatus');
  await vscode.window.showTextDocument(validDoc,vscode.ViewColumn.One);
+ const variableLine=variableDoc.getText().split(/\r?\n/).findIndex(line=>/^\s+-\s*$/.test(line));
+ const variableCompletions=await completion(vscode.Uri.file(files.variableDocument),{line:variableLine,character:variableDoc.lineAt(variableLine).text.length});
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
  const objectCompletions=await completion(object,objectPoint);
@@ -306,11 +315,11 @@ exports.activate=()=>setTimeout(async()=>{try{
  const multipleUnixObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[1].index,character:scopedDoc.lineAt(scopedObjectLines[1].index).text.length});
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
  await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
-const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', '--user-data-dir', join(workspace, 'user-data'), ...(process.env.SCAP_NG_EXTENSIONS_DIR ? ['--extensions-dir', resolve(process.env.SCAP_NG_EXTENSIONS_DIR)] : []), '--extensionDevelopmentPath', helper, ...(process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : ['--extensionDevelopmentPath', extensionPath]), workspace];
+const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : []), `--extensionDevelopmentPath=${helper}`, ...(process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
 const child = spawn(code, args, { detached: true, stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, VSCODE_IPC_HOOK: undefined, VSCODE_IPC_HOOK_CLI: undefined, VSCODE_PID: undefined } });
 const terminateHost = signal => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } } };
 const deadline = Date.now() + Number(process.env.SCAP_NG_HOST_TIMEOUT ?? 90000);
@@ -333,6 +342,7 @@ function assertSet(actual, wanted, name) {
 }
 for (const key of ['class','mode','capability','items_found','items_satisfying','values_found','values_matching']) assertSet(receipt.blockCompletions?.[key], expected[key], `block ${key}`);
 for (const key of ['items_satisfying','values_matching']) assertSet(receipt.flowCompletions?.[key], expected[key], `flow ${key}`);
+assertSet(receipt.variableCompletions, expectedVariableExpressions, 'recursive Variable expression');
 assertSet(receipt.evaluateCompletions, expectedEvaluateTests, 'evaluate.test');
 assertSet(receipt.multipleEvaluateCompletions, expectedMultipleEvaluateTests, 'nested evaluate.test');
 if (!receipt.defaultOpen?.nativeTextEditor || receipt.defaultOpen?.languageId !== 'yaml') failures.push('recognized Assessment did not open in the native YAML editor by default');

@@ -286,9 +286,14 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  assert.deepEqual(completionChoices(pack,missingCapability,missingCapabilityOffset),[]);
  const requirementProperties='assessment:\n  tests:\n    check-test:\n      require: {';
  const requirementChoices=completionChoices(pack,requirementProperties,requirementProperties.length);
- assert.equal(requirementChoices.find(x=>x.value==='item_requirement')?.insertText,'item_requirement: {items_found: one_or_more, items_satisfying: every}');
- assert.equal(requirementChoices.find(x=>x.value==='field_requirement')?.insertText,'field_requirement: {values_found: one_or_more, values_matching: every}');
- assert.equal(requirementChoices.find(x=>x.value==='fields')?.insertText,'fields: {');
+ const itemChoice=requirementChoices.find(x=>x.value==='item_requirement');
+ const fieldChoice=requirementChoices.find(x=>x.value==='field_requirement');
+ const fieldsChoice=requirementChoices.find(x=>x.value==='fields');
+ assert.equal(itemChoice?.insertText,'item_requirement: {items_found: one_or_more, items_satisfying: every}');
+ assert.equal(fieldChoice?.insertText,'field_requirement: {values_found: one_or_more, values_matching: every}');
+ assert.equal(fieldsChoice?.insertText,'fields: {');
+ assert.equal(itemChoice?.isDefault,true); assert.equal(itemChoice?.isPlaceholder,false);
+ assert.equal(fieldsChoice?.isDefault,false); assert.equal(fieldsChoice?.isPlaceholder,true);
  const hiveOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {';
  assert.deepEqual(completionChoices(pack,hiveOperators,hiveOperators.length).map(x=>x.value),['equals','datatype','value_match','redact_result']);
  const hiveValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';
@@ -319,4 +324,61 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const setSchema=registryObjectSchema.$defs.object.properties.set;
  const setProperties=new Set(); const walkSet=(node,base=pack.manifest.capabilities['windows.registry'].schema_uri,seen=new Set())=>{if(!node||typeof node!=='object')return; for(const key of Object.keys(node.properties??{}))setProperties.add(key); if(node.$ref){const uri=new URL(node.$ref,base).href;if(!seen.has(uri)){seen.add(uri);walkSet(pack.node(uri),uri,seen);}} for(const key of ['allOf','oneOf','anyOf'])for(const branch of node[key]??[])walkSet(branch,base,seen);}; walkSet(setSchema);
  assert.deepEqual(completionChoices(pack,registrySet,registrySet.length).map(x=>x.value),[...setProperties]);
+});
+
+
+test('recursive Variable expression completion follows schema oneOf and array item branches',()=>{
+ const prefix=`assessment:
+  variables:
+    example-variable:
+      expression:
+        `;
+ const alternatives=['literal','variable','values','concat','regex_capture','unique','merge'];
+ assert.deepEqual(completionChoices(pack,prefix,prefix.length).map(choice=>choice.value),alternatives);
+ const concat=`assessment:
+  variables:
+    example-variable:
+      expression:
+        concat:
+        - `;
+ assert.deepEqual(completionChoices(pack,concat,concat.length).map(choice=>choice.value),alternatives);
+ const capture=`assessment:
+  variables:
+    example-variable:
+      expression:
+        concat:
+        - regex_capture:
+            `;
+ assert.deepEqual(completionChoices(pack,capture,capture.length).map(choice=>choice.value),['pattern','value']);
+ const captureValue=`assessment:
+  variables:
+    example-variable:
+      expression:
+        concat:
+        - regex_capture:
+            value:
+              `;
+ assert.deepEqual(completionChoices(pack,captureValue,captureValue.length).map(choice=>choice.value),alternatives);
+ const merge=`assessment:
+  variables:
+    example-variable:
+      expression:
+        merge:
+          `;
+ assert.deepEqual(completionChoices(pack,merge,merge.length).map(choice=>choice.value),['delimiter','order','sort','values']);
+ const nestedObject=`assessment:
+  variables:
+    example-variable:
+      expression:
+        values:
+          object:
+            capability: windows.registry
+            hive: {equals: `;
+ const registry=pack.resource(pack.manifest.capabilities['windows.registry'].schema_uri);
+ const hiveEquals=registry.$defs.object.properties.hive.oneOf
+   .flatMap(branch=>branch.allOf??[]).map(branch=>branch.properties?.equals).find(Boolean);
+ const hiveValues=new Set();
+ const collectEnums=(node)=>{if(!node||typeof node!=='object')return;for(const value of node.enum??[])if(typeof value==='string')hiveValues.add(value);for(const key of ['allOf','oneOf','anyOf','items'])for(const branch of (Array.isArray(node[key])?node[key]:node[key]?[node[key]]:[]))collectEnums(branch);};
+ collectEnums(hiveEquals);
+ assert.deepEqual(completionChoices(pack,nestedObject,nestedObject.length).map(choice=>choice.value),[...hiveValues]);
 });

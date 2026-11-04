@@ -30,6 +30,26 @@ function mutatedPack() {
   const bytes = readFileSync(schemaPath);
   resource.bytes = bytes.length;
   resource.sha256 = createHash('sha256').update(bytes).digest('hex');
+  const variableResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/variable-expression.schema.json'));
+  const variablePath = join(root, variableResource.path);
+  const variableSchema = JSON.parse(readFileSync(variablePath, 'utf8'));
+  variableSchema.$defs.expression.oneOf.push({
+    required: ['fixture_expression'],
+    properties: {
+      fixture_expression: {
+        type: 'object',
+        description: 'Fixture expression branch from the mutated canonical schema.',
+        required: ['input'],
+        properties: { input: { type: 'string', description: 'Fixture expression input.' } },
+        additionalProperties: false
+      }
+    },
+    additionalProperties: false
+  });
+  writeFileSync(variablePath, JSON.stringify(variableSchema, null, 2) + '\n');
+  const variableBytes = readFileSync(variablePath);
+  variableResource.bytes = variableBytes.length;
+  variableResource.sha256 = createHash('sha256').update(variableBytes).digest('hex');
   const capabilityResource = manifest.resources.find(value => value.kind === 'schema' && value.uri.endsWith('/capabilities/windows.registry.schema.json'));
   const capabilityPath = join(root, capabilityResource.path);
   const capabilitySchema = JSON.parse(readFileSync(capabilityPath, 'utf8'));
@@ -61,6 +81,8 @@ test('schema mutation drives native completion, Graphical controls, hover metada
     assert.ok(completionChoices(pack, prefix, prefix.length).some(choice => choice.value === 'fixture-class'));
     const catalog = new GuidedCatalog(pack);
     assert.ok(catalog.capabilities().some(choice => choice.value === 'fixture.capability'));
+    const expressionPrefix = 'assessment:\n  variables:\n    fixture-variable:\n      expression:\n        ';
+    assert.ok(completionChoices(pack, expressionPrefix, expressionPrefix.length).some(choice => choice.value === 'fixture_expression'));
     const objectPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {';
     assert.ok(completionChoices(pack, objectPrefix, objectPrefix.length).some(choice => choice.value === 'fixture_selector'));
     const hiveValuePrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';

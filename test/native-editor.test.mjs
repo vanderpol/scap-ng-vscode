@@ -9,4 +9,13 @@ test('native YAML architecture keeps Source out of the webview textarea', () => 
   assert.match(source, /onDidChangeTextEditorSelection/);
   assert.match(source, /Open native YAML editor beside workbench/);
   assert.match(source, /registerCompletionItemProvider\(\{ language: 'yaml', scheme: 'file' \}/);
+  assert.match(source, /registerCodeActionsProvider\(\{ language: 'yaml', scheme: 'file' \}/);
+  const help = readFileSync(new URL('../src/yaml-help.ts', import.meta.url), 'utf8');
+  assert.match(help, /registerDefinitionProvider\(\{ language: 'yaml', scheme: 'file' \}/);
+  assert.match(help, /registerHoverProvider\(\{ language: 'yaml', scheme: 'file' \}/);
+  assert.match(help, /schemaTargetForPath/);
+  const completion = readFileSync(new URL('../src/completion.ts', import.meta.url), 'utf8');
+  assert.match(completion, /schema-resolver/);
+  assert.match(completion, /variables/);
+  assert.match(completion, /oneOf/);
 });

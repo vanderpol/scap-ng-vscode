@@ -1,6 +1,7 @@
 import { parseDocument } from 'yaml';
 import { MetadataPack } from './metadata.js';
 import { GuidedCatalog } from './guided.js';
+import { schemaNodes as resolveSchemaNodes, schemaPropertiesAtPath } from './schema-resolver.js';
 
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 
@@ -12,6 +13,7 @@ export interface CompletionChoice {
   isDefault?: boolean;
   insertText?: string;
   defaultValue?: unknown;
+  isPlaceholder?: boolean;
 }
 
 function lineAt(source: string, offset: number) {
@@ -46,26 +48,32 @@ function inlineMappingPath(text: string): string[] {
 }
 function pathAt(source: string, offset: number): string[] {
   const before = source.slice(0, offset).split(/\r?\n/);
-  const stack: Array<{ indent: number; key: string }> = [];
+  const stack: Array<{ indent: number; key: string; sequence: boolean }> = [];
   for (const raw of before.slice(0, -1)) {
     if (!raw.trim() || /^\s*#/.test(raw)) continue;
-    const match = raw.match(/^(\s*)(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+    const match = raw.match(/^(\s*)(-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
     if (!match) continue;
+    const sequence = Boolean(match[2]);
     const indent = match[1].replace(/\t/g, '  ').length;
-    while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
+    while (stack.length && (stack.at(-1)!.indent > indent ||
+      (!sequence && stack.at(-1)!.indent >= indent) ||
+      (sequence && stack.at(-1)!.indent === indent && stack.at(-1)!.sequence))) stack.pop();
     const rest = raw.slice(match[0].length).trim();
-    // Only blank block-mapping keys establish ancestry. Scalar siblings such
-    // as `mode: automated` must not become parents of the next key.
-    if (!rest || rest.startsWith('#')) stack.push({ indent, key: match[2] });
+    if (!rest || rest.startsWith('#')) stack.push({ indent, key: match[3], sequence });
   }
   const currentText = lineAt(source, offset).text;
   const currentIndent = currentText.match(/^\s*/)?.[0].replace(/\t/g, '  ').length ?? 0;
-  while (stack.length && stack.at(-1)!.indent >= currentIndent) stack.pop();
+  const currentMatch = currentText.match(/^(\s*)(-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+  const currentSequence = Boolean(currentMatch?.[2]) || /^\s*-\s*/.test(currentText);
+  while (stack.length && (stack.at(-1)!.indent > currentIndent ||
+    (!currentSequence && stack.at(-1)!.indent >= currentIndent) ||
+    (currentSequence && stack.at(-1)!.indent === currentIndent && stack.at(-1)!.sequence))) stack.pop();
   const delimiter = Math.max(currentText.lastIndexOf('{'), currentText.lastIndexOf(','));
   const segment = currentText.slice(delimiter + 1);
   const current = segment.match(/^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
   return [...stack.map(entry => entry.key), ...inlineMappingPath(currentText), ...(current ? [current[1]] : [])];
 }
+
 function currentKey(source: string, offset: number) {
   const { text } = lineAt(source, offset);
   const delimiter = Math.max(text.lastIndexOf('{'), text.lastIndexOf(','));
@@ -115,6 +123,22 @@ function currentCapability(source: string, offset: number): string | undefined {
     return undefined;
   }
 }
+function capabilityAtPath(source: string, path: string[]): string | undefined {
+  try {
+    const value = parseDocument(source, { uniqueKeys: false }).toJS({ maxAliasCount: 50 }) as any;
+    const objectIndex = path.lastIndexOf('object');
+    if (objectIndex >= 0) {
+      let current = value;
+      for (const segment of path.slice(0, objectIndex + 1)) {
+        if (Array.isArray(current)) current = current[0];
+        current = current?.[segment];
+      }
+      return typeof current?.capability === 'string' ? current.capability : undefined;
+    }
+  } catch { /* Incomplete YAML intentionally has no guessed capability. */ }
+  return undefined;
+}
+
 function authoredTestChoices(source: string): CompletionChoice[] {
   let tests: Record<string, any> | undefined;
   try {
@@ -129,9 +153,18 @@ function authoredTestChoices(source: string): CompletionChoice[] {
     kind: 'value'
   }));
 }
+function validSchemaSuggestion(pack: MetadataPack, uri: string, spec: any, value: unknown): unknown {
+  try {
+    // Validate only concrete pack locations. Synthetic schema fragments used
+    // by callers/tests remain usable as deterministic probes.
+    if (pack.node(uri) !== spec) return value;
+    return pack.validate(uri, value as any).length === 0 ? value : undefined;
+  } catch { return value; }
+}
+
 export function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, seen = new Set<string>()): unknown {
   if (!spec || typeof spec !== 'object') return undefined;
-  if (Object.hasOwn(spec, 'default')) return spec.default;
+  if (Object.hasOwn(spec, 'default')) return validSchemaSuggestion(pack, uri, spec, spec.default);
   // A oneOf/anyOf default is usable only when every alternative yields the
   // same complete value. A constructible first branch is not evidence of
   // author intent, so ambiguous alternatives remain an editable skeleton.
@@ -170,7 +203,8 @@ export function schemaDefaultValue(pack: MetadataPack, uri: string, spec: any, s
       const alternatives = [...(node.oneOf ?? []), ...(node.anyOf ?? [])];
       if (alternatives.length && !alternatives.some((branch: any) =>
         (Array.isArray(branch.required) ? branch.required : []).every((name: string) => Object.hasOwn(values, name)))) continue;
-      return values;
+      const suggestion = validSchemaSuggestion(pack, uri, node, values);
+      if (suggestion !== undefined) return suggestion;
     }
   }
   return undefined;
@@ -182,10 +216,11 @@ function yamlTemplateValue(value: unknown): string {
   return JSON.stringify(value);
 }
 function propertyChoice(pack: MetadataPack, uri: string, path: string, value: string, spec: any, insertText?: string): CompletionChoice {
+  const location = path ? `${uri}#${path}` : uri;
   let description = typeof spec?.description === 'string' ? spec.description : undefined;
   if (!description) {
     try {
-      description = pack.describe(`${uri}#${path}`, {
+      description = pack.describe(location, {
         documentVersion: pack.pin.schemaVersion,
         schemaValid: true,
         isOverride: false,
@@ -196,32 +231,38 @@ function propertyChoice(pack: MetadataPack, uri: string, path: string, value: st
   if (!description) {
     try {
       const parentPath = path.replace(/\/properties\/[^/]+$/, '');
-      const parentDescription = pack.describe(`${uri}#${parentPath}`, {
+      const parentDescription = parentPath ? pack.describe(`${uri}#${parentPath}`, {
         documentVersion: pack.pin.schemaVersion,
         schemaValid: true,
         isOverride: false,
         diagnostics: []
-      }).description;
+      }).description : undefined;
       description = parentDescription ? `Schema property '${value}'. ${parentDescription}` : `Schema-defined property '${value}'.`;
     } catch { description = `Schema-defined property '${value}'.`; }
   }
-  const defaultValue = schemaDefaultValue(pack, uri, spec);
+  const defaultValue = schemaDefaultValue(pack, location, spec);
   const template = defaultValue !== undefined && insertText?.endsWith('{')
     ? `${value}: ${yamlTemplateValue(defaultValue)}`
     : insertText;
-  return { value, label: spec?.title ?? value, description, kind: 'property', insertText: template, defaultValue };
+  return { value, label: spec?.title ?? value, description, kind: 'property', insertText: template, defaultValue, isDefault: defaultValue !== undefined, isPlaceholder: defaultValue === undefined && Boolean(insertText?.endsWith('{') || insertText?.endsWith('[')) };
 }
 function schemaNodes(pack: MetadataPack, baseUri: string, root: any, seen = new Set<string>()): any[] {
   if (!root || typeof root !== 'object') return [];
+  // The shared resolver owns reference/union expansion. This wrapper keeps
+  // the completion code's existing raw-node call sites small while ensuring
+  // hover, definitions, defaults and completion see the same branches.
+  let isRoot = typeof root.$id === 'string';
+  if (!isRoot) { try { isRoot = root === pack.resource(baseUri.split('#')[0]); } catch { /* inline schema fragment */ } }
+  if (isRoot) return resolveSchemaNodes(pack, baseUri, seen).map(location => location.node);
   const nodes = [root];
   if (typeof root.$ref === 'string') {
     const uri = new URL(root.$ref, baseUri).href;
-    if (!seen.has(uri)) {
-      seen.add(uri);
-      try { nodes.push(...schemaNodes(pack, uri, pack.node(uri), seen)); } catch { /* unresolved optional branch */ }
-    }
+    if (!seen.has(uri)) { try { nodes.push(...resolveSchemaNodes(pack, uri, new Set(seen)).map(location => location.node)); } catch { /* unresolved optional branch */ } }
   }
-  for (const key of ['allOf', 'oneOf', 'anyOf']) for (const child of root[key] ?? []) nodes.push(...schemaNodes(pack, baseUri, child, seen));
+  for (const key of ['allOf', 'oneOf', 'anyOf', 'if', 'then', 'else']) {
+    const branches = Array.isArray(root[key]) ? root[key] : root[key] ? [root[key]] : [];
+    for (const child of branches) nodes.push(...schemaNodes(pack, baseUri, child, seen));
+  }
   return nodes;
 }
 function schemaPropertyMap(pack: MetadataPack, uri: string, spec: any): Record<string, any> {
@@ -328,9 +369,56 @@ function schemaMappingChoices(pack: MetadataPack, uri: string, spec: any, pointe
 function assessmentSchema(pack: MetadataPack) {
   return pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && resource.uri.endsWith('/assessment.schema.json'))?.uri;
 }
-function genericMappingChoices(pack: MetadataPack, path: string[], capability: string): CompletionChoice[] | undefined {
+function variableMappingChoices(pack: MetadataPack, path: string[], current: string | undefined): CompletionChoice[] | undefined {
+  const root = assessmentSchema(pack);
+  if (!root || !path.includes('variables')) return undefined;
+  const variablesIndex = path.indexOf('variables');
+  if (variablesIndex < 1) return undefined;
+  // A variable name is a schema additionalProperties key. It is intentionally
+  // not offered as a fabricated completion; everything below it resolves
+  // through variable-expression.schema.json and its recursive expression $ref.
+  if (path.length === variablesIndex + 2) return [];
+  // Resolve the authored variable key through additionalProperties, then use
+  // the path below it to expose all oneOf expression alternatives.
+  const parentPath = current ? path.slice(0, -1) : path;
+  const properties = schemaPropertiesAtPath(pack, root, parentPath);
+  if (!properties.size) return undefined;
+  return [...properties.entries()].map(([value, location]) => propertyChoice(
+    pack,
+    location.uri,
+    '',
+    value,
+    location.node,
+    insertTextForSchema(pack, location.uri, location.node, value)
+  ));
+}
+function insertTextForSchema(pack: MetadataPack, uri: string, spec: any, value: string): string {
+  const defaultValue = schemaDefaultValue(pack, uri, spec);
+  if (defaultValue !== undefined) return `${value}: ${yamlTemplateValue(defaultValue)}`;
+  if (spec?.type === 'array') return `${value}: [`;
+  const branches = [...(spec?.oneOf ?? []), ...(spec?.anyOf ?? [])];
+  if (branches.length && branches.some(branch => branch?.type !== 'object' && !branch?.properties && !branch?.$ref)) return `${value}: `;
+  return schemaObjectLike(pack, uri, spec) ? `${value}: {` : `${value}: `;
+}
+function genericMappingChoices(pack: MetadataPack, path: string[], capability: string, current?: string): CompletionChoice[] | undefined {
   const uri = assessmentSchema(pack);
   if (!uri) return undefined;
+  const variableIndex = path.indexOf('variables');
+  if (variableIndex >= 1) {
+    const objectIndex = path.lastIndexOf('object');
+    const firstObjectMember = objectIndex >= 0 ? path[objectIndex + 1] : undefined;
+    if (objectIndex >= variableIndex && capability && firstObjectMember && firstObjectMember !== 'capability') {
+      const capabilitySchema = pack.manifest.capabilities[capability]?.schema_uri
+        ? pack.resource(pack.manifest.capabilities[capability].schema_uri) as any : undefined;
+      const firstSpec = capabilitySchema?.$defs?.object?.properties?.[firstObjectMember];
+      // Leave the scalar operand to the shared selector-value path below;
+      // returning an empty mapping here would suppress enum completion.
+      if (path.length > objectIndex + 2 && firstSpec?.['x-scap-ng-authoring']?.context === 'selector_comparison') return undefined;
+      return capabilityObjectMappingChoices(pack, capability, path.slice(objectIndex + 1));
+    }
+    if (objectIndex >= variableIndex && capability && path.length === objectIndex + 1) return capabilityObjectFields(pack, capability);
+    return variableMappingChoices(pack, path, current);
+  }
   const schema: any = pack.resource(uri);
   const assessment = schema.properties?.assessment;
   if (path.at(-1) === 'assessment') return schemaMappingChoices(pack, uri, assessment, '#/properties/assessment/properties');
@@ -429,6 +517,9 @@ function mappingKeysBefore(source: string, offset: number): Set<string> {
 }
 function missingMappingChoices(source: string, offset: number, key: string | undefined, choices: CompletionChoice[]): CompletionChoice[] {
   if (!choices.length) return choices;
+  // A sequence item is a new mapping instance. Its parent array key (for
+  // example `concat`) must not be removed from the expression oneOf choices.
+  if (/^\s*-\s*/.test(lineAt(source, offset).text)) return choices;
   const existing = mappingKeysBefore(source, offset);
   if (key) existing.delete(key);
   return choices.filter(choice => !existing.has(choice.value));
@@ -498,7 +589,7 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
   // Test references are instance-defined vocabulary: offer only keys authored
   // under assessment.tests, including nested expression branches.
   if (key === 'test' && path.includes('evaluate')) return authoredTestChoices(source);
-  if (key === 'capability' && path.includes('tests')) return catalog.capabilities();
+  if (key === 'capability' && (path.includes('tests') || path.includes('variables'))) return catalog.capabilities();
   if (key === 'reported_elements' && path.includes('tests')) return catalog.reportedElements();
   if (key === 'items_satisfying' && path.at(-2) === 'item_requirement') return adapterCardinality(catalog.itemsSatisfying());
   if (key === 'values_matching' && path.at(-2) === 'field_requirement') return adapterCardinality(catalog.fieldValuesMatching());
@@ -512,9 +603,9 @@ export function completionChoices(pack: MetadataPack, source: string, offset: nu
     if (key === 'items_found' && path.at(-2) === 'item_requirement') return catalog.itemFound();
     if (key === 'values_found' && path.at(-2) === 'field_requirement') return catalog.fieldValuesFound();
   }
-  const capability = currentCapability(source, offset) ?? '';
+  const capability = currentCapability(source, offset) ?? capabilityAtPath(source, path) ?? '';
   if (mappingMemberPosition(source, offset, path, key)) {
-    const mapped = genericMappingChoices(pack, path, capability);
+    const mapped = genericMappingChoices(pack, path, capability, key);
     if (mapped) return missingMappingChoices(source, offset, key, mapped);
     // A partially typed key (`k:`/`field_require:`) is not an AST property
     // yet. Resolve the parent mapping so completion can replace the prefix

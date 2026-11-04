@@ -8,6 +8,7 @@ import { previewRegexSafe } from './playground.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
+import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -246,7 +247,9 @@ function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
   if (parsed.errors.length || !parsed.contents) return [];
   let value: any;
   try { value = parsed.toJS({ maxAliasCount: 50 }); } catch { return []; }
-  const errors = pack.validateDetailed(schemaUri, value).filter(error => error.keyword === 'required');
+  const errors = pack.validateDetailed(schemaUri, value).filter(error =>
+    error.keyword === 'required' && !/^#\/oneOf\/\d+\/required$/.test(String(error.schemaPath))
+  );
   const tests = value?.assessment?.tests;
   if (tests && typeof tests === 'object' && !Array.isArray(tests)) for (const [testId, test] of Object.entries(tests)) {
     const capability = (test as any)?.capability;
@@ -451,6 +454,7 @@ function discoverPackPath(documentPath: string | undefined) {
     const parent = dirname(directory); if (parent === directory) return undefined; directory = parent;
   }
 }
+
 function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPack: () => MetadataPack | undefined, api: any) {
   if (!api.languages?.registerCompletionItemProvider) return;
   const redhatExtension = api.extensions?.getExtension?.('redhat.vscode-yaml');
@@ -496,7 +500,9 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))
           : new api.Range(position, position);
-        item.detail = choice.kind === 'property' ? 'Selected capability schema' : `Pinned SCAP-NG metadata${choice.isDefault ? ' (schema default)' : ''}`;
+        item.detail = choice.kind === 'property'
+          ? (choice.isDefault ? 'Valid schema default' : choice.isPlaceholder ? 'Schema skeleton; complete required fields' : 'Pinned schema property')
+          : `Pinned SCAP-NG metadata${choice.isDefault ? ' (schema default)' : ''}`;
         item.documentation = choice.description;
         return item;
       });
@@ -545,6 +551,8 @@ export function activate(context: vscode.ExtensionContext) {
   const schemaDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-schema');
   const indexDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-index');
   registerYamlCompletionProvider(context, () => pack, api);
+  registerYamlDefinitionProvider(context, () => pack, api);
+  registerYamlHoverProvider(context, () => pack, api);
   registerYamlCodeActions(context, () => pack, api);
   const build = readBuildInfo(context.extensionPath);
   const yamlStatus = api.window.createStatusBarItem(api.StatusBarAlignment?.Right ?? 2, 100);
