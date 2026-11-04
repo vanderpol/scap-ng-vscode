@@ -6,7 +6,7 @@ The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/v
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
-**Status:** pre-alpha extension host, Assessment Studio index, source-backed Structured editing and first schema-driven Guided authoring slice are implemented. Full novice-oriented UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
+**Status:** pre-alpha extension host, Assessment Studio index, source-backed Graphical editing and native YAML authoring are implemented; Guided authoring is reserved for the New Assessment Wizard. Full novice-oriented UI remains roadmap work. Build produces a locally installable offline VSIX. This repository is the editor, not the SCAP-NG standard, converter, compiler, or scanner.
 
 ## Start here (especially for Codex)
 
@@ -15,7 +15,10 @@ Current editor samples deliberately display the comparison order **Item requirem
 3. **[Editor blueprint](docs/EDITOR-BLUEPRINT.md)** — Source/Structured/Guided, Assessment Studio UI, workspace index, offline design, proposed architecture and test contracts.
 4. **[Implementation roadmap / Issue #1](https://github.com/vanderpol/scap-ng-vscode/issues/1)** — first runnable VSIX milestone.
 5. **[Open-source editor reconnaissance](docs/OPEN-SOURCE-EDITOR-RECON.md)** — reviewed interoperability and custom-editor patterns.
-5. **[One-clone Linux development setup](docs/WORKSPACE-BOOTSTRAP.md)** — exact public dependencies, offline pack, safe PR workflow and large-library boundary.
+6. **[P0 schema-guided authoring](docs/P0-SCHEMA-GUIDED-AUTHORING.md)** — completion, required-property insertion and expression skeleton design.
+7. **[Future YAML authoring configuration](docs/FUTURE-AUTHORING-CONFIGURATION.md)** — planned Object-style and general authoring preferences; these settings are not implemented yet.
+8. **[P1 authoring sidebar](docs/P1-AUTHORING-SIDEBAR.md)** — planned schema help, regex tester, sample Object tester, and diagnostics panels.
+7. **[One-clone Linux development setup](docs/WORKSPACE-BOOTSTRAP.md)** — exact public dependencies, offline pack, safe PR workflow and large-library boundary.
 
 ### One checkout is enough
 
@@ -60,7 +63,7 @@ A real VS Code 1.128.0 host receipt is documented in [docs/ISSUE-30-VSIX-DEMO.md
 
 ## Issue #18 desktop UX checkpoint
 
-The current custom editor provides a simultaneous Guided context, Graphical/Structured Test editor and editable YAML Source pane for existing Assessments. It preserves source-backed scalar edits, highlights safe source ranges, supports retained pane splitters, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. See [the Issue #18 checkpoint](docs/ISSUE-18-UX-CHECKPOINT.md) for verification commands and explicit remaining boundaries.
+The current custom editor provides a Graphical Test editor for existing Assessments and opens the same document in the native VS Code YAML editor on demand. It preserves source-backed scalar edits, highlights safe source ranges, explains optional branches and multi-Test selection semantics, and exposes a bounded offline regex preview without executing Assessments. Guided authoring is deferred to the New Assessment Wizard. See [the Issue #35 checkpoint](docs/ISSUE-35-GRAPHICAL-YAML-CHECKPOINT.md) for the current workflow, completion scope, verification commands and explicit boundaries.
 
 ## Runnable metadata checkpoint (#7)
 
@@ -72,7 +75,7 @@ npm run lint
 npm test
 ```
 
-The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `463675f3` and manifest SHA-256 `0b8df930…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable.
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `463675f3` and manifest SHA-256 `0b8df930…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`). The installed build can be confirmed from the Command Palette with **SCAP-NG: Show installed build**; it displays the short commit and UTC build timestamp.
 
 The current pinned 0.4 schema pack adopts native Result A (`require_*` source
 locations and Field Results). Offline integration checks supplied synthetic

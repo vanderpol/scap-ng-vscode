@@ -6,7 +6,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/write-build-info.mjs",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:integration": "npm run build && node --test test/integration/*.test.mjs",
@@ -14,7 +14,13 @@
     "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
     "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
     "package": "npm run package:vsix",
-    "package:vsix": "node scripts/package-vsix.mjs"
+    "package:vsix": "npm run build && node scripts/package-vsix.mjs",
+    "test:host": "npm run build && node scripts/host-acceptance-probe.mjs",
+    "test:host:mutation": "npm run build && node scripts/schema-mutation-host-probe.mjs",
+    "test:host:redhat": "npm run build && npm run verify:test-deps && node scripts/host-acceptance-probe.mjs",
+    "verify:test-deps": "node scripts/verify-redhat-yaml.mjs",
+    "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs",
+    "test:host:status": "npm run build && node scripts/status-host-probe.mjs"
   },
   "files": [
     "dist",
@@ -44,8 +50,10 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:scapNg.assessmentStudio",
-    "onCommand:scapNg.showPin"
+    "onCommand:scapNg.openAssessmentStudio",
+    "onCommand:scapNg.showPin",
+    "onLanguage:yaml",
+    "onView:scapNg.assessmentStudio"
   ],
   "contributes": {
     "commands": [
@@ -58,12 +66,28 @@
         "title": "SCAP-NG: Search Assessment Studio"
       },
       {
+        "command": "scapNg.openAssessmentStudio",
+        "title": "SCAP-NG: Open Graphical Assessment editor"
+      },
+      {
         "command": "scapNg.configureYamlSchemas",
         "title": "SCAP-NG: Configure native YAML schemas"
       },
       {
         "command": "scapNg.createGuidedAssessment",
         "title": "SCAP-NG: Create Guided Assessment"
+      },
+      {
+        "command": "scapNg.showBuildInfo",
+        "title": "SCAP-NG: Show installed build"
+      },
+      {
+        "command": "scapNg.showYamlStatus",
+        "title": "SCAP-NG: Show YAML status"
+      },
+      {
+        "command": "scapNg.diagnoseYaml",
+        "title": "SCAP-NG: Diagnose native YAML"
       }
     ],
     "viewsContainers": {
@@ -107,6 +131,22 @@
         ],
         "priority": "option"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@5"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation"
+        }
+      ]
+    }
   }
 }

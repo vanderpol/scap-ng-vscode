@@ -119,9 +119,13 @@ export class MetadataPack {
       hasSuggestion: annotation.representation === 'key' ? Object.hasOwn(annotation, 'default_key') : Object.hasOwn(combined, 'default'),
       pin: this.pin, validationLevel: 'schema-metadata-only', assessmentExecution: 'unavailable' });
   }
-  validate(uri: string, value: Json): string[] {
+  validateDetailed(uri: string, value: Json) {
     const validator = this.ajv.compile({ $ref: uri });
-    return validator(value) ? [] : (validator.errors ?? []).map(e => `${e.instancePath}: ${e.message}`);
+    validator(value);
+    return validator.errors ?? [];
+  }
+  validate(uri: string, value: Json): string[] {
+    return this.validateDetailed(uri, value).map(e => `${e.instancePath}: ${e.message}`);
   }
   private keyChoices(uri: string, defaultKey: string): string[] {
     const groups: string[][] = []; const propertyLimits: string[][] = []; const arrayKeys = new Set<string>();

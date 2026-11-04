@@ -1,21 +1,10 @@
-# Issue #30 — native YAML editor checkpoint
+# Issue #30 — native YAML checkpoint
 
-The Source pane is now a read-only synchronized preview with an explicit **Open native YAML editor beside workbench** action. The authoritative source surface is VS Code's own YAML TextEditor, not an HTML textarea.
+The custom Assessment editor uses Graphical controls for existing documents and opens the authoritative source in the native VS Code YAML editor with **Open native YAML editor beside workbench**. It no longer embeds a read-only YAML preview or a source textarea.
 
-## Source/Graphical relationship
+- Both surfaces share one `TextDocument`.
+- Graphical controls reveal their native YAML ranges; native YAML selection focuses the corresponding Graphical control.
+- Native YAML save, diagnostics, IntelliSense (when the optional YAML language service is installed), undo and redo remain native workbench behavior.
+- Guided authoring is not part of the existing-document editor; it is deferred to the New Assessment Wizard.
 
-- Both editors address the same `vscode.TextDocument`.
-- Native source edits trigger the existing custom-editor model refresh through `onDidChangeTextDocument`.
-- Graphical scalar edits continue to use minimal `WorkspaceEdit` ranges, so the native editor shows the exact patch and supplies undo/redo.
-- Selecting a Graphical control reveals/selects its concrete range in the native editor.
-- Selecting a scalar in the native editor focuses and highlights the corresponding Graphical/Guided control where the path is represented.
-- The native editor can be maximized or moved to a separate group; the workbench remains independently resizable.
-- Existing source-preservation and stale-revision checks remain authoritative. No second YAML document or serializer was introduced.
-
-## Host receipt
-
-A real VS Code 1.128.0 host run opened the canonical Windows Registry Assessment in the custom workbench and the native YAML editor in a neighboring group. Extension-host activation completed without missing runtime dependencies. The captured receipt is [the Issue #30 demo image](evidence/issue-30-vsix-native-source-1920x968.png).
-
-The current increment intentionally does not claim schema IntelliSense, Red Hat YAML interoperability, or live schema diagnostics. Those are the next native-source productivity increment. The extension remains usable without Red Hat YAML, and no network/schema download is required.
-
-A second host receipt was captured after resizing the extension-development window to approximately 1100×820, exercising the smaller-window layout and native editor separation: [small-window receipt](evidence/issue-30-vsix-native-source-small-window.png).
+See [the Issue #35 checkpoint](ISSUE-35-GRAPHICAL-YAML-CHECKPOINT.md) for source-value synchronization, contextual completion, and acceptance verification.
