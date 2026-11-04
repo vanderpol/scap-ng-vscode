@@ -494,9 +494,19 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         if (!flowMapping && propertyInsert.endsWith('{')) propertyInsert = `${choice.value}:`;
         // If the user deleted only the property name, preserve the existing
         // colon (`k: ...`) instead of producing `key: : ...`.
-        item.insertText = choice.kind === 'property'
+        let completionInsert = choice.kind === 'property'
           ? (nextCharacter === ':' ? choice.value : propertyInsert)
           : choice.value;
+        // A child mapping requested immediately after `fields:`/`require:`
+        // must start on the next indented block line. Inserting the key after
+        // the parent's colon creates invalid `fields: mount_options:` YAML.
+        // Flow mappings and already-indented sequence items stay compact.
+        const blankParent = linePrefix.match(/^(\s*)(?:-\s*)?[A-Za-z_][A-Za-z0-9_-]*:\s*$/);
+        if (choice.kind === 'property' && !flowMapping && blankParent && nextCharacter !== ':') {
+          const tabSize = Number(api.workspace?.getConfiguration?.('editor', document.uri)?.get?.('tabSize') ?? document.options?.tabSize ?? 2);
+          completionInsert = `\n${' '.repeat(blankParent[1].length + (Number.isFinite(tabSize) && tabSize > 0 ? tabSize : 2))}${completionInsert}`;
+        }
+        item.insertText = completionInsert;
         item.range = typeof document.getWordRangeAtPosition === 'function'
           ? (document.getWordRangeAtPosition(position, /[A-Za-z0-9_.-]+/) ?? new api.Range(position, position))
           : new api.Range(position, position);
