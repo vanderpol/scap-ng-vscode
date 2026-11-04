@@ -45,13 +45,13 @@ export async function previewRegexSafe(patterns: readonly string[], input: strin
   return await new Promise(resolve => {
     let settled = false;
     const worker = new Worker(new URL('./playground-worker.js', import.meta.url), { workerData: { patterns: pending.map(item => item.pattern), input: input.slice(0, MAX_INPUT), flags } });
-    const finish = (values?: Array<{ matched: boolean; captures: string[]; namedCaptures?: Record<string, string | undefined>; matchSpan?: [number, number]; spans?: RegexCaptureSpan[]; error?: string }>, timedOut = false) => {
+    const finish = (values?: Array<{ matched: boolean; captures: string[]; namedCaptures?: Record<string, string | undefined>; matchSpan?: [number, number]; spans?: RegexCaptureSpan[]; error?: string }>, timedOut = false, workerError?: string) => {
       if (settled) return; settled = true; clearTimeout(timer); void worker.terminate();
-      for (let i = 0; i < pending.length; i++) { const item = pending[i]; const value = values?.[i]; results[item.index] = result(item.pattern, input, value?.error ?? (timedOut ? 'Preview timed out and was cancelled.' : undefined), value?.matched ?? false, value?.captures ?? [], timedOut, value?.namedCaptures ?? {}, value?.matchSpan, value?.spans ?? []); }
+      for (let i = 0; i < pending.length; i++) { const item = pending[i]; const value = values?.[i]; results[item.index] = result(item.pattern, input, value?.error ?? workerError ?? (timedOut ? 'Preview timed out and was cancelled.' : undefined), value?.matched ?? false, value?.captures ?? [], timedOut, value?.namedCaptures ?? {}, value?.matchSpan, value?.spans ?? []); }
       resolve(results as RegexPreview[]);
     };
     const timer = setTimeout(() => finish(undefined, true), Math.max(1, Math.min(timeoutMs, 2_000)));
     worker.once('message', (values: Array<{ matched: boolean; captures: string[]; error?: string }>) => finish(values));
-    worker.once('error', () => finish(undefined, false));
+    worker.once('error', (error: Error) => finish(undefined, false, `Preview worker failed: ${error.message}`));
   });
 }
