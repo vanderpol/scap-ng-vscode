@@ -16,6 +16,7 @@ Current editor samples deliberately display the comparison order **Item requirem
 4. **[Implementation roadmap / Issue #1](https://github.com/vanderpol/scap-ng-vscode/issues/1)** — first runnable VSIX milestone.
 5. **[Open-source editor reconnaissance](docs/OPEN-SOURCE-EDITOR-RECON.md)** — reviewed interoperability and custom-editor patterns.
 6. **[P0 schema-guided authoring](docs/P0-SCHEMA-GUIDED-AUTHORING.md)** — completion, required-property insertion and expression skeleton design.
+7. **[Future YAML authoring configuration](docs/FUTURE-AUTHORING-CONFIGURATION.md)** — planned Object-style and general authoring preferences; these settings are not implemented yet.
 7. **[One-clone Linux development setup](docs/WORKSPACE-BOOTSTRAP.md)** — exact public dependencies, offline pack, safe PR workflow and large-library boundary.
 
 ### One checkout is enough
