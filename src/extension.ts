@@ -9,6 +9,7 @@ import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
+import { schemaCapabilityObjectProperties } from './schema-resolver.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -252,7 +253,8 @@ function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
   let value: any;
   try { value = parsed.toJS({ maxAliasCount: 50 }); } catch { return []; }
   const errors = pack.validateDetailed(schemaUri, value).filter(error =>
-    error.keyword === 'required' && !/^#\/oneOf\/\d+\/required$/.test(String(error.schemaPath))
+    error.keyword === 'required' &&
+    (!/^#\/oneOf\/\d+\/required$/.test(String(error.schemaPath)) || error.params?.missingProperty === 'fields')
   );
   const tests = value?.assessment?.tests;
   if (tests && typeof tests === 'object' && !Array.isArray(tests)) for (const [testId, test] of Object.entries(tests)) {
@@ -262,6 +264,12 @@ function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
     if (!capabilityUri || !object || typeof object !== 'object' || Array.isArray(object)) continue;
     const capabilitySchema: any = pack.resource(capabilityUri);
     const objectSchema = capabilitySchema.$defs?.object;
+    // A reviewed native-selector overlay may intentionally replace generated
+    // capability field names (for example filepath versus legacy full_path).
+    // Keep the generated schema's required-branch diagnostics, but do not
+    // report a legacy required member that the active overlay cannot contain.
+    const overlayFields = schemaCapabilityObjectProperties(pack, capability);
+    const hasOverlay = overlayFields.size > 0;
     const branches = Array.isArray(objectSchema?.oneOf) ? objectSchema.oneOf : [];
     // AJV reports required errors from every oneOf branch. Only publish the
     // branch best matched by authored keys; otherwise deleting hive from a
@@ -276,6 +284,7 @@ function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
       if (best >= 0) selectedBranches.add(best);
     }
     for (const error of pack.validateDetailed(`${capabilityUri}#/$defs/object`, object)) if (error.keyword === 'required') {
+      if (hasOverlay && typeof error.params?.missingProperty === 'string' && !overlayFields.has(error.params.missingProperty)) continue;
       const branch = String(error.schemaPath).match(/^#\/oneOf\/(\d+)\/required$/);
       if (branches.length && (!branch || !selectedBranches.has(Number(branch[1])))) continue;
       if (!branches.length && !/^#\/oneOf\/\d+\/required$/.test(error.schemaPath)) continue;

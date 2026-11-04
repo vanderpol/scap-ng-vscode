@@ -11,7 +11,7 @@ The active integration profile uses the exact head of coordinated draft PR #21:
 - Candidate schema snapshot: 145 JSON files, 35 root schemas, 652 root `$ref`s  
 - Candidate schema aggregate SHA-256: `2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843`
 - Candidate editor-pack resource count: 236
-- Candidate pack manifest SHA-256: `2aa28f9926d4d7774edcf48b991f1f48b121e34a7dce9006b1db129a6301727e`
+- Candidate pack manifest SHA-256: `b156e978c2655fa6231c5d8b86d54e873e78ee344b606dd3cdc7e1702830269f`
 
 The pack is generated from the exact candidate checkout and the pinned OVAL
 5.12.3 inputs. The currently pinned `scap-ng-tools` exporter rejects the

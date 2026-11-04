@@ -77,7 +77,10 @@ function schemaEnumsForProperty(node, name) {
   return [...values];
 }
 const hiveSchema = capabilitySchema.$defs?.object?.properties?.hive;
-const expectedHiveOperators = schemaPropertyNames(hiveSchema);
+const selectorOperatorNames = new Set((assessmentLanguage.$defs?.object_selector_predicate?.allOf ?? [])
+  .flatMap(layer => layer?.oneOf ?? [])
+  .flatMap(branch => Array.isArray(branch?.required) && branch.required.length === 1 ? [branch.required[0]] : []));
+const expectedHiveOperators = schemaPropertyNames(hiveSchema).filter(value => selectorOperatorNames.has(value));
 const expectedHiveValues = schemaEnumsForProperty(hiveSchema, 'equals');
 const capabilityMapping = pack.resource(pack.manifest.capabilities['windows.registry'].mapping_uri);
 const expectedTypeValues = capabilityMapping.native?.state_value_enums?.type ?? [];
@@ -256,7 +259,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const ordinary=await vscode.workspace.openTextDocument(vscode.Uri.file(files.ordinaryYamlDocument)); await vscode.window.showTextDocument(ordinary,vscode.ViewColumn.One);
  const unrelatedStatus=await vscode.commands.executeCommand('scapNg.showYamlStatus');
  await vscode.window.showTextDocument(validDoc,vscode.ViewColumn.One);
- const variableLine=variableDoc.getText().split(/\r?\n/).findIndex(line=>/^\s+-\s*$/.test(line));
+ const variableLine=variableDoc.getText().split(/\\r?\\n/).findIndex(line=>/^\\s+-\\s*$/.test(line));
  const variableCompletions=await completion(vscode.Uri.file(files.variableDocument),{line:variableLine,character:variableDoc.lineAt(variableLine).text.length});
  const blockCompletions={},flowCompletions={};for(const point of checks.block)blockCompletions[point.key]=await completion(block,point);for(const point of checks.flow)flowCompletions[point.key]=await completion(flow,point);
  const objectPoint={line:objectDoc.getText().split(/\\r?\\n/).findIndex(line=>line.includes('object: {')),character:objectDoc.getText().split(/\\r?\\n/).find(line=>line.includes('object: {')).length};
@@ -337,7 +340,10 @@ function assertSet(actual, wanted, name) {
   if (JSON.stringify([...new Set(labels)].sort()) !== JSON.stringify([...wanted].sort())) failures.push(`${name}: completion set mismatch`);
   for (const item of actual || []) {
     if (item.label && item.kind === 9 && !item.documentation) failures.push(`${name}: ${item.label} has no schema-derived property description`);
-    if (item.label && item.insertText && item.insertText !== item.label && (!item.insertText.startsWith(item.label) || (item.kind !== 9 && !item.insertText.trimEnd().endsWith(':')))) failures.push(`${name}: ${item.label} insertion mismatch (${item.insertText})`);
+    if (item.label && item.insertText && item.insertText !== item.label) {
+      const normalizedInsert = item.insertText.replace(/^\s*\n\s*/, '');
+      if (!(normalizedInsert.startsWith(item.label) || (item.kind !== 9 && item.insertText.trimEnd().endsWith(':')))) failures.push(`${name}: ${item.label} insertion mismatch (${item.insertText})`);
+    }
   }
 }
 for (const key of ['class','mode','capability','items_found','items_satisfying','values_found','values_matching']) assertSet(receipt.blockCompletions?.[key], expected[key], `block ${key}`);

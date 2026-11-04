@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.4.0",
   "sourceCommit": "7b9b61108aa30a601828268576308e510477094e",
-  "manifestSha256": "2aa28f9926d4d7774edcf48b991f1f48b121e34a7dce9006b1db129a6301727e",
+  "manifestSha256": "b156e978c2655fa6231c5d8b86d54e873e78ee344b606dd3cdc7e1702830269f",
   "channel": "unmerged-schema-candidate",
   "candidatePullRequest": 21,
   "candidateStatus": "draft",
@@ -12,5 +12,5 @@
   "candidateSchemaJsonCount": 145,
   "candidateRootSchemaCount": 35,
   "candidateRootRefCount": 652,
-  "packGeneratorRevision": "temporary candidate compatibility overlay over scap-ng-tools@1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42"
+  "packGeneratorRevision": "temporary candidate compatibility overlay over scap-ng-tools@1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42 with Red Hat cross-document $ref normalization"
 }

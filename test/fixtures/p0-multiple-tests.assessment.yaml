@@ -21,7 +21,7 @@ assessment:
       test_title: Unix file test
       capability: unix.file
       object:
-        full_path:
+        filepath:
           equals: /etc/passwd
       require:
         item_requirement:

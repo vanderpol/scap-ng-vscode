@@ -31,7 +31,7 @@ assessmentResource.sha256 = createHash('sha256').update(resourceBytes).digest('h
 const overlayResource = manifest.resources.find(resource => resource.kind === 'schema' && resource.uri.endsWith('/native-selector.schema.json'));
 const overlayPath = join(pack, overlayResource.path);
 const overlay = JSON.parse(readFileSync(overlayPath, 'utf8'));
-overlay.$defs.windows_registry_hive_selector.allOf[2].properties.equals.oneOf[0].enum = ['fixture-hive'];
+overlay.$defs.windows_registry_hive_selector.allOf[2].properties.equals.oneOf[0].enum.push('fixture-hive');
 writeFileSync(overlayPath, JSON.stringify(overlay, null, 2) + '\n');
 const overlayBytes = readFileSync(overlayPath);
 overlayResource.bytes = overlayBytes.length;

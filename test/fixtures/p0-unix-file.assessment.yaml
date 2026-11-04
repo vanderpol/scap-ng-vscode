@@ -11,7 +11,9 @@ assessment:
     unix-file-presence-test:
       test_title: Unix passwd file is present
       capability: unix.file
-      object: {full_path: {equals: /etc/passwd}}
+      object:
+        filepath:
+          equals: /etc/passwd
       require:
         item_requirement: {items_found: one_or_more, items_satisfying: every}
         field_requirement:
