@@ -54,7 +54,8 @@
     "onCommand:scapNg.showPin",
     "onLanguage:yaml",
     "onView:scapNg.assessmentStudio",
-    "onCommand:scapNg.testRegex"
+    "onCommand:scapNg.testRegex",
+    "onCommand:scapNg.testObject"
   ],
   "contributes": {
     "commands": [
@@ -93,6 +94,10 @@
       {
         "command": "scapNg.testRegex",
         "title": "SCAP-NG: Test Regex"
+      },
+      {
+        "command": "scapNg.testObject",
+        "title": "SCAP-NG: Test Object with Sample Items"
       }
     ],
     "viewsContainers": {
@@ -155,6 +160,11 @@
           "command": "scapNg.testRegex",
           "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
           "group": "navigation@10"
+        },
+        {
+          "command": "scapNg.testObject",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@11"
         }
       ]
     }

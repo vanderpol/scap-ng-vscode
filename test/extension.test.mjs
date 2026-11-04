@@ -18,6 +18,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.showYamlStatus'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.testRegex'));
   assert.ok(packageJson.contributes.menus['editor/context'].some(menu => menu.command === 'scapNg.testRegex'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.testObject'));
+  assert.ok(packageJson.contributes.menus['editor/context'].some(menu => menu.command === 'scapNg.testObject'));
   assert.ok(packageJson.contributes.menus['editor/title'].some(menu => menu.command === 'scapNg.openAssessmentStudio'));
   assert.deepEqual(packageJson.contributes.customEditors[0].selector.map(s => s.filenamePattern), ['**/*.assessment.yaml', '**/*.assessment.yml']);
   assert.equal(profile.schemaVersion, '0.4.0');

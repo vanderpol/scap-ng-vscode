@@ -109,3 +109,24 @@ test('P1A treats a selected matches_regex sequence as one editable expression se
  const edit = replaceRegexScalars(raw, context, ['one', 'two', 'three']);
  assert.match(edit.nextText, /- 'one'\n\s+- 'two'\n\s+- 'three'/);
 });
+
+
+test('P1B resolves only the enclosing Object capability and explains sample selector traces', async () => {
+ const { findObjectContext, evaluateObjectSamples } = await import('../dist/sample-object.js');
+ const yaml = `assessment:\n  tests:\n    linux-test:\n      capability: linux.partition\n      object:\n        mount_point: {matches_regex: '^/tmp'}\n`;
+ const context = findObjectContext(yaml, yaml.indexOf('mount_point') + 2);
+ assert.equal(context?.capability, 'linux.partition'); assert.equal(context?.testId, 'linux-test');
+ const samples = `- id: one\n  capability: linux.partition\n  status: exists\n  fields:\n    mount_point: {datatype: string, value: /tmp}\n  provenance: {}\n- id: two\n  capability: linux.partition\n  status: exists\n  fields: {}\n  provenance: {}\n`;
+ const result = await evaluateObjectSamples(context.object, context.capability, samples);
+ assert.deepEqual(result.selectedItemIndices, [0]); assert.equal(result.items[0].status, 'matched'); assert.equal(result.items[1].items?.length, undefined);
+ assert.equal(result.items[1].selectors[0].status, 'missing'); assert.ok(result.warnings.some(x => /offline sample/i.test(x)));
+});
+
+test('P1B keeps malformed, unresolved and unsupported selector states explicit', async () => {
+ const { evaluateObjectSamples } = await import('../dist/sample-object.js');
+ const object = { value: { variable: 'expected-value' }, other: { made_up_operator: 1 } };
+ const result = await evaluateObjectSamples(object, 'unknown.capability', '{bad: [');
+ assert.ok(result.inputDiagnostics.length);
+ const result2 = await evaluateObjectSamples(object, 'unknown.capability', JSON.stringify({id:'i',capability:'unknown.capability',status:'exists',fields:{value:{datatype:'string',value:'x'},other:{datatype:'string',value:'y'}},provenance:{}}));
+ assert.equal(result2.items[0].selectors[0].status, 'indeterminate'); assert.equal(result2.items[0].selectors[1].status, 'indeterminate');
+});
