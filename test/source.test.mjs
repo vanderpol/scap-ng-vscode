@@ -80,3 +80,32 @@ test('pathological regex preview is rejected or cancelled outside the extension 
  const cancelled=await previewRegexSafe(['^(a|aa)+$'],'a'.repeat(50000)+'!', '', 25);
  assert.ok(cancelled[0].timedOut || cancelled[0].error,JSON.stringify(cancelled[0]));
 });
+
+test('P1A extracts regex scalars from schema-shaped selectors and variable regex_capture', async () => {
+ const { findRegexContext, replaceRegexScalar } = await import('../dist/regex-tester.js');
+ const linux = `assessment:\n  tests:\n    t:\n      capability: linux.partition\n      object:\n        mount_point: {matches_regex: '.*\\\\/home'}\n`;
+ const selected = findRegexContext(linux, linux.indexOf('.*'), linux.indexOf('.*') + 2);
+ assert.equal(selected?.kind, 'matches_regex'); assert.equal(selected?.pattern, '.*\\\\/home');
+ const changed = replaceRegexScalar(linux, selected, '^/tmp$');
+ assert.match(changed.nextText, /mount_point: \{matches_regex: '\^\/tmp\$'\}/);
+ const variable = `assessment:\n  variables:\n    v:\n      expression:\n        concat:\n        - regex_capture:\n            pattern: '(^[A-Z]+)$'\n            value: {literal: x}\n`;
+ const capture = findRegexContext(variable, variable.indexOf('^[A-Z]'));
+ assert.equal(capture?.kind, 'regex_capture'); assert.equal(capture?.pattern, '(^[A-Z]+)$');
+});
+
+test('P1A regex preview exposes spans and named captures', () => {
+ const result = previewRegex('^(?<user>[^:]+):(.+)$', 'alice:secret');
+ assert.equal(result.matched, true); assert.deepEqual(result.namedCaptures, { user: 'alice' });
+ assert.deepEqual(result.matchSpan, [0, 12]); assert.equal(result.spans[0].text, 'alice:secret');
+});
+
+test('P1A treats a selected matches_regex sequence as one editable expression set', async () => {
+ const { findRegexContext, replaceRegexScalars } = await import('../dist/regex-tester.js');
+ const raw = `assessment:\n  tests:\n    t:\n      capability: independent.shellcommand\n      require:\n        fields:\n          stdout_line:\n            matches_regex:\n              - 'first'\n              - 'second'\n              - 'third'\n`;
+ const start = raw.indexOf("'first'"); const end = raw.indexOf("'third'") + "'third'".length;
+ const context = findRegexContext(raw, start, end);
+ assert.deepEqual(context?.patterns, ['first', 'second', 'third']);
+ assert.equal(context?.sourceRanges.length, 3);
+ const edit = replaceRegexScalars(raw, context, ['one', 'two', 'three']);
+ assert.match(edit.nextText, /- 'one'\n\s+- 'two'\n\s+- 'three'/);
+});

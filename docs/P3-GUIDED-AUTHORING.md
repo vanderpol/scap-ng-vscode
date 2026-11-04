@@ -15,3 +15,21 @@ The wizard supports:
 Generated comparison requirements insert `item_requirement`, then `field_requirement`, then `fields`, preserving the owner-approved presentation order. `one` and `xor` remain distinct native tokens. The wizard does not emit scanner results or claim compliance.
 
 This is intentionally a thin slice. Advanced multi-Test editing, dynamic record keys, variables, dependent inputs, diff approval, and full accessibility/extension-host coverage remain follow-up work. Users can immediately continue in Source or Structured mode; generated YAML is not a private second document model.
+
+## Identity-first follow-up — 2026-11-04
+
+The Guided Object step now treats item identity as a schema-derived contract:
+
+- capability Object selector fields come from the pinned
+  `x-scap-ng-authoring.context: selector_comparison` metadata;
+- required selector groups come from the Object schema's `oneOf` branches;
+- a Registry Object therefore requires `hive`, `key`, and `name`, while a Unix
+  file Object can choose `full_path` or `directory` plus `name`;
+- selector operators, datatypes, and selector enum values are resolved from the
+  same schema pack used by native YAML completion;
+- creation is blocked with a field-group message until one complete identity is
+  supplied. No `replace me` value or scanner result is generated.
+
+This is still a new-document wizard. Existing YAML remains source-authoritative;
+advanced Object forms, Variables, dependent inputs, and multi-Test editing stay
+available in Source/Structured mode.

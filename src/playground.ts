@@ -1,7 +1,8 @@
 import { Worker } from 'node:worker_threads';
 
 /** Offline, bounded regex preview. This never evaluates an Assessment or claims compliance. */
-export interface RegexPreview { dialect: 'ECMAScript-safe-preview'; pattern: string; input: string; matched: boolean; captures: string[]; error?: string; limited: boolean; timedOut?: boolean; }
+export interface RegexCaptureSpan { group: number; name?: string; start: number; end: number; text: string | undefined; }
+export interface RegexPreview { dialect: 'ECMAScript-safe-preview'; pattern: string; input: string; matched: boolean; captures: string[]; namedCaptures: Record<string, string | undefined>; matchSpan?: [number, number]; spans: RegexCaptureSpan[]; error?: string; limited: boolean; timedOut?: boolean; }
 const MAX_PATTERN = 10_000;
 const MAX_INPUT = 100_000;
 const UNSAFE_NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*[+*{](?:[^()\\]|\\.)*\)(?:[+*{])/;
@@ -12,9 +13,9 @@ export function regexSafetyError(pattern: string, flags = ''): string | undefine
   if (/\\(?:\d{1,3}|k<[^>]+>)/.test(pattern)) return 'Preview rejects backreferences because their runtime is not bounded.';
   return undefined;
 }
-function result(pattern: string, input: string, error?: string, matched = false, captures: string[] = [], timedOut = false): RegexPreview {
+function result(pattern: string, input: string, error?: string, matched = false, captures: string[] = [], timedOut = false, namedCaptures: Record<string, string | undefined> = {}, matchSpan?: [number, number], spans: RegexCaptureSpan[] = []): RegexPreview {
   const bounded = input.slice(0, MAX_INPUT);
-  return { dialect: 'ECMAScript-safe-preview', pattern, input: bounded, matched, captures, error, timedOut, limited: bounded.length !== input.length };
+  return { dialect: 'ECMAScript-safe-preview', pattern, input: bounded, matched, captures, namedCaptures, matchSpan, spans, error, timedOut, limited: bounded.length !== input.length };
 }
 /** Synchronous helper for already-qualified safe patterns. The extension UI uses previewRegexSafe instead. */
 export function previewRegex(pattern: string, input: string, flags = ''): RegexPreview {
@@ -23,7 +24,16 @@ export function previewRegex(pattern: string, input: string, flags = ''): RegexP
   if (safetyError) return result(pattern, input, safetyError);
   try {
     const match = new RegExp(pattern, flags).exec(input);
-    return result(pattern, input, undefined, Boolean(match), match ? [...match].slice(1) : []);
+    if (!match) return result(pattern, input, undefined, false, [], false, {});
+    const captures = [...match].slice(1);
+    const names = { ...(match.groups ?? {}) };
+    const spans: RegexCaptureSpan[] = [{ group: 0, start: match.index ?? 0, end: (match.index ?? 0) + match[0].length, text: match[0] }];
+    let cursor = 1;
+    for (const value of captures) {
+      const start = value === undefined ? -1 : input.indexOf(value, match.index ?? 0);
+      spans.push({ group: cursor++, start, end: start < 0 ? -1 : start + value.length, text: value });
+    }
+    return result(pattern, input, undefined, true, captures, false, names, [match.index ?? 0, (match.index ?? 0) + match[0].length], spans);
   } catch (error) { return result(pattern, input, error instanceof Error ? error.message : String(error)); }
 }
 export async function previewRegexSafe(patterns: readonly string[], input: string, flags = '', timeoutMs = 100): Promise<RegexPreview[]> {
@@ -35,13 +45,13 @@ export async function previewRegexSafe(patterns: readonly string[], input: strin
   return await new Promise(resolve => {
     let settled = false;
     const worker = new Worker(new URL('./playground-worker.js', import.meta.url), { workerData: { patterns: pending.map(item => item.pattern), input: input.slice(0, MAX_INPUT), flags } });
-    const finish = (values?: Array<{ matched: boolean; captures: string[]; error?: string }>, timedOut = false) => {
+    const finish = (values?: Array<{ matched: boolean; captures: string[]; namedCaptures?: Record<string, string | undefined>; matchSpan?: [number, number]; spans?: RegexCaptureSpan[]; error?: string }>, timedOut = false, workerError?: string) => {
       if (settled) return; settled = true; clearTimeout(timer); void worker.terminate();
-      for (let i = 0; i < pending.length; i++) { const item = pending[i]; const value = values?.[i]; results[item.index] = result(item.pattern, input, value?.error ?? (timedOut ? 'Preview timed out and was cancelled.' : undefined), value?.matched ?? false, value?.captures ?? [], timedOut); }
+      for (let i = 0; i < pending.length; i++) { const item = pending[i]; const value = values?.[i]; results[item.index] = result(item.pattern, input, value?.error ?? workerError ?? (timedOut ? 'Preview timed out and was cancelled.' : undefined), value?.matched ?? false, value?.captures ?? [], timedOut, value?.namedCaptures ?? {}, value?.matchSpan, value?.spans ?? []); }
       resolve(results as RegexPreview[]);
     };
     const timer = setTimeout(() => finish(undefined, true), Math.max(1, Math.min(timeoutMs, 2_000)));
     worker.once('message', (values: Array<{ matched: boolean; captures: string[]; error?: string }>) => finish(values));
-    worker.once('error', () => finish(undefined, false));
+    worker.once('error', (error: Error) => finish(undefined, false, `Preview worker failed: ${error.message}`));
   });
 }

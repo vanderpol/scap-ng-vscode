@@ -44,4 +44,5 @@ jobs:
         env:
           SCAP_NG_METADATA_PACK: ${{ github.workspace }}/.external/editor-pack
           SCAP_NG_SOURCE_ROOT: ${{ github.workspace }}/.external/scap-ng
+          SCAP_NG_SAMPLE_ROOT: ${{ github.workspace }}/.external/scap-ng-editor-sample-data
         run: npm run test:integration
