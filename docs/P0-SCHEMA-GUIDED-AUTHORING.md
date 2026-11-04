@@ -26,6 +26,10 @@ model.
 4. **Formatting safety** preserves compact flow mappings when the insertion is
    inside a flow mapping and uses block syntax for new multiline structures.
    Existing YAML is not reformatted as a side effect of completion.
+5. **Operator safety** only offers a capability field's operators when its
+   capability schema declares a field-specific native subset. Shared generic
+   operator vocabularies are not treated as field-specific; a missing subset
+   is reported as a schema contract gap rather than guessed in TypeScript.
 
 The resolver is cached per verified `MetadataPack`; it performs no network
 lookups and does not execute authored commands or scanner logic.

@@ -299,9 +299,15 @@ test('contextual native YAML completion uses exact schema/cardinality scopes and
  const hiveValues='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: ';
  assert.deepEqual(completionChoices(pack,hiveValues,hiveValues.length).map(x=>x.value),['classes_root','current_config','current_user','current_user_local_settings','local_machine','users']);
  const keyOperators='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {key: {';
- assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='equals'));
- assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='not_equal'));
- assert.ok(completionChoices(pack,keyOperators,keyOperators.length).some(x=>x.value==='matches_regex'));
+ assert.deepEqual(completionChoices(pack,keyOperators,keyOperators.length),[]);
+ const partitionMountOperators=`assessment:
+  tests:
+    check-test:
+      capability: linux.partition
+      object: {mount_point: {`;
+ assert.deepEqual(completionChoices(pack,partitionMountOperators,partitionMountOperators.length),[]);
+ // Neither field has a field-specific native operator subset in the pinned
+ // capability schema; broad shared operators must not leak into completion.
  const registryKeyPrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, k';
  assert.deepEqual(completionChoices(pack,registryKeyPrefix,registryKeyPrefix.length).map(x=>x.value),registryObjectFields.filter(value=>value!=='hive'));
  const registryNamePrefix='assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      object: {hive: {equals: local_machine}, key: {equals: value}, n';

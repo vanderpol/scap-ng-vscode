@@ -270,21 +270,41 @@ function schemaPropertyMap(pack: MetadataPack, uri: string, spec: any): Record<s
   for (const node of schemaNodes(pack, uri, spec)) Object.assign(result, node.properties ?? {});
   return result;
 }
-function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ value: string; spec: any }> {
-  const nodes = schemaNodes(pack, uri, spec);
-  const restricted = nodes.flatMap(node => Array.isArray(node.propertyNames?.enum) ? node.propertyNames.enum : []);
-  const names = new Set<string>(restricted);
-  if (!restricted.length) {
-    for (const node of nodes) {
-      const properties = node.properties ?? {};
-      for (const alternative of node.allOf ?? []) for (const branch of alternative.oneOf ?? []) {
-        for (const name of branch.required ?? []) if (properties[name]?.oneOf) names.add(name);
+function declaredSelectorOperators(pack: MetadataPack, uri: string, spec: any): string[] {
+  const values = new Set<string>();
+  const documentUri = uri.split('#')[0];
+  const visit = (node: any, nodeUri: string, seen: Set<string>) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.$ref === 'string') {
+      const target = new URL(node.$ref, nodeUri).href;
+      // Follow only references within the selected capability schema. Shared
+      // capability-common references intentionally do not define a field's
+      // native operator subset.
+      if (target.split('#')[0] === documentUri && !seen.has(target)) {
+        seen.add(target);
+        try { visit(pack.node(target), target, seen); } catch { /* unresolved optional branch */ }
       }
+      return;
     }
-  }
-  const properties = Object.assign({}, ...nodes.map(node => node.properties ?? {}));
-  return [...names].map(value => ({ value, spec: properties[value] ?? {} }));
+    for (const value of node.propertyNames?.enum ?? []) if (typeof value === 'string') values.add(value);
+    for (const key of ['allOf', 'oneOf', 'anyOf', 'if', 'then', 'else']) {
+      const branches = Array.isArray(node[key]) ? node[key] : node[key] ? [node[key]] : [];
+      for (let index = 0; index < branches.length; index++) visit(branches[index], `${nodeUri}${nodeUri.includes('#') ? '' : '#'}/${key}/${index}`, seen);
+    }
+  };
+  visit(spec, uri, new Set<string>());
+  return [...values];
 }
+function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ value: string; spec: any }> {
+  // Do not inherit the broad shared scalar operator vocabulary for a
+  // capability field. A field-specific native subset must be declared by the
+  // capability schema itself; otherwise an empty list is safer than offering
+  // syntactically possible but semantically unsupported operators.
+  const names = declaredSelectorOperators(pack, uri, spec);
+  const properties = Object.assign({}, ...[spec, ...(spec?.oneOf ?? []), ...(spec?.anyOf ?? [])].map((node: any) => node?.properties ?? {}));
+  return names.map(value => ({ value, spec: properties[value] ?? {} }));
+}
+
 function enumValues(pack: MetadataPack, uri: string, root: any): string[] {
   const values = new Set<string>();
   const visit = (node: any, baseUri: string, seen: Set<string>) => {
