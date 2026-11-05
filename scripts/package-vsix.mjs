@@ -5,7 +5,7 @@ rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'extensio
 for (const path of ['package.json','README.md','LICENSE','THIRD-PARTY-NOTICES.md','schema-profile.json','media','dist']) cpSync(path, join(stage, 'extension', path), { recursive: true });
 // Runtime dependencies are intentionally staged explicitly: VS Code does not install npm
 // dependencies for a VSIX, and the offline extension must activate from a cold install.
-const runtimeDependencies = ['yaml', 'ajv', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string'];
+const runtimeDependencies = ['yaml', 'ajv', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string', 'pcre2-wasm'];
 for (const dependency of runtimeDependencies) cpSync(join('node_modules', dependency), join(stage, 'extension', 'node_modules', dependency), { recursive: true });
 const output = join(process.cwd(), 'scap-ng-vscode-0.0.1.vsix');
 function files(root, dir = root) { return readdirSync(dir, { withFileTypes: true }).flatMap(entry => { const path = join(dir, entry.name); return entry.isDirectory() ? files(root, path) : [path]; }); }

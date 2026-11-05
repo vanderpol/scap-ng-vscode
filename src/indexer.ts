@@ -59,7 +59,7 @@ export class WorkspaceIndex {
   usedBy(id: string): IndexedDocument[] { return this.all().filter(document => document.references.some(reference => reference.targetId === id)); }
   search(query: string, kind?: DocumentKind): IndexedDocument[] {
     const needle = query.trim().toLocaleLowerCase(); if (!needle) return kind ? this.byKind(kind) : this.all();
-    return this.all().filter(document => (!kind || document.kind === kind) && [document.id, document.title, document.mode, ...document.capabilities].filter(Boolean).some(value => String(value).toLocaleLowerCase().includes(needle)));
+    return this.all().filter(document => (!kind || document.kind === kind) && [document.id, document.title, document.mode, document.path, ...document.capabilities].filter(Boolean).some(value => String(value).toLocaleLowerCase().includes(needle)));
   }
   diagnostics(): IndexDiagnostic[] { return this.all().flatMap(document => document.diagnostics); }
 

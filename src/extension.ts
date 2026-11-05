@@ -1,23 +1,29 @@
 import * as vscode from 'vscode';
 import { parseDocument, stringify } from 'yaml';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { MetadataPack, sha256, type Pin } from './metadata.js';
 import { SourceBuffer, sourceRevisionMatches } from './source.js';
 import { previewRegexSafe, regexSafetyError } from './playground.js';
-import { findRegexContext, replaceRegexScalars } from './regex-tester.js';
-import { evaluateObjectSamples, findObjectContext, starterSampleItems } from './sample-object.js';
+import { findFirstRegexContext, findRegexContext, replaceRegexScalars } from './regex-tester.js';
+import { evaluateObjectSamples, findObjectContext, objectTesterGuidance, starterSampleItems } from './sample-object.js';
 import { WorkspaceIndex, type IndexedDocument } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
 import { schemaCapabilityObjectProperties } from './schema-resolver.js';
+import { AuthoringSidebarProvider } from './authoring-sidebar.js';
+import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
+import { graphicalHtml } from './graphical.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
 class StudioNode extends vscode.TreeItem {
-  constructor(label: string, state = vscode.TreeItemCollapsibleState.None, contextValue?: string) {
-    super(label, state); this.contextValue = contextValue;
+  readonly nodeLabel: string;
+  readonly children: StudioNode[] = [];
+  readonly childMap = new Map<string, StudioNode>();
+  constructor(label: string, state = vscode.TreeItemCollapsibleState.None, contextValue?: string, children: StudioNode[] = []) {
+    super(label, state); this.nodeLabel = label; this.contextValue = contextValue; this.children.push(...children);
   }
 }
 class StudioTree implements vscode.TreeDataProvider<StudioNode> {
@@ -29,21 +35,61 @@ class StudioTree implements vscode.TreeDataProvider<StudioNode> {
   setQuery(query: string) { this.query = query; this.refresh(); }
   getTreeItem(node: StudioNode) { return node; }
   getChildren(node?: StudioNode) {
-    if (!node) return [
-      new StudioNode('STIG Library', vscode.TreeItemCollapsibleState.Collapsed, 'stig-library'),
-      new StudioNode('Assessment Library', vscode.TreeItemCollapsibleState.Collapsed, 'assessment-library'),
-      new StudioNode('Diagnostics', vscode.TreeItemCollapsibleState.Collapsed, 'index-diagnostics')
+    if (node) return node.children;
+    return [
+      new StudioNode('STIG Library', vscode.TreeItemCollapsibleState.Collapsed, 'stig-library', this.contentTree('benchmark')),
+      new StudioNode('Assessment Library', vscode.TreeItemCollapsibleState.Collapsed, 'assessment-library', this.contentTree('assessment')),
+      new StudioNode('Rule Library', vscode.TreeItemCollapsibleState.Collapsed, 'rule-library', this.contentTree('rule')),
+      new StudioNode('Diagnostics', vscode.TreeItemCollapsibleState.Collapsed, 'index-diagnostics', this.index.diagnostics().map(diagnostic => new StudioNode(`${diagnostic.code}: ${diagnostic.message}`, vscode.TreeItemCollapsibleState.None, 'index-diagnostic')))
     ];
-    const records = this.query ? this.index.search(this.query) : this.index.all();
-    if (node.contextValue === 'stig-library') return records.filter(record => record.kind === 'benchmark').map(recordNode);
-    if (node.contextValue === 'assessment-library') return records.filter(record => record.kind === 'assessment').map(recordNode);
-    if (node.contextValue === 'index-diagnostics') return this.index.diagnostics().map(diagnostic => new StudioNode(`${diagnostic.code}: ${diagnostic.message}`, vscode.TreeItemCollapsibleState.None, 'index-diagnostic'));
-    return [];
+  }
+  private contentTree(kind: 'assessment' | 'rule' | 'benchmark') {
+    const records = (this.query ? this.index.search(this.query) : this.index.all()).filter(record => record.kind === kind);
+    const root = new Map<string, StudioNode>();
+    for (const record of records) {
+      const relativePath = workspaceRelativePath(record.path);
+      const parts = relativePath.split('/').filter(Boolean);
+      const file = parts.pop() ?? record.path;
+      let current = root;
+      for (const part of parts) {
+        let folder = current.get(part);
+        if (!folder) {
+          folder = new StudioNode(part, vscode.TreeItemCollapsibleState.Collapsed, 'indexed-folder');
+          current.set(part, folder);
+        }
+        current = folder.childMap;
+      }
+      const leaf = recordNode(record, file);
+      current.set(file, leaf);
+    }
+    const materialize = (map: Map<string, StudioNode>) => {
+      for (const node of map.values()) if (node.contextValue === 'indexed-folder') {
+        node.children.splice(0, node.children.length, ...materialize(node.childMap));
+      }
+      return [...map.values()].sort((a, b) => {
+        const aFolder = a.contextValue === 'indexed-folder' ? 0 : 1;
+        const bFolder = b.contextValue === 'indexed-folder' ? 0 : 1;
+        return aFolder - bFolder || a.nodeLabel.localeCompare(b.nodeLabel);
+      });
+    };
+    return materialize(root);
   }
 }
-function recordNode(record: IndexedDocument) {
-  const node = new StudioNode(record.title ? `${record.title} (${record.id ?? 'no id'})` : (record.id ?? record.path), vscode.TreeItemCollapsibleState.None, 'indexed-document');
-  node.description = `${record.kind}${record.diagnostics.length ? ` · ${record.diagnostics.length} diagnostic(s)` : ''}`;
+function workspaceRelativePath(filePath: string) {
+  const folders = (vscode.workspace as any).workspaceFolders ?? [];
+  const root = folders.map((folder: any) => folder.uri?.fsPath).filter((value: any): value is string => typeof value === 'string' && filePath.startsWith(value)).sort((a: string, b: string) => b.length - a.length)[0];
+  return (root ? relative(root, filePath) : filePath).replaceAll('\\', '/');
+}
+function recordNode(record: IndexedDocument, fileName = record.path) {
+  // File names are stable, recognizable navigation targets. Keep authored
+  // titles/IDs as secondary metadata so long internal text cannot hide which
+  // source file will be opened (and paths already disambiguate duplicates).
+  const node = new StudioNode(fileName, vscode.TreeItemCollapsibleState.None, 'indexed-document');
+  const metadata = [record.title, record.id ? `id: ${record.id}` : undefined].filter(Boolean).join(' · ');
+  node.description = [metadata, record.diagnostics.length ? `${record.diagnostics.length} diagnostic(s)` : undefined].filter(Boolean).join(' · ');
+  (node as any).tooltip = `${workspaceRelativePath(record.path)}${metadata ? `\n${metadata}` : ''}`;
+  (node as any).resourceUri = vscode.Uri.file(record.path);
+  (node as any).command = { command: 'vscode.open', title: `Open ${fileName}`, arguments: [vscode.Uri.file(record.path)] };
   return node;
 }
 class PinView implements vscode.WebviewViewProvider {
@@ -70,36 +116,25 @@ function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({'&'
 
 import { modelFor, assessmentEditorModel } from './structured-model.js';
 
-function structuredHtml() {
-  const nonce = 'scap-ng-structured';
-  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"><style>
-*{box-sizing:border-box}body{margin:0;color:var(--vscode-foreground);font-family:var(--vscode-font-family);height:100vh;overflow:hidden}.layout{height:100vh;display:grid;grid-template-columns:minmax(560px,1fr);min-width:560px}.pane{overflow:auto;padding:16px;border-right:1px solid var(--vscode-panel-border)}.pane:last-child{border-right:0}h1,h2,h3{margin-top:0}.test-button{display:block;width:100%;text-align:left;color:var(--vscode-foreground);background:transparent;border:0;border-left:3px solid transparent;padding:10px 8px;cursor:pointer}.test-button:hover,.test-button.active{background:var(--vscode-list-activeSelectionBackground);border-left-color:var(--vscode-focusBorder)}.test-capability,.muted{color:var(--vscode-descriptionForeground);font-size:.9em}.workflow-banner{border:1px solid var(--vscode-focusBorder);border-left:4px solid var(--vscode-textLink-foreground);padding:12px;margin:8px 0 16px;background:var(--vscode-textBlockQuote-background)}.workflow-banner h2{font-size:1.1em;margin:0 0 6px}.workflow-banner p{margin:0 0 8px}.control{margin:12px 0}.control label{display:block;font-weight:600;margin-bottom:4px}.control small{display:block;color:var(--vscode-descriptionForeground);margin-top:3px}.control input,.control select{width:100%;padding:6px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.predicate{border:1px solid var(--vscode-panel-border);padding:10px;margin:8px 0}.predicate .row{grid-template-columns:140px 1fr}.summary{border-left:3px solid var(--vscode-textLink-foreground);padding:10px;background:var(--vscode-textBlockQuote-background);line-height:1.45}.button{padding:6px 10px;margin:4px 4px 10px 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.button.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.warning{color:var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.hidden-default{display:none}@media(max-width:700px){body{overflow:auto}.layout{height:auto;min-width:0}.pane{min-height:40vh;border-right:0;border-bottom:1px solid var(--vscode-panel-border)}}
-</style></head><body><div class="layout"><main class="pane" aria-label="Graphical Assessment editor"><div class="modebar"><button class="button" aria-current="page">Graphical</button></div><section class="workflow-banner" aria-labelledby="workflow-title"><h2 id="workflow-title">Graphical + native YAML</h2><p>Edit this Assessment graphically here, or open the same authoritative file in VS Code’s native YAML editor. Both views edit the same document.</p><button class="button" id="openSource">Open native YAML editor beside workbench (split view)</button></section><h2>Tests</h2><div id="tests"></div><p id="status" class="muted" role="status"></p><button class="button secondary" id="toggleDefaults" hidden>Show serialized defaults</button><div id="editor"></div></main></div><script nonce="${nonce}">
-const vscode=acquireVsCodeApi();const testsEl=document.getElementById('tests');const editor=document.getElementById('editor');const status=document.getElementById('status');let revision=null;let version=null;let selected=null;let current=null;let showDefaults=false;
-function same(a,b){return a&&b&&a.length===b.length&&a.every((x,i)=>x===b[i]);}function field(path){return current?.fields?.find(f=>same(f.path,path));}function hidden(path){return !showDefaults&&field(path)?.hidden;}function postScalar(path,value){vscode.postMessage({type:'edit',path,value,revision,version});}function makeOption(value,label,selected){const o=document.createElement('option');o.value=value;o.textContent=label||value;o.selected=selected===true||value===selected;return o;}function control(label,value,path,choices,description){if(hidden(path))return null;const wrap=document.createElement('div');wrap.className='control';wrap.dataset.path=JSON.stringify(path);wrap.addEventListener('click',()=>vscode.postMessage({type:'selectPath',path}));const l=document.createElement('label');l.textContent=label;wrap.append(l);let input;if(choices&&choices.length){input=document.createElement('select');for(const choice of choices)input.append(makeOption(JSON.stringify(choice),String(choice),JSON.stringify(choice)===JSON.stringify(value)));}else{input=document.createElement('input');input.value=value===null||value===undefined?'':String(value);input.type=typeof value==='number'?'number':typeof value==='boolean'?'checkbox':'text';if(input.type==='checkbox')input.checked=value;}input.addEventListener('change',()=>{let next=input.type==='checkbox'?input.checked:input.value;if(input.tagName==='SELECT'){try{next=JSON.parse(String(next));}catch{ /* plain string choice */ }}if(typeof value==='number')next=Number(next);postScalar(path,next);});wrap.append(input);if(description){const small=document.createElement('small');small.textContent=description;wrap.append(small);}return wrap;}
-function predicate(parent, item){const wrap=document.createElement('div');wrap.className='predicate';wrap.dataset.path=JSON.stringify(item.valuePath||item.mappingPath);wrap.addEventListener('click',()=>vscode.postMessage({type:'selectPath',path:item.valuePath||item.mappingPath}));const title=document.createElement('h4');title.textContent=item.label;wrap.append(title);if(item.unsupported){const note=document.createElement('p');note.className='warning';note.textContent='This complex value remains available in the native YAML editor; it will not be rewritten here.';wrap.append(note);if(item.regexPatterns?.length){const tester=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Offline regex playground (ECMAScript preview only)';tester.append(summary);const disclaimer=document.createElement('p');disclaimer.className='muted';disclaimer.textContent='Preview is bounded and local; it does not evaluate an Assessment or claim compliance. The SCAP-NG regex dialect may differ.';tester.append(disclaimer);const sample=document.createElement('input');sample.type='text';sample.placeholder='Representative sample text';sample.setAttribute('aria-label','Regex sample text');const output=document.createElement('p');output.className='muted';const run=document.createElement('button');run.className='button secondary';run.type='button';run.textContent='Preview match';run.onclick=()=>{output.textContent='Previewing in an isolated, time-limited worker…';vscode.postMessage({type:'regexPreview',patterns:item.regexPatterns,input:sample.value});};tester.append(sample,run,output);wrap.append(tester);}return wrap;}const row=document.createElement('div');row.className='row';if(item.kind==='field'){const name=document.createElement('input');name.value=item.name;name.title='Dynamic field name';name.setAttribute('aria-label','Field name');const rename=document.createElement('button');rename.className='button secondary';rename.type='button';rename.textContent='Rename';rename.onclick=event=>{event.stopPropagation();vscode.postMessage({type:'editKey',mappingPath:item.mappingPath.slice(0,-1),oldKey:item.name,newKey:name.value,revision,version});};row.append(name,rename);}const op=document.createElement('select');op.setAttribute('aria-label',item.kind==='field'?'Field operator for '+item.label:'Selector operator for '+item.label);const operations=item.definition?.operations||item.operations||[];for(const option of operations)op.append(makeOption(option.value,option.label,item.operation));op.addEventListener('change',()=>vscode.postMessage({type:'editKey',mappingPath:item.mappingPath,oldKey:item.operation,newKey:op.value,allowedOperations:operations.map(x=>x.value),revision,version}));row.append(op);const value=item.choices?.length?document.createElement('select'):document.createElement('input');value.setAttribute('aria-label',item.label+' value');if(item.choices?.length)for(const choice of item.choices)value.append(makeOption(JSON.stringify(choice),String(choice),JSON.stringify(choice)===JSON.stringify(item.value)));else{value.value=item.value===null||item.value===undefined?'':String(item.value);value.type=typeof item.value==='number'?'number':'text';}value.addEventListener('change',()=>{let next=value.value;if(value.tagName==='SELECT'){try{next=JSON.parse(String(next));}catch{ /* plain string choice */ }}if(typeof item.value==='number')next=Number(next);postScalar(item.valuePath,next);});row.append(value);wrap.append(row);if(item.description){const small=document.createElement('small');small.textContent=item.description;wrap.append(small);}return wrap;}
-function renderTest(test){editor.replaceChildren();if(!test){editor.innerHTML='<p>Select a Test.</p>';return;}const heading=document.createElement('h1');heading.textContent=test.title||test.id;editor.append(heading);const title=control('Editable Test summary',test.title,test.titlePath,[], 'Saved as native test_title; this is a human explanation, not a scanner result.');if(title)editor.append(title);const cap=document.createElement('p');cap.innerHTML='<strong>How to inspect:</strong> '+test.capabilityLabel+' <span class="muted">('+test.capability+')</span>';editor.append(cap);if(current?.assessment?.evaluationControl){const evalText=document.createElement('p');evalText.className='muted';evalText.textContent='Evaluation tree: '+current.assessment.evaluationExplanation;editor.append(evalText);}const hObject=document.createElement('h3');hObject.textContent='What evidence is collected';editor.append(hObject);for(const item of test.objectControls){item.allowedOperations=item.definition?.operations||[];const c=predicate(editor,item);if(c)editor.append(c);}const hReq=document.createElement('h3');hReq.textContent='What counts as sufficient evidence';editor.append(hReq);const reqExplain=document.createElement('p');reqExplain.className='muted';reqExplain.textContent='Item existence, Item satisfaction, and field matching are separate decisions.';editor.append(reqExplain);for(const item of test.itemControls){const c=control(item.label,item.value,item.path,item.choices);if(c)editor.append(c);}for(const item of test.fieldRequirement){const c=control(item.label,item.value,item.path,item.choices);if(c)editor.append(c);}for(const item of test.fieldControls){const c=predicate(editor,item);if(c)editor.append(c);}if(current?.assessment?.inputControls?.length){const inputHeading=document.createElement('h3');inputHeading.textContent='Optional Inputs';editor.append(inputHeading);for(const input of current.assessment.inputControls){const inputLabel=document.createElement('p');inputLabel.className='muted';inputLabel.textContent=input.label+' — '+input.description;editor.append(inputLabel);for(const item of input.controls){const c=control(item.label,item.value,item.path,item.choices);if(c)editor.append(c);}}}const summary=document.createElement('p');summary.className='summary';summary.textContent=test.explanation;editor.append(summary);if(test.unsupported.length){const note=document.createElement('p');note.className='warning';note.textContent='Advanced authored members not shown here: '+test.unsupported.join(', ')+'. They remain intact; use the native YAML editor to edit safely.';editor.append(note);}}
-function render(model){current=model;revision=model.revision||null;version=model.version??null;status.textContent='Wide desktop view · '+(model.hiddenCount||0)+' serialized defaults hidden';const defaultsButton=document.getElementById('toggleDefaults');defaultsButton.hidden=!(model.hiddenCount>0);defaultsButton.textContent=showDefaults?'Hide serialized defaults':'Show '+(model.hiddenCount||0)+' serialized defaults';testsEl.replaceChildren();if(!model.assessment){editor.innerHTML='<p>This document is not an Assessment. Use the native YAML editor.</p>';return;}for(const test of model.assessment.tests||[]){const b=document.createElement('button');b.className='test-button'+(test.id===selected?' active':'');b.textContent=test.title||test.id;const sub=document.createElement('div');sub.className='test-capability';sub.textContent=test.capabilityLabel;b.append(sub);b.onclick=()=>{selected=test.id;render(model);};testsEl.append(b);}if(!selected||!(model.assessment.tests||[]).some(t=>t.id===selected))selected=model.assessment.tests?.[0]?.id;renderTest(model.assessment.tests?.find(t=>t.id===selected));}
-document.getElementById('openSource').onclick=()=>vscode.postMessage({type:'openSource'});document.getElementById('toggleDefaults').onclick=()=>{showDefaults=!showDefaults;if(current)render(current);};window.addEventListener('message',event=>{if(event.data.type==='model')render(event.data.model);if(event.data.type==='selectGraphical'&&Array.isArray(event.data.path)){if(event.data.testId&&selected!==event.data.testId&&current?.assessment?.tests?.some(test=>test.id===event.data.testId)){selected=event.data.testId;render(current);}const target=[...document.querySelectorAll('[data-path]')].find(node=>node.dataset.path===JSON.stringify(event.data.path));if(target){target.scrollIntoView({behavior:'smooth',block:'center'});target.style.outline='2px solid var(--vscode-focusBorder)';setTimeout(()=>{target.style.outline='';},1200);}}if(event.data.type==='regexPreviewResult'){const previews=event.data.previews||[];const text=previews.map(result=>result.error?result.pattern+': '+result.error:result.pattern+': '+(result.matched?'matched sample':'did not match sample')+(result.timedOut?' (cancelled)':'')).join(' · ');document.querySelectorAll('.predicate .muted').forEach(node=>{if(node.textContent==='Previewing in an isolated, time-limited worker…')node.textContent=text;});}if(event.data.type==='error'){status.className='error';status.textContent=event.data.message;}});vscode.postMessage({type:'ready'});
-</script></body></html>`;
-}
-
 function regexTesterHtml() {
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-regex-tester';"><style>
 body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:1100px}h1{margin-top:0}.hint,.muted{color:var(--vscode-descriptionForeground)}label{display:block;font-weight:600;margin:12px 0 4px}textarea,input,select{box-sizing:border-box;width:100%;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}textarea{font-family:var(--vscode-editor-font-family);min-height:85px}.row{display:grid;grid-template-columns:minmax(0,1fr) 120px 100px;gap:8px;align-items:end;margin:8px 0}.row .sample{min-height:40px}.button{padding:7px 12px;margin:12px 8px 10px 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.banner,.result{border:1px solid var(--vscode-panel-border);padding:12px;margin:12px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background)}.warning{color:var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.pass{color:var(--vscode-testing-iconPassed)}.fail{color:var(--vscode-testing-iconFailed)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--vscode-textCodeBlock-background);padding:8px}.highlight{white-space:pre-wrap;overflow-wrap:anywhere}.highlight mark{color:var(--vscode-editor-foreground);background:var(--vscode-editor-findMatchHighlightBackground)}.capture{margin:4px 0}@media(max-width:700px){.row{grid-template-columns:1fr}.row select{width:100%}}
-</style></head><body><h1>SCAP-NG Regex Tester</h1><div class="banner"><p id="source">Loading selected schema regex…</p><p class="hint">Offline bounded preview only. The engine is <strong>ECMAScript-safe-preview</strong>; it is not a scanner, does not execute commands, and does not prove SCAP-NG runtime dialect parity.</p></div><label>Selected regular expression(s)</label><p class="hint" id="patternHelp">A selected matches_regex list is shown as separate editable alternatives. Select multiple YAML list entries before opening this tester.</p><div id="patterns"></div><button class="button secondary" id="addPattern">Add expression</button><div class="row"><label>Flags<input id="flags" value="" aria-label="Regular expression flags" spellcheck="false"></label><span class="hint">Allowed preview flags: i, m, s, u</span><span></span></div><h2>Sample strings</h2><p class="hint">Use several representative samples. Expected positive/negative is an author test expectation; it does not create compliance evidence.</p><div id="samples"></div><button class="button secondary" id="add">Add sample</button><button class="button" id="run">Test samples</button><button class="button secondary" id="apply">Apply expression(s) to YAML</button><p id="status" role="status" aria-live="polite"></p><section id="results" aria-live="polite"></section><script nonce="regex-tester">
+</style></head><body><h1>SCAP-NG Regex Tester</h1><div class="banner"><p id="source">Loading selected schema regex…</p><p class="hint">Offline bounded preview only. The engine is <strong>PCRE2-safe-preview</strong>; it is not a scanner, does not execute commands, and does not prove SCAP-NG runtime dialect parity.</p></div><label>Selected regular expression(s)</label><p class="hint" id="patternHelp">A selected matches_regex list is shown as separate editable alternatives. Select multiple YAML list entries before opening this tester.</p><div id="patterns"></div><button class="button secondary" id="addPattern">Add expression</button><div class="row"><label>Flags<input id="flags" value="" aria-label="Regular expression flags" spellcheck="false"></label><span class="hint">Allowed PCRE2 flags: i, m, s, x, u, U, A, D</span><span></span></div><h2>Sample strings</h2><p class="hint">Use several representative samples. Expected positive/negative is an author test expectation; it does not create compliance evidence.</p><div id="samples"></div><button class="button secondary" id="add">Add sample</button><button class="button" id="run">Test samples</button><button class="button secondary" id="apply">Apply expression(s) to YAML</button><p id="status" role="status" aria-live="polite"></p><section id="results" aria-live="polite"></section><script nonce="regex-tester">
 const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const samples=$('samples');const patterns=$('patterns');let initial=[];function addPattern(value=''){const row=document.createElement('div');row.className='pattern-row';const input=document.createElement('textarea');input.rows=2;input.value=value;input.spellcheck=false;input.setAttribute('aria-label','Regular expression alternative');const remove=document.createElement('button');remove.className='button secondary';remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(input,remove);patterns.append(row);}function readPatterns(){return [...patterns.children].map(row=>row.querySelector('textarea').value);}function renderPatterns(values){patterns.replaceChildren();(values?.length?values:['']).forEach(addPattern);}function addSample(value='',expected='positive'){const row=document.createElement('div');row.className='row';const input=document.createElement('textarea');input.className='sample';input.rows=2;input.value=value;input.setAttribute('aria-label','Sample text');const select=document.createElement('select');select.setAttribute('aria-label','Expected result');for(const x of ['positive','negative']){const o=document.createElement('option');o.value=x;o.textContent='Expected '+x;o.selected=x===expected;select.append(o);}const remove=document.createElement('button');remove.className='button secondary';remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(input,select,remove);samples.append(row);}function readSamples(){return [...samples.children].map(row=>({input:row.querySelector('textarea').value,expected:row.querySelector('select').value}));}function showText(node,text){node.replaceChildren(document.createTextNode(text??''));}function highlight(node,text,span){node.replaceChildren();if(!span||span[0]<0){node.append(document.createTextNode(text));return;}node.append(document.createTextNode(text.slice(0,span[0])));const mark=document.createElement('mark');mark.textContent=text.slice(span[0],span[1]);node.append(mark,document.createTextNode(text.slice(span[1])));}function renderResults(results){const root=$('results');root.replaceChildren();for(const r of results){const box=document.createElement('article');box.className='result';const heading=document.createElement('h3');heading.className=r.error?'error':(r.expectedMatch===r.matched?'pass':'fail');heading.textContent=r.error?'Preview error':(r.expectedMatch===r.matched?(r.matched?'Matched as expected':'Did not match as expected'):(r.matched?'Matched unexpectedly':'Did not match unexpectedly'));box.append(heading);const patternLabel=document.createElement('p');patternLabel.className='muted';patternLabel.textContent='Pattern: '+(r.pattern||'');box.append(patternLabel);const detail=document.createElement('p');detail.textContent='Expected '+(r.expectedMatch?'match':'nonmatch')+' · observed '+(r.matched?'match':'nonmatch')+(r.limited?' · input was truncated by the safety limit':'');box.append(detail);if(r.error){const err=document.createElement('p');err.className='error';err.textContent=r.error;box.append(err);}else{const label=document.createElement('strong');label.textContent='Matched text / span';box.append(label);const span=document.createElement('div');span.className='highlight';highlight(span,r.input,r.matchSpan);box.append(span);const cap=document.createElement('div');cap.className='capture';cap.textContent='Captures: '+(r.captures?.length?JSON.stringify(r.captures):'none');box.append(cap);if(r.namedCaptures&&Object.keys(r.namedCaptures).length){const named=document.createElement('div');named.className='capture';named.textContent='Named captures: '+JSON.stringify(r.namedCaptures);box.append(named);}}root.append(box);}}$('add').onclick=()=>addSample();$('addPattern').onclick=()=>addPattern();$('run').onclick=()=>{const selectedPatterns=readPatterns();const flags=$('flags').value;const rows=readSamples();$('status').textContent='Testing in an isolated, time-limited worker…';vscode.postMessage({type:'run',patterns:selectedPatterns,flags,samples:rows});};$('apply').onclick=()=>{if(confirm('Apply these expression(s) to the selected YAML scalar(s)?'))vscode.postMessage({type:'apply',patterns:readPatterns()});};window.addEventListener('message',event=>{const m=event.data;if(m.type==='init'){showText($('source'),'Source: '+m.context.kind+' · '+(m.context.capability||'capability not present')+' · '+(m.context.path?.join('.')||''));renderPatterns(m.context.patterns||[m.context.pattern]);initial=m.samples||[];samples.replaceChildren();(initial.length?initial:[{input:'',expected:'positive'}]).forEach(x=>addSample(x.input,x.expected));}if(m.type==='results')renderResults(m.results||[]);if(m.type==='status'){$('status').className=m.error?'error':'';$('status').textContent=m.message||'';}});</script></body></html>`;
 }
 
 class RegexTesterPanel {
-  static open(context: vscode.ExtensionContext, document: any, pack: MetadataPack | undefined) {
+  static open(extensionContext: vscode.ExtensionContext, document: any, pack: MetadataPack | undefined, options: { useFirst?: boolean } = {}) {
     const api: any = vscode;
     const editor = api.window.activeTextEditor;
-    if (!document || !editor) return void api.window.showWarningMessage('Open an Assessment YAML document and place the caret inside a regex scalar first.');
+    if (!document) return void api.window.showWarningMessage('Open an Assessment YAML document before using the Regex Tester.');
     if (!pack) return void api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using the Regex Tester.');
-    const start = document.offsetAt(editor.selection.start); const end = document.offsetAt(editor.selection.end);
-    const selected = findRegexContext(document.getText(), start, end);
-    if (!selected) return void api.window.showWarningMessage('Place the caret inside a schema-recognized matches_regex value or regex_capture pattern.');
+    const sameDocument = editor?.document?.uri?.toString?.() === document.uri?.toString?.();
+    const selected = sameDocument
+      ? findRegexContext(document.getText(), document.offsetAt(editor.selection.start), document.offsetAt(editor.selection.end))
+      : undefined;
+    const context = selected ?? (options?.useFirst ? findFirstRegexContext(document.getText()) : undefined);
+    if (!context) return void api.window.showWarningMessage('Place the caret inside a schema-recognized matches_regex value or regex_capture pattern.');
     const panel = api.window.createWebviewPanel('scapNg.regexTester', 'SCAP-NG Regex Tester', api.ViewColumn?.Beside ?? 2, { enableScripts: true, retainContextWhenHidden: true });
     panel.webview.html = regexTesterHtml();
     panel.webview.onDidReceiveMessage(async (message: any) => {
@@ -119,8 +154,8 @@ class RegexTesterPanel {
           if (!patterns.length) throw new Error('Enter at least one expression before applying.');
           for (const pattern of patterns) { const safety = regexSafetyError(pattern, ''); if (safety) throw new Error(safety); }
           const current = document.getText();
-          if (sha256(current) !== selected.documentRevision) throw new Error('The YAML document changed; reopen the Regex Tester before applying.');
-          const edit = replaceRegexScalars(current, selected, patterns);
+          if (sha256(current) !== context.documentRevision) throw new Error('The YAML document changed; reopen the Regex Tester before applying.');
+          const edit = replaceRegexScalars(current, context, patterns);
           const parsed = parseDocument(edit.nextText, { uniqueKeys: true });
           const root = assessmentSchemaUri(pack);
           if (root) {
@@ -136,16 +171,24 @@ class RegexTesterPanel {
         } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
       }
     });
-    panel.webview.postMessage({ type: 'init', context: selected, samples: [{ input: '', expected: 'positive' }] });
-    context.subscriptions.push(panel);
+    panel.webview.postMessage({ type: 'init', context, samples: [{ input: '', expected: 'positive' }] });
+    extensionContext.subscriptions.push(panel);
   }
 }
 
 function sampleObjectTesterHtml() {
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-object-tester';"><style>
-body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:1200px}h1{margin-top:0}.layout{display:grid;grid-template-columns:minmax(260px,1fr) minmax(360px,2fr);gap:16px}.card,.result{border:1px solid var(--vscode-panel-border);padding:12px;margin:10px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background);padding:10px}.muted{color:var(--vscode-descriptionForeground)}textarea{box-sizing:border-box;width:100%;min-height:420px;padding:8px;font-family:var(--vscode-editor-font-family);color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}button{padding:7px 12px;margin:10px 8px 0 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.matched{border-left:4px solid var(--vscode-testing-iconPassed)}.mismatched{border-left:4px solid var(--vscode-testing-iconFailed)}.indeterminate,.missing,.invalid{border-left:4px solid var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.status{font-weight:600}.trace{padding:8px;margin:8px 0;background:var(--vscode-textCodeBlock-background)}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px}dt{font-weight:600}dd{margin:0;overflow-wrap:anywhere}@media(max-width:850px){.layout{display:block}}
-</style></head><body><h1>SCAP-NG Sample Object Tester</h1><div class="banner"><p id="source">Loading selected Object…</p><p class="muted"><strong>Offline sample data only.</strong> This tool previews Object selector traces. It does not collect evidence, execute a scanner, evaluate <code>require</code>, or produce compliance PASS/FAIL.</p></div><div class="layout"><section><div class="card"><h2>Selected Object</h2><pre id="object"></pre></div><div class="card"><label for="samples"><strong>Canonical collected Item samples (YAML or JSON)</strong></label><p class="muted">Use an Item, an array, or <code>{items: [...]}</code>. Each canonical Item has <code>id</code>, <code>capability</code>, <code>status</code>, <code>fields</code>, and <code>provenance</code>. Starter data is editable and is not scanner evidence.</p><textarea id="samples" spellcheck="false" aria-label="Sample collected Items"></textarea><button id="test">Test Object</button><button class="secondary" id="reset">Reset starter sample</button><p id="status" class="status" role="status" aria-live="polite"></p></div></section><section><h2>Selector trace</h2><div id="results" aria-live="polite"><p class="muted">Run the tester to see each Item and selector decision.</p></div></section></div><script nonce="object-tester">
-const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);let starter='';function text(node,value){node.replaceChildren(document.createTextNode(value??''));}function statusClass(value){return value==='matched'?'matched':value==='mismatched'?'mismatched':value;}function renderTrace(result){const root=$('results');root.replaceChildren();if(result.inputDiagnostics?.length){const box=document.createElement('div');box.className='result invalid';const h=document.createElement('h3');h.textContent='Sample input unavailable';box.append(h);for(const x of result.inputDiagnostics){const p=document.createElement('p');p.className='error';p.textContent=x;box.append(p);}root.append(box);return;}const summary=document.createElement('div');summary.className='banner';summary.textContent='Selected Item indices: '+(result.selectedItemIndices.length?result.selectedItemIndices.join(', '):'none')+' · '+result.items.length+' Item(s) inspected';root.append(summary);for(const item of result.items){const box=document.createElement('article');box.className='result '+statusClass(item.status);const h=document.createElement('h3');h.textContent='Item '+item.index+(item.id?' ('+item.id+')':'')+' — '+item.status;box.append(h);if(item.schemaDiagnostics?.length){const p=document.createElement('p');p.className='error';p.textContent='Canonical schema diagnostics: '+item.schemaDiagnostics.join('; ');box.append(p);}for(const trace of item.selectors){const t=document.createElement('div');t.className='trace '+statusClass(trace.status);const title=document.createElement('strong');title.textContent=trace.field+' · '+trace.operator+' · '+trace.status;t.append(title);const dl=document.createElement('dl');for(const pair of [['Expected',trace.expected],['Actual',trace.actual],['Datatype',trace.datatype],['Reason',trace.reason]]){const dt=document.createElement('dt');dt.textContent=pair[0];const dd=document.createElement('dd');dd.textContent=pair[1]===undefined?'(not present)':typeof pair[1]==='string'?pair[1]:JSON.stringify(pair[1]);dl.append(dt,dd);}t.append(dl);box.append(t);}root.append(box);}for(const warning of result.warnings||[]){const p=document.createElement('p');p.className='muted';p.textContent=warning;root.append(p);}}$('test').onclick=()=>{const textValue=$('samples').value;$('status').textContent='Validating sample structure and evaluating selectors offline…';vscode.postMessage({type:'test',source:textValue});};$('reset').onclick=()=>{$('samples').value=starter;};window.addEventListener('message',event=>{const m=event.data;if(m.type==='init'){text($('source'),'Source: '+m.context.capability+(m.context.testId?' · Test '+m.context.testId:'')+' · '+m.context.path.join('.'));text($('object'),JSON.stringify(m.context.object,null,2));starter=m.starter;$('samples').value=starter;}if(m.type==='result'){renderTrace(m.result);$('status').textContent='Preview complete. Assessment evaluation remains unavailable.';}if(m.type==='error'){$('status').className='status error';$('status').textContent=m.message;}});</script></body></html>`;
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:1200px}h1{margin-top:0}.layout{display:grid;grid-template-columns:minmax(260px,1fr) minmax(360px,2fr);gap:16px}.card,.result{border:1px solid var(--vscode-panel-border);padding:12px;margin:10px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background);padding:10px}.instructions{border-left:4px solid var(--vscode-editorWarning-foreground);background:var(--vscode-textCodeBlock-background);padding:10px;margin:10px 0;line-height:1.45}.instructions p{margin:6px 0}.muted{color:var(--vscode-descriptionForeground)}textarea{box-sizing:border-box;width:100%;min-height:420px;padding:8px;font-family:var(--vscode-editor-font-family);color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}button{padding:7px 12px;margin:10px 8px 0 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.matched{border-left:4px solid var(--vscode-testing-iconPassed)}.mismatched{border-left:4px solid var(--vscode-testing-iconFailed)}.indeterminate,.missing,.invalid{border-left:4px solid var(--vscode-editorWarning-foreground)}.error{color:var(--vscode-errorForeground)}.status{font-weight:600}.trace{padding:8px;margin:8px 0;background:var(--vscode-textCodeBlock-background)}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px}dt{font-weight:600}dd{margin:0;overflow-wrap:anywhere}@media(max-width:850px){.layout{display:block}}
+</style></head><body><h1>SCAP-NG Sample Object Tester</h1><div class="banner"><p id="source">Loading selected Object…</p><p class="muted"><strong>Offline sample data only.</strong> This tool previews Object selector traces. It does not collect evidence, execute a scanner, evaluate <code>require</code>, or produce compliance PASS/FAIL.</p></div><div class="layout"><section><div class="card"><h2>Assessment Object (read-only)</h2><p class="muted">This is the Object authored in the Test. It is not the sample input and should not be replaced.</p><pre id="object"></pre></div><div class="card"><h2 id="sampleHeading">Collected Item sample input</h2><div id="guidance" class="instructions"><strong>What to do:</strong> Replace the generated starter below with a sanitized canonical collected Item. Do not paste the Assessment YAML or raw command output.</div><p id="sampleHelp" class="muted">Select all text in the editor below and paste one Item, an array of Items, or <code>{items: [...]}</code>. Each Item must contain <code>id</code>, <code>capability</code>, <code>status</code>, <code>fields</code>, and <code>provenance</code>. The starter is scaffolding only; it is not scanner evidence.</p><details id="sampleShape"><summary>Show the required Item shape</summary><pre>{
+  "id": "collected-item-1",
+  "capability": "windows.registry",
+  "status": "exists",
+  "fields": {
+    "field_name": {"datatype": "string", "status": "exists", "value": "example"}
+  },
+  "provenance": {}
+}</pre></details><textarea id="samples" spellcheck="false" aria-label="Collected Item sample input; replace the starter text"></textarea><button id="test">Test collected Item against Object</button><button class="secondary" id="reset">Restore generated starter</button><p id="status" class="status" role="status" aria-live="polite"></p></div></section><section><h2>Selector trace</h2><div id="results" aria-live="polite"><p class="muted">Run the tester to see each Item and selector decision.</p></div></section></div><script nonce="object-tester">
+const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);let starter='';function text(node,value){node.replaceChildren(document.createTextNode(value??''));}function statusClass(value){return value==='matched'?'matched':value==='mismatched'?'mismatched':value;}function renderTrace(result){const root=$('results');root.replaceChildren();if(result.inputDiagnostics?.length){const box=document.createElement('div');box.className='result invalid';const h=document.createElement('h3');h.textContent='Sample input unavailable';box.append(h);for(const x of result.inputDiagnostics){const p=document.createElement('p');p.className='error';p.textContent=x;box.append(p);}root.append(box);return;}const summary=document.createElement('div');summary.className='banner';summary.textContent='Selected Item indices: '+(result.selectedItemIndices.length?result.selectedItemIndices.join(', '):'none')+' · '+result.items.length+' Item(s) inspected';root.append(summary);for(const item of result.items){const box=document.createElement('article');box.className='result '+statusClass(item.status);const h=document.createElement('h3');h.textContent='Item '+item.index+(item.id?' ('+item.id+')':'')+' — '+item.status;box.append(h);if(item.schemaDiagnostics?.length){const p=document.createElement('p');p.className='error';p.textContent='Canonical schema diagnostics: '+item.schemaDiagnostics.join('; ');box.append(p);}for(const trace of item.selectors){const t=document.createElement('div');t.className='trace '+statusClass(trace.status);const title=document.createElement('strong');title.textContent=trace.field+' · '+trace.operator+' · '+trace.status;t.append(title);const dl=document.createElement('dl');for(const pair of [['Expected',trace.expected],['Actual',trace.actual],['Datatype',trace.datatype],['Reason',trace.reason]]){const dt=document.createElement('dt');dt.textContent=pair[0];const dd=document.createElement('dd');dd.textContent=pair[1]===undefined?'(not present)':typeof pair[1]==='string'?pair[1]:JSON.stringify(pair[1]);dl.append(dt,dd);}t.append(dl);box.append(t);}root.append(box);}for(const warning of result.warnings||[]){const p=document.createElement('p');p.className='muted';p.textContent=warning;root.append(p);}}$('test').onclick=()=>{const textValue=$('samples').value;$('status').textContent='Validating sample structure and evaluating selectors offline…';vscode.postMessage({type:'test',source:textValue});};$('reset').onclick=()=>{$('samples').value=starter;};window.addEventListener('message',event=>{const m=event.data;if(m.type==='init'){text($('source'),'Source: '+m.context.capability+(m.context.testId?' · Test '+m.context.testId:'')+' · '+m.context.path.join('.'));text($('object'),JSON.stringify(m.context.object,null,2));text($('guidance'),m.context.guidance?.message||'Replace the generated starter below with a sanitized canonical collected Item.');starter=m.starter;$('samples').value=starter;const unavailable=m.context.guidance&&!m.context.guidance.canPreview;if(unavailable){text($('sampleHeading'),'Sample input unavailable for this Test');$('sampleHelp').hidden=true;$('sampleShape').hidden=true;$('samples').hidden=true;$('test').hidden=true;$('reset').hidden=true;}}if(m.type==='result'){renderTrace(m.result);$('status').textContent='Preview complete. Assessment evaluation remains unavailable.';}if(m.type==='error'){$('status').className='status error';$('status').textContent=m.message;}});</script></body></html>`;
 }
 
 class SampleObjectTesterPanel {
@@ -155,7 +198,8 @@ class SampleObjectTesterPanel {
     if (!pack) return void api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using the Sample Object Tester.');
     const start = document.offsetAt(editor.selection.start); const end = document.offsetAt(editor.selection.end);
     const selected = findObjectContext(document.getText(), start, end);
-    if (!selected) return void api.window.showWarningMessage('Place the caret inside an inline Test Object with a schema-resolved capability.');
+    if (!selected) return void api.window.showWarningMessage('Place the caret on or inside a Test Object with a schema-resolved capability.');
+    if (selected.capability === 'independent.shellcommand') return void api.window.showInformationMessage('Shellcommand sample preview is postponed while its input and evaluation design is reworked. No command was executed.');
     const panel = api.window.createWebviewPanel('scapNg.sampleObjectTester', 'SCAP-NG Sample Object Tester', api.ViewColumn?.Beside ?? 2, { enableScripts: true, retainContextWhenHidden: true });
     panel.webview.html = sampleObjectTesterHtml();
     panel.webview.onDidReceiveMessage(async (message: any) => {
@@ -163,7 +207,7 @@ class SampleObjectTesterPanel {
       try { const result = await evaluateObjectSamples(selected.object, selected.capability, message.source, pack); panel.webview.postMessage({ type: 'result', result }); }
       catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }
     });
-    panel.webview.postMessage({ type: 'init', context: selected, starter: starterSampleItems(selected.object, selected.capability) });
+    panel.webview.postMessage({ type: 'init', context: { ...selected, guidance: objectTesterGuidance(selected.object) }, starter: starterSampleItems(selected.object, selected.capability) });
     context.subscriptions.push(panel);
   }
 }
@@ -179,15 +223,89 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
   return editor;
 }
 
+
+function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
+function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
+function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, capability: string) {
+  const catalog = new GuidedCatalog(pack); const object: any = {};
+  const requirement = catalog.objectRequirements(capability)[0];
+  for (const name of requirement?.fields ?? []) {
+    const field = catalog.objectFields(capability).find(candidate => candidate.name === name);
+    const operation = field?.operations[0]?.value;
+    if (operation) object[name] = { [operation]: '' };
+  }
+  const itemFound = preferred(catalog.itemFound()); const itemsSatisfying = preferred(catalog.itemsSatisfying());
+  const valuesFound = preferred(catalog.fieldValuesFound()); const valuesMatching = preferred(catalog.fieldValuesMatching());
+  const item_requirement: any = {}; if (itemFound) item_requirement.items_found = itemFound; if (itemsSatisfying) item_requirement.items_satisfying = itemsSatisfying;
+  const field_requirement: any = {}; if (valuesFound) field_requirement.values_found = valuesFound; if (valuesMatching) field_requirement.values_matching = valuesMatching;
+  const require: any = {}; if (Object.keys(item_requirement).length) require.item_requirement = item_requirement; if (Object.keys(field_requirement).length) require.field_requirement = field_requirement;
+  const reported = preferred(catalog.reportedElements());
+  return { test_title: title, capability, object, require, ...(reported ? { reported_elements: reported } : {}) } as any;
+}
+async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string): Promise<any> {
+  if (!pack) throw new Error('A verified offline metadata pack is required for schema-driven structural additions.');
+  const source = new SourceBuffer(document.getText()); const catalog = new GuidedCatalog(pack);
+  const last = String(path.at(-1) ?? '');
+  if (last === 'tests') {
+    const id = await api.window.showInputBox({ prompt: 'New Test ID (drafts end in -test)', value: 'new-test' }); if (!id) return undefined;
+    const capability = await api.window.showQuickPick(catalog.capabilities(), { placeHolder: 'Choose the Test capability from the pinned metadata' }); if (!capability) return undefined;
+    const title = await api.window.showInputBox({ prompt: 'Human-readable Test summary', value: 'New Assessment Test' }); if (!title) return undefined;
+    const skeleton = graphicalTestSkeleton(pack, id, title, capability.value); const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'tests', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+  }
+  if (last === 'variables') {
+    const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
+    const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+  }
+  if (last === 'shared_objects') {
+    const id = await api.window.showInputBox({ prompt: 'New shared Object name', value: 'new-object' }); if (!id) return undefined;
+    const capability = await api.window.showQuickPick(catalog.capabilities(), { placeHolder: 'Choose the Object capability from the pinned metadata' }); if (!capability) return undefined;
+    const skeleton = { capability: capability.value } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'shared_objects', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+  }
+  const existing = valueAtPathForGraphical(source.json(), path);
+  if (Array.isArray(existing)) {
+    if (last === 'filters') return source.insertArrayItem(path, { include: {} } as any, expectedHash);
+    if (last === 'operands') return source.insertArrayItem(path, { object: {}, filters: [] } as any, expectedHash);
+    return source.insertArrayItem(path, {} as any, expectedHash);
+  }
+  if (existing && typeof existing === 'object') {
+    const key = await api.window.showInputBox({ prompt: `Add a schema property under ${last}`, value: 'new-property' }); if (!key) return undefined;
+    return source.insertMapEntry(path, key, null, expectedHash);
+  }
+  throw new Error(`Cannot add a child to ${path.join('.')}; use native YAML for this incomplete structure.`);
+}
+async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
+  const workspaceEdit = new api.WorkspaceEdit();
+  workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement);
+  if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
+}
 class AssessmentEditorProvider {
   constructor(private readonly getPack: () => MetadataPack | undefined) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
-    const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = structuredHtml();
-    const send = () => panel.webview.postMessage({ type: 'model', model: assessmentEditorModel(document, this.getPack()) });
+    const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = graphicalHtml();
+    const send = () => {
+      try {
+        const model = assessmentEditorModel(document, this.getPack());
+        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document' } });
+      } catch (error) {
+        // A malformed/exotic YAML document must never strand the custom editor
+        // on its loading placeholder. Keep the native YAML editor available
+        // and expose the exact model-building failure in the webview/status bar.
+        const message = error instanceof Error ? error.message : String(error);
+        void panel.webview.postMessage({ type: 'model', model: { ok: false, error: message, fields: [], sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document' } });
+        void panel.webview.postMessage({ type: 'error', message: `Unable to load the graphical model: ${message}` });
+      }
+    };
     let editQueue = Promise.resolve();
     const applyMessage = async (message: any) => {
       if (message.type === 'ready') return send();
+      if (message.type === 'webviewError') {
+        const detail = typeof message.message === 'string' ? message.message : 'Unknown webview error';
+        void api.window.showErrorMessage(`SCAP-NG graphical editor failed to load: ${detail}`);
+        return;
+      }
+      // Open native YAML editor beside workbench: the webview never becomes a second source document.
       if (message.type === 'openSource') { await revealNativeSource(api, document); return; }
+      if (message.type === 'openRegex') { await api.commands.executeCommand('scapNg.testRegex', { document, useFirst: true }); return; }
       if (message.type === 'openGuided') { await api.commands.executeCommand('scapNg.createGuidedAssessment'); return; }
       if (message.type === 'selectPath' && Array.isArray(message.path)) {
         try { const range = new SourceBuffer(document.getText()).scalarRange(message.path); await revealNativeSource(api, document, range); } catch { await revealNativeSource(api, document); }
@@ -196,6 +314,46 @@ class AssessmentEditorProvider {
       if (message.type === 'regexPreview' && Array.isArray(message.patterns) && typeof message.input === 'string') {
         const previews = await previewRegexSafe(message.patterns.filter((pattern: any) => typeof pattern === 'string'), message.input, typeof message.flags === 'string' ? message.flags : '', 100);
         panel.webview.postMessage({ type: 'regexPreviewResult', previews }); return;
+      }
+      if (message.type === 'structural') {
+        try {
+          const currentRevision = sha256(document.getText());
+          if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) throw new Error('Document changed before this structural edit; refresh and try again.');
+          const path = Array.isArray(message.path) ? message.path : [];
+          if (message.action === 'reveal') { try { await revealNativeSource(api, document, new SourceBuffer(document.getText()).scalarRange(path)); } catch { await revealNativeSource(api, document); } return; }
+          if (message.action === 'rename') {
+            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Only authored mapping keys can be renamed safely.');
+            const oldKey = String(path.at(-1)); const newKey = await api.window.showInputBox({ prompt: `Rename ${oldKey}`, value: oldKey, validateInput: (value: string) => /^[A-Za-z0-9._/-]+$/.test(value) ? undefined : 'Use a simple YAML mapping key.' });
+            if (!newKey || newKey === oldKey) return;
+            const edit = new SourceBuffer(document.getText()).editMappingKey(path.slice(0, -1), oldKey, newKey, currentRevision);
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
+          if (message.action === 'remove') {
+            if (path.at(-1) === 'require') throw new Error('Test require is required by the pinned 0.4 schema; replace a branch or leave an explicit incomplete draft.');
+            if (path.length < 2) throw new Error('The Assessment root cannot be removed.');
+            const confirmation = await api.window.showWarningMessage(`Remove ${String(path.at(-1))}? References are not auto-repaired.`, { modal: true }, 'Remove');
+            if (confirmation !== 'Remove') return;
+            const edit = new SourceBuffer(document.getText()).removePath(path, currentRevision);
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
+          if (message.action === 'duplicate') {
+            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Duplicate is available for named mapping nodes.');
+            const oldKey = String(path.at(-1)); const value = valueAtPathForGraphical(new SourceBuffer(document.getText()).json(), path);
+            const suggested = `${oldKey}-copy`; const newKey = await api.window.showInputBox({ prompt: `Duplicate ${oldKey} as`, value: suggested, validateInput: (v: string) => /^[A-Za-z0-9._/-]+$/.test(v) ? undefined : 'Use a simple YAML mapping key.' });
+            if (!newKey) return;
+            const edit = new SourceBuffer(document.getText()).insertMapEntry(path.slice(0, -1), newKey, value, currentRevision);
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
+          if (message.action === 'add') {
+            const edit = await graphicalAdd(api, document, this.getPack(), path, currentRevision);
+            if (edit) await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
+        } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }
+        return;
       }
       if (message.type === 'editKey') {
         const currentRevision = sha256(document.getText());
@@ -236,7 +394,9 @@ class AssessmentEditorProvider {
 const INDEX_WORKERS = 8;
 async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection) {
   if (!api.workspace.findFiles || !api.workspace.openTextDocument) return;
-  const files = await api.workspace.findFiles('**/*.{yaml,yml}', '**/{node_modules,.git,.external}/**');
+  const patterns = ['**/*.assessment.yaml', '**/*.assessment.yml', '**/*.rule.yaml', '**/*.rule.yml', '**/*.benchmark.yaml', '**/*.benchmark.yml'];
+  const found = (await Promise.all(patterns.map(pattern => api.workspace.findFiles(pattern, '**/{node_modules,.git}/**')))).flat();
+  const files = [...new Map(found.map((uri: any) => [uri.toString(), uri])).values()];
   const entries: { uri: string; text: string; path: string }[] = []; let cursor = 0;
   const worker = async () => {
     while (cursor < files.length) {
@@ -700,7 +860,6 @@ function registerYamlCodeActions(context: vscode.ExtensionContext, getPack: () =
 export function activate(context: vscode.ExtensionContext) {
   const api: any = vscode;
   const profile = readProfile(context.extensionPath);
-  const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
   let pack: MetadataPack | undefined;
   let packConfiguration: Promise<boolean> | undefined;
   let packError: string | undefined;
@@ -708,6 +867,7 @@ export function activate(context: vscode.ExtensionContext) {
   const loadPack = (documentPath?: string) => {
     if (pack) return pack;
     packError = undefined;
+    const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
     const candidate = configuredPack || discoverPackPath(documentPath);
     if (!candidate) { packError = 'No verified offline SCAP-NG metadata pack was found for this workspace.'; return undefined; }
     try {
@@ -730,6 +890,27 @@ export function activate(context: vscode.ExtensionContext) {
   registerYamlHoverProvider(context, () => pack, api);
   registerYamlCodeActions(context, () => pack, api);
   const build = readBuildInfo(context.extensionPath);
+  // Test harness hook only: a real Extension Development Host can open the
+  // graphical surface for screenshot/host receipts without changing the
+  // default YAML-first activation path.
+  if (process.env.SCAP_NG_GRAPHICAL_HOST === '1') setTimeout(async () => {
+    const active = api.window.activeTextEditor?.document;
+    const candidate = active && /\.assessment\.ya?ml$/i.test(active.uri?.fsPath ?? '') ? active : undefined;
+    if (candidate) await api.commands.executeCommand('vscode.openWith', candidate.uri, 'scapNg.assessment', { viewColumn: api.ViewColumn?.One ?? 1, preserveFocus: false, preview: false });
+  }, 3000);
+  const resetPack = () => {
+    pack = undefined;
+    packConfiguration = undefined;
+    packError = undefined;
+    packWarningShown = false;
+    loadPack((api.window as any).activeTextEditor?.document?.uri?.fsPath);
+  };
+  const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, resetPack);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('scapNg-authoringSidebar', authoringSidebar));
+  const revealAuthoring = async () => {
+    try { await api.commands.executeCommand('workbench.view.extension.scapNg-authoring'); return true; }
+    catch { return false; }
+  };
   const yamlStatus = api.window.createStatusBarItem(api.StatusBarAlignment?.Right ?? 2, 100);
   yamlStatus.command = 'scapNg.showYamlStatus';
   let currentYamlStatus: any;
@@ -746,7 +927,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(yamlStatus);
   // Keep the suppression and schema association workspace-scoped. This avoids
   // changing ordinary YAML files in other workspaces or the user's global settings.
-  context.subscriptions.push(diagnostics, schemaDiagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg.assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
+  context.subscriptions.push(diagnostics, schemaDiagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg-assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
   void indexWorkspace(index, tree, api, indexDiagnostics);
   if (api.workspace.createFileSystemWatcher) {
     for (const pattern of ['**/*.yaml', '**/*.yml']) {
@@ -754,6 +935,28 @@ export function activate(context: vscode.ExtensionContext) {
       context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); }));
     }
   }
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAssessmentAuthoringPrototype', async (argument: any) => {
+    const candidate = argument?.document?.getText ? argument.document : undefined;
+    const candidates = [
+      argument?.resourceUri,
+      argument?.uri,
+      argument?.scheme ? argument : undefined,
+      api.window.activeTextEditor?.document?.uri,
+      api.window.tabGroups?.activeTabGroup?.activeTab?.input?.uri,
+      ...(api.window.tabGroups?.all ?? []).flatMap((group: any) => (group.tabs ?? []).filter((tab: any) => tab.isActive).map((tab: any) => tab.input?.uri))
+    ].filter(Boolean);
+    let document = candidate ?? api.window.activeTextEditor?.document;
+    for (const uri of candidates) {
+      if (document) break;
+      try { document = await api.workspace.openTextDocument(uri); } catch { /* Try the next active-tab/resource URI. */ }
+    }
+    AssessmentAuthoringPrototypePanel.open(context, document, () => pack);
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAuthoringSidebar', async () => {
+    if (await revealAuthoring()) return;
+    await api.commands.executeCommand('workbench.action.openView');
+    void api.window.showInformationMessage('Select the SCAP-NG Authoring view from the Open View picker.');
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
   context.subscriptions.push(api.commands.registerCommand('scapNg.configureYamlSchemas', async () => {
     if (!pack) { await api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before associating native YAML schemas.'); return; }
@@ -819,7 +1022,7 @@ export function activate(context: vscode.ExtensionContext) {
     channel.show(true);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack)));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', () => RegexTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', (argument: any) => RegexTesterPanel.open(context, argument?.document ?? api.window.activeTextEditor?.document, pack, { useFirst: argument?.useFirst === true })));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testObject', () => SampleObjectTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
   const inspect = (document: vscode.TextDocument) => {
     loadPack(document.uri.fsPath);
@@ -827,11 +1030,14 @@ export function activate(context: vscode.ExtensionContext) {
       validateDocument(document, profile, diagnostics);
       publishSchemaRequiredDiagnostics(document, pack, schemaDiagnostics);
     }
+    const activeEditor = api.window.activeTextEditor;
+    if (activeEditor?.document?.uri?.toString?.() === document.uri?.toString?.()) authoringSidebar.setEditor(activeEditor);
     void refreshYamlStatus(document);
   };
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
   if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
-  if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { void refreshYamlStatus(editor?.document); }));
-  if (api.window.activeTextEditor?.document) { inspect(api.window.activeTextEditor.document); void refreshYamlStatus(api.window.activeTextEditor.document); }
+  if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { authoringSidebar.setEditor(editor); void refreshYamlStatus(editor?.document); }));
+  if (api.window.onDidChangeTextEditorSelection) context.subscriptions.push(api.window.onDidChangeTextEditorSelection((event: any) => authoringSidebar.setEditor(event.textEditor)));
+  if (api.window.activeTextEditor?.document) { authoringSidebar.setEditor(api.window.activeTextEditor); inspect(api.window.activeTextEditor.document); void refreshYamlStatus(api.window.activeTextEditor.document); }
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }

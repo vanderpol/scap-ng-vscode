@@ -102,6 +102,7 @@ function predicateControl(fields: any[], mappingPath: (string | number)[], name:
 }
 export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const base: any = modelFor(document, pack); if (!base.ok) return base;
+  base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256; base.diagnostics = [];
   const value: any = new SourceBuffer(document.getText()).json(); const assessment = value.assessment;
   if (!assessment || typeof assessment !== 'object' || !assessment.tests || typeof assessment.tests !== 'object') return { ...base, assessment: undefined, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
   const catalog = pack ? new GuidedCatalog(pack) : undefined; const tests = Object.entries(assessment.tests).map(([id, test]: [string, any]) => {

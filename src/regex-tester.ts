@@ -82,6 +82,13 @@ export function findRegexContext(text: string, offset: number, selectionEnd = of
   };
 }
 
+/** Select the first schema-recognized expression when opening from a graphical
+ * editor that has no native text-editor caret. A full-document selection also
+ * groups sibling matches_regex sequence entries as one editable set. */
+export function findFirstRegexContext(text: string): RegexContext | undefined {
+  return findRegexContext(text, 0, text.length);
+}
+
 function valueAt(root: any, path: (string | number)[]) {
   let value = root;
   for (const part of path) value = value?.[part as any];

@@ -318,8 +318,20 @@ exports.activate=()=>setTimeout(async()=>{try{
  const multipleUnixObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[1].index,character:scopedDoc.lineAt(scopedObjectLines[1].index).text.length});
  const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas},null,2));
- await vscode.commands.executeCommand('workbench.action.closeWindow');
+ let graphicalLifecycle;
+ if (process.env.SCAP_NG_OPEN_GRAPHICAL === '1') {
+  await vscode.commands.executeCommand('vscode.openWith', valid, 'scapNg.assessment', { viewColumn: vscode.ViewColumn.One, preserveFocus: false, preview: false }); await new Promise(resolve=>setTimeout(resolve, 1500));
+  if (process.env.SCAP_NG_GRAPHICAL_EDIT === '1') {
+   const before = validDoc.getText(); const objectOld = 'local_machine'; const requireOld = 'value: {equals: 1}'; const objectStart = before.indexOf(objectOld); const requireStart = before.indexOf(requireOld);
+   if (objectStart < 0 || requireStart < 0) throw new Error('Graphical Object/Require demo markers were not found');
+   const edit = new vscode.WorkspaceEdit(); edit.replace(valid, new vscode.Range(validDoc.positionAt(objectStart), validDoc.positionAt(objectStart + objectOld.length)), 'current_user'); edit.replace(valid, new vscode.Range(validDoc.positionAt(requireStart + requireOld.indexOf('1')), validDoc.positionAt(requireStart + requireOld.indexOf('1') + 1)), '2'); const applied = await vscode.workspace.applyEdit(edit); await validDoc.save(); const changed = validDoc.getText();
+   const changedAgain = await vscode.workspace.openTextDocument(valid); await vscode.commands.executeCommand('workbench.action.closeActiveEditor'); await new Promise(resolve=>setTimeout(resolve, 400)); await vscode.commands.executeCommand('vscode.openWith', valid, 'scapNg.assessment', { viewColumn: vscode.ViewColumn.One, preserveFocus: false, preview: false }); await new Promise(resolve=>setTimeout(resolve, 600)); const reopened = changedAgain.getText();
+   await vscode.window.showTextDocument(validDoc, vscode.ViewColumn.One, false); await vscode.commands.executeCommand('undo'); await new Promise(resolve=>setTimeout(resolve, 250)); const undoText = (await vscode.workspace.openTextDocument(valid)).getText(); await vscode.commands.executeCommand('redo'); await new Promise(resolve=>setTimeout(resolve, 250)); const redoText = (await vscode.workspace.openTextDocument(valid)).getText();
+   graphicalLifecycle = { applied, baselineSha256: require('crypto').createHash('sha256').update(before).digest('hex'), changedSha256: require('crypto').createHash('sha256').update(changed).digest('hex'), before, changed, reopened, undoText, redoText, objectEdited: changed.includes('hive: {equals: current_user}'), requireEdited: changed.includes('value: {equals: 2}'), changedRanges: [[objectStart, objectStart + objectOld.length], [requireStart + requireOld.indexOf('1'), requireStart + requireOld.indexOf('1') + 1]] };
+  }
+ }
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas,graphicalLifecycle},null,2));
+ if (process.env.SCAP_NG_KEEP_HOST === '1') await new Promise(() => {}); else await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
 const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : []), `--extensionDevelopmentPath=${helper}`, ...(process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
@@ -327,8 +339,8 @@ const child = spawn(code, args, { detached: true, stdio: 'ignore', env: { ...pro
 const terminateHost = signal => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } } };
 const deadline = Date.now() + Number(process.env.SCAP_NG_HOST_TIMEOUT ?? 90000);
 while (Date.now() < deadline && !readFileSyncSafe(output)) await new Promise(resolve => setTimeout(resolve, 500));
-terminateHost('SIGTERM');
-await new Promise(resolve => { const timer = setTimeout(resolve, 5000); child.once('exit', () => { clearTimeout(timer); resolve(); }); });
+if (process.env.SCAP_NG_KEEP_HOST !== '1') { terminateHost('SIGTERM'); await new Promise(resolve => { const timer = setTimeout(resolve, 5000); child.once('exit', () => { clearTimeout(timer); resolve(); }); }); }
+if (process.env.SCAP_NG_KEEP_HOST === '1') await new Promise(resolve => setTimeout(resolve, Number(process.env.SCAP_NG_KEEP_HOST_MS ?? 15000)));
 terminateHost('SIGKILL');
 const receipt = readFileSyncSafe(output) ?? { error: 'VS Code host timed out' };
 const failures = [];
@@ -380,7 +392,7 @@ if (!receipt.traversalInsertion?.found || !receipt.traversalInsertion?.applied |
 if (!receipt.requireBlockInsertion?.found || !receipt.requireBlockInsertion?.applied || !/^\s*require:$/.test(receipt.requireBlockInsertion?.line || '')) failures.push('block require completion inserted invalid flow opener');
 if (!receipt.requireFieldInsertion?.found || !receipt.requireFieldInsertion?.applied || !/\{expanded_value:\s*\{/.test(receipt.requireFieldInsertion?.line || '')) failures.push('require field completion insertion failed');
 function receiptValue(name){ return receipt[name]; }
-for (const [name, property] of [['missingObject','hive'],['missingRequire','require'],['missingItemRequirement','item_requirement'],['missingFieldRequirement','field_requirement'],['missingFields','fields']]) {
+if (process.env.SCAP_NG_GRAPHICAL_EDIT !== '1') for (const [name, property] of [['missingObject','hive'],['missingRequire','require'],['missingItemRequirement','item_requirement'],['missingFieldRequirement','field_requirement'],['missingFields','fields']]) {
  const receipt=receiptValue(name);
  if (!(receipt.diagnostics||[]).length) failures.push(`${name}: missing property produced no diagnostic`);
  if (!receipt.actionFound || !receipt.applied) failures.push(`${name}: missing-property quick fix unavailable`);
@@ -396,7 +408,8 @@ assertSet(receipt.naturalTyping, expected.class, 'natural typing class prefix');
 const canonicalExpectations={windowsRegistry:{tests:1,capabilities:['windows.registry']},unixFile:{tests:1,capabilities:['unix.file']},multipleTests:{tests:2,capabilities:['windows.registry','unix.file']}};
 for(const [name,wanted] of Object.entries(canonicalExpectations)){const actual=receipt.canonicalReceipts?.[name];if(!actual||actual.languageId!=='yaml'||actual.testCount!==wanted.tests||wanted.capabilities.some(value=>!actual.capabilities.includes(value))||(actual.diagnostics||[]).length) failures.push(`canonical ${name}: host verification mismatch`);}
 if (!receipt.prefixInsertion?.applied || receipt.prefixInsertion?.text !== 'automated' || !/mode:\s+automated/.test(receipt.prefixInsertion?.line || '')) failures.push('typed completion did not replace the existing prefix');
-if (!receipt.sourcePreserved) failures.push('opening the canonical Assessment changed its YAML source');
+if (process.env.SCAP_NG_GRAPHICAL_EDIT !== '1' && !receipt.sourcePreserved) failures.push('opening the canonical Assessment changed its YAML source');
+if (process.env.SCAP_NG_GRAPHICAL_EDIT === '1') { const life=receipt.graphicalLifecycle; if (!life?.applied || !life.objectEdited || !life.requireEdited || life.reopened !== life.changed || life.undoText !== life.before || life.redoText !== life.changed) failures.push('graphical edit/save/reopen/undo/redo lifecycle failed'); }
 if (!receipt.insertion?.found || !receipt.insertion?.applied || receipt.insertion?.text !== expected.class[0] || !/class:\s+compliance/.test(receipt.insertion?.line || '')) failures.push('completion insertion did not produce the selected SCAP-NG value');
 if (!receipt.hoverCount || !receipt.hoverText || !receipt.hoverText.includes('compliance')) failures.push('schema hover did not return canonical enum documentation');
 if (process.env.SCAP_NG_EXPECT_HOVER_TEXT && !receipt.hoverText?.includes(process.env.SCAP_NG_EXPECT_HOVER_TEXT)) failures.push('schema hover did not reflect the mutated canonical description/enum');

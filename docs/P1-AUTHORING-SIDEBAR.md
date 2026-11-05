@@ -1,37 +1,37 @@
 # P1 authoring sidebar
 
-**Status:** planned; not implemented in the P0 checkpoint.
+**Status:** Phase 1 implemented as an optional Assessment Studio Authoring view; deeper sample-data playgrounds remain postponed.
 
 The SCAP-NG editor should provide an optional, dockable **Authoring** view that
 stays alongside the native YAML editor. YAML remains authoritative; the view
-must never become a second document model or silently rewrite the source.
+must never become a second document model or silently rewrite the source. The
+Authoring view is placed in VS Code’s Secondary Side Bar so it can use the full
+height independently of the Assessment Studio content tree.
 
-## Planned panels
+## Phase 1 panels
+
+The dockable **Authoring** view is a full-height view in the Secondary Side Bar. The Assessment Studio activity container remains dedicated to the searchable content tree (STIGs, Assessments, Rules, directory folders, and Diagnostics). VS Code can collapse, resize, move, or hide either surface. The view is opened only when the user explicitly selects it; opening an Assessment never changes the workbench layout. The view follows the active YAML editor and cursor without becoming a second document model.
+
 
 ### Schema Help
 
-Follow the active YAML cursor and show the same schema-derived title,
-description, allowed values, allowed operators, defaults, constraints, and
-source location used by hover and Go to Definition.
+Implemented in Phase 1. Follow the active YAML cursor and show the same pinned schema/vocabulary title, description, allowed values/operators, and source path used by hover. Help remains safe text rendering and disappears when no current schema target is available.
 
 ### Regex Tester
 
-When the cursor is on a regex predicate, provide a bounded offline test area
-for sample strings. Show matches and capture groups, identify the supported
-regex dialect, and reject/cancel pathological input. This is a preview, not a
-scanner result.
+Implemented in Phase 1 as a contextual tab. When the cursor is on a regex predicate, it provides a bounded PCRE2-safe-preview sample area, reports match/error/cancellation status, and links to the full Regex Tester for multi-sample editing and source application. When no caret is available (for example, Graphical mode), the tab offers the full tester and opens the first schema-recognized expression. This is a preview, not a scanner result.
 
 ### Sample Object Tester
 
-Allow an author to enter or paste representative collected Object data and
-preview selector, field-predicate, Variable, and requirement matching. Results
-must be labeled as offline sample evaluation and must not claim compliance,
-collection, provenance, or runtime status.
+Direct-selector Item preview remains available through the existing command. Shellcommand result prototyping is deliberately postponed until its input, pattern, and requirement semantics have a separately reviewed design.
+
+### Options and Diagnostics
+
+The Options tab shows the current verified offline pack and pinned schema state, identifies native YAML as the source editing surface, and lets the user save or clear the workspace schema-pack path directly in the sidebar. It also provides an action for opening the YAML editor beside the view. The Diagnostics tab shows local YAML parse status, pinned schema status, document-version mismatch, and the explicit “Assessment execution unavailable” boundary. Detailed build, pin, pack, document, and cursor information stays behind a collapsed disclosure. These tabs do not execute commands or send telemetry.
 
 ### Diagnostics
 
-Show schema and authoring diagnostics with links back to the source range. Quick
-Fixes remain explicit, minimal, undoable edits in the native YAML document.
+The Diagnostics tab is the first contextual diagnostics surface. Full source-linked schema/authoring diagnostic navigation remains a subsequent increment; quick fixes remain explicit, minimal, undoable edits in the native YAML document.
 
 ## Architecture and UX constraints
 
@@ -43,10 +43,9 @@ Fixes remain explicit, minimal, undoable edits in the native YAML document.
 - Keep regex and sample evaluation bounded and clearly dialect/semantic scoped.
 - Preserve comments, flow/block style, line endings, and unrelated source text.
 
-## Suggested delivery order
+## Remaining delivery order
 
-1. Persistent Schema Help panel using the existing hover/definition metadata.
-2. Contextual diagnostics and source navigation.
-3. Bounded Regex Tester.
-4. Sample Object Tester for deterministic selector/requirement previews.
-5. Broader logical/status previews only after their contracts are explicit.
+1. Add source-range navigation and richer diagnostics to the Diagnostics tab.
+2. Expand the Regex tab with saved sanitized cases while retaining the full tester as the source-edit surface.
+3. Revisit Sample Object and shellcommand result playgrounds only after their contracts are explicit.
+4. Add broader logical/status previews only after their truth boundaries are reviewed.

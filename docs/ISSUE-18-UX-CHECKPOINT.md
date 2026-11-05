@@ -8,7 +8,7 @@ Updated 2026-11-03. Superseded by [Issue #35 Graphical + native YAML checkpoint]
 - The New Assessment Wizard retains the Guided flow; source selections are highlighted from Graphical controls when a safe scalar range exists.
 - Native YAML edits and Graphical scalar edits require parse/schema validation. Graphical scalar edits remain range patches, with native VS Code undo/redo and stale-revision protection. Full-document Source apply rechecks the TextDocument hash/version immediately after the approval prompt, preventing TOCTOU lost updates.
 - Predicate operation changes are constrained by allowed operation choices and revalidated against the pinned Assessment schema before applying. Dynamic comparison field names can be safely renamed through the same mapping-key patch path.
-- Existing optional Input branches expose schema-backed editable controls; multi-Test evaluation trees show their authored structure and allow safe top-level AND/OR/ONE/XOR changes through a minimal mapping-key patch. Variables and complex regex predicates are described without execution. Regex previews use a restricted ECMAScript-safe subset and a cancellable worker with a real time budget; pathological patterns are rejected or terminated and never report Assessment compliance.
+- Existing optional Input branches expose schema-backed editable controls; multi-Test evaluation trees show their authored structure and allow safe top-level AND/OR/ONE/XOR changes through a minimal mapping-key patch. Variables and complex regex predicates are described without execution. Regex previews use a bounded PCRE2-safe preview and a cancellable worker with a real time budget; pathological patterns are rejected or terminated and never report Assessment compliance.
 
 ## Verification
 

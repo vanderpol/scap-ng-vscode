@@ -294,3 +294,17 @@ export function registerYamlDefinitionProvider(context: any, getPack: () => Meta
   }};
   context.subscriptions.push(api.languages.registerDefinitionProvider({ language: 'yaml', scheme: 'file' }, provider));
 }
+
+/** Return the same pinned schema/vocabulary help used by native YAML hover. */
+export function contextualHelp(pack: MetadataPack, document: any, position: any): { title: string; markdown: string; path: string[]; capability?: string; schemaUri: string } | undefined {
+  try {
+    const parsed = parseDocument(document.getText(), { keepSourceTokens: true, uniqueKeys: false });
+    const snapshot: DocumentSnapshot = { text: document.getText(), parsed };
+    const path = nodePathAt(document, position, parsed);
+    if (!path) return undefined;
+    const target = schemaTargetForPath(pack, path, snapshot);
+    if (!target) return undefined;
+    const help = schemaHelp(pack, target);
+    return help ? { ...help, path, capability: target.capability, schemaUri: target.uri } : undefined;
+  } catch { return undefined; }
+}

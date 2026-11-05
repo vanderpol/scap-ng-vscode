@@ -55,7 +55,15 @@ export function findObjectContext(text: string, offset: number, selectionEnd = o
         const key = (pair as any).key?.value;
         if (typeof key !== 'string') continue;
         const nextPath = [...path, key];
-        if (key === 'object' && (pair as any).value?.items && Array.isArray((pair as any).value.range) && wanted((pair as any).value.range)) {
+        // Accept the Object key itself as well as any nested member. A block
+        // mapping's value range starts at its first child, so requiring only
+        // the value range makes a caret on `object:` appear to be outside the
+        // Object even though it is the natural place to invoke this command.
+        const objectKeyRange = (pair as any).key?.range;
+        const objectValueRange = (pair as any).value?.range;
+        const insideObject = (Array.isArray(objectKeyRange) && wanted(objectKeyRange)) ||
+          (Array.isArray(objectValueRange) && wanted(objectValueRange));
+        if (key === 'object' && (pair as any).value?.items && insideObject) {
           const tests = nextPath.indexOf('tests');
           const testId = tests >= 0 && typeof nextPath[tests + 1] === 'string' ? String(nextPath[tests + 1]) : undefined;
           const capability = tests >= 0 ? at(value, ['assessment', 'tests', testId ?? '', 'capability']) : undefined;
@@ -79,6 +87,37 @@ function selectorOperation(predicate: unknown): [string, unknown] | undefined {
   const ignored = new Set(['datatype', 'value_match', 'redact_result']);
   const entry = Object.entries(predicate as Record<string, unknown>).find(([key]) => !ignored.has(key));
   return entry as [string, unknown] | undefined;
+}
+function concreteSampleValue(predicate: unknown): [string, string | number | boolean] | undefined {
+  const entry = selectorOperation(predicate);
+  if (!entry || entry[0] === 'variable' || entry[0] === 'input' || unresolved(predicate) || unresolved(entry[1])) return undefined;
+  const [operator, expected] = entry;
+  return typeof expected === 'string' || typeof expected === 'number' || typeof expected === 'boolean' ? [operator, expected] : undefined;
+}
+export interface ObjectTesterGuidance {
+  message: string;
+  canPreview: boolean;
+  previewableFields: string[];
+  unresolvedFields: string[];
+  unsupportedFields: string[];
+}
+export function objectTesterGuidance(object: Record<string, unknown>, capability?: string): ObjectTesterGuidance {
+  const previewableFields: string[] = [];
+  const unresolvedFields: string[] = [];
+  const unsupportedFields: string[] = [];
+  for (const [field, predicate] of Object.entries(object)) {
+    if (concreteSampleValue(predicate)) previewableFields.push(field);
+    else {
+      const operation = selectorOperation(predicate);
+      if (unresolved(predicate) || operation?.[0] === 'variable' || operation?.[0] === 'input' || unresolved(operation?.[1])) unresolvedFields.push(field);
+      else unsupportedFields.push(field);
+    }
+  }
+  let message = 'Replace the generated starter below with one or more sanitized collected Item records. Paste a canonical Item—not raw command output and not the Assessment YAML. The tester compares the Item fields with the selected Object; it does not collect evidence.';
+  if (!previewableFields.length && unresolvedFields.length) {
+    message = `This Object is not available to this bounded sample tester. It uses unresolved Variable/Input-backed members (${unresolvedFields.join(', ')}), so no sample replacement is needed here. The preview cannot resolve Variables, execute commands, or evaluate require; use a direct-selector Test or a qualified evaluator instead.`;
+  }
+  return { message, canPreview: previewableFields.length > 0, previewableFields, unresolvedFields, unsupportedFields };
 }
 function fieldValue(item: any, field: string): { present: boolean; value?: unknown; datatype?: string; empty?: boolean; status?: string } {
   const fields = item?.fields;
@@ -120,7 +159,7 @@ async function evaluateSelector(field: string, predicate: unknown, item: any): P
     if (typeof actual.value !== 'string' || typeof expected !== 'string') return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: 'indeterminate', reason: 'Regex preview requires string selector and Item values.' };
     const result = (await previewRegexSafe([expected], actual.value, '', 500))[0];
     if (result.error || result.timedOut) return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: 'indeterminate', reason: result.error ?? 'Regex preview timed out and was cancelled.' };
-    return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: result.matched ? 'matched' : 'mismatched', reason: result.matched ? 'The bounded ECMAScript-safe-preview matched the Item value.' : 'The bounded ECMAScript-safe-preview did not match the Item value.' };
+    return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: result.matched ? 'matched' : 'mismatched', reason: result.matched ? 'The bounded PCRE2-safe-preview matched the Item value.' : 'The bounded PCRE2-safe-preview did not match the Item value.' };
   }
   if (['greater_than', 'greater_than_or_equal', 'less_than', 'less_than_or_equal'].includes(operator)) {
     if (!numeric(actual.value) || !numeric(expected)) return { field, operator, expected, actual: actual.value, datatype: actual.datatype, status: 'indeterminate', reason: 'Ordered comparison requires finite numeric values; no string coercion is performed.' };
@@ -171,10 +210,10 @@ export async function evaluateObjectSamples(object: Record<string, unknown>, cap
 export function starterSampleItems(object: Record<string, unknown>, capability: string) {
   const fields: Record<string, unknown> = {};
   for (const [field, predicate] of Object.entries(object)) {
-    const entry = selectorOperation(predicate);
+    const entry = concreteSampleValue(predicate);
     if (!entry) continue;
     const expected = entry[1];
-    if (typeof expected === 'string' || typeof expected === 'number' || typeof expected === 'boolean') fields[field] = { datatype: typeof expected === 'number' ? 'integer' : typeof expected === 'boolean' ? 'boolean' : 'string', status: 'exists', value: expected };
+    fields[field] = { datatype: typeof expected === 'number' ? 'integer' : typeof expected === 'boolean' ? 'boolean' : 'string', status: 'exists', value: expected };
   }
   return JSON.stringify([{ id: 'sample-item-1', capability, status: 'exists', fields, provenance: {} }], null, 2);
 }
