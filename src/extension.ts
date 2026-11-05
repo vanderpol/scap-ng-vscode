@@ -244,7 +244,7 @@ function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, ca
 }
 
 /** Build schema-backed Shared Object selectors without authoring invalid placeholders. */
-async function promptSharedSelector(api: any, catalog: GuidedCatalog, pack: MetadataPack,
+async function promptSharedSelector(api: any, catalog: GuidedCatalog,
     capability: string, already: Record<string, any>, preferredNames?: string[]) {
   const fields = catalog.objectFields(capability).filter(field => !Object.prototype.hasOwnProperty.call(already, field.name));
   if (!fields.length) throw new Error('No additional schema-declared selectors are available for this capability. Use native YAML for advanced Object shapes.');
@@ -403,14 +403,14 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const requiredFields: string[] = chosen?.fields?.length ? chosen.fields : [];
     if (requiredFields.length) {
       for (const fieldName of requiredFields) {
-        const next = await promptSharedSelector(api, catalog, pack, capability.value,
+        const next = await promptSharedSelector(api, catalog, capability.value,
           Object.fromEntries(Object.entries(skeleton).filter(([key]) => key !== 'object_title' && key !== 'capability')),
           [fieldName]);
         if (!next) return undefined;
         Object.assign(skeleton, next);
       }
     } else {
-      const next = await promptSharedSelector(api, catalog, pack, capability.value, {});
+      const next = await promptSharedSelector(api, catalog, capability.value, {});
       if (!next) return undefined;
       Object.assign(skeleton, next);
     }
@@ -1234,7 +1234,7 @@ export function deactivate() { /* no network, telemetry or scanner process */ }
       if (errors.length) throw new Error('Pinned schema rejected Shared Object title: ' + errors.join('; '));
       return edit;
     }
-    const newSelector = await promptSharedSelector(api, catalog, pack, selected.capability,
+    const newSelector = await promptSharedSelector(api, catalog, selected.capability,
       Object.fromEntries(Object.entries(selected).filter(([key]) =>
         key !== 'object_title' && key !== 'capability')));
     if (!newSelector) return undefined;
