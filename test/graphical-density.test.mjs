@@ -276,3 +276,25 @@ test('Object Variable references expose an inline preview and editor navigation'
   assert.match(html,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
   assert.match(html,/not evaluated here/);
 });
+
+
+test('Test summary always shows authored metadata without an inapplicable defaults display toggle', () => {
+  const html=graphicalHtml();
+  const center=html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
+  assert.match(center,/const isTestOverview=editPath\.length===3&&editPath\[1\]==='tests'/);
+  assert.match(center,/&&\!isTestOverview\)heading\.append\(viewToggle\(editPath\)\)/);
+  assert.match(center,/if\(!isTestOverview\)root\.append\(defaultsSummary\(editPath\)\)/);
+  const overview=html.slice(html.indexOf('function testOverview(path)'),html.indexOf('function requireDefinition(path)'));
+  assert.match(overview,/const headFields=sectionFields\(path\)/, 'Summary shows authored Test metadata regardless of display preference');
+  assert.doesNotMatch(overview,/const headFields=editorFields\(path\)/);
+});
+
+test('Test Object and Require summaries show all properties, not an unexpandable truncated count', () => {
+  const html=graphicalHtml();
+  const semantic=html.slice(html.indexOf('function semanticCard(testPath,which)'),html.indexOf('function testOverview(path)'));
+  assert.match(semantic,/for\(const f of ranked\)/, 'No fixed three-field preview limit');
+  assert.doesNotMatch(semantic,/ranked\.slice\(0,3\)/);
+  assert.doesNotMatch(semantic,/\+\(values\.length-3\)\+' more properties'/);
+  assert.match(semantic,/Edit Object/);
+  assert.match(semantic,/Edit Require/);
+});
