@@ -242,6 +242,47 @@ function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, ca
   const reported = preferred(catalog.reportedElements());
   return { test_title: title, capability, object, require, ...(reported ? { reported_elements: reported } : {}) } as any;
 }
+
+/** Build schema-backed Shared Object selectors without authoring invalid placeholders. */
+async function promptSharedSelector(api: any, catalog: GuidedCatalog, pack: MetadataPack,
+    capability: string, already: Record<string, any>, preferredNames?: string[]) {
+  const fields = catalog.objectFields(capability).filter(field => !Object.prototype.hasOwnProperty.call(already, field.name));
+  if (!fields.length) throw new Error('No additional schema-declared selectors are available for this capability. Use native YAML for advanced Object shapes.');
+  const field = preferredNames?.length ? fields.find(candidate => preferredNames.includes(candidate.name)) :
+    (await api.window.showQuickPick(fields.map(candidate => ({ label: candidate.label || candidate.name,
+      description: candidate.name, detail: candidate.description, candidate })), {
+      placeHolder: 'Select a collection selector for the Shared Object'
+    }))?.candidate;
+  if (!field) return undefined;
+  const ops = field.operations;
+  if (!ops?.length) throw new Error('The pinned capability metadata has no supported selector operations for ' + field.name);
+  const operation = ops.length === 1 ? ops[0] :
+    (await api.window.showQuickPick(ops.map(value => ({ label: value.label || value.value,
+      description: value.value, value })), { placeHolder: 'Choose how to select ' + field.name }))?.value;
+  if (!operation) return undefined;
+  let value: string | undefined;
+  if (field.enumValues.length) {
+    const picked = await api.window.showQuickPick(field.enumValues.map(entry => ({
+      label: entry, value: entry
+    })), { placeHolder: 'Select a valid ' + field.name + ' value' });
+    value = picked?.value;
+  } else {
+    value = await api.window.showInputBox({
+      prompt: 'Value for selector ' + field.name + ' (' + operation.value + ')',
+      value: '',
+      validateInput: (input: string) => input.trim().length ? undefined : 'Enter a selector value.'
+    });
+  }
+  if (value === undefined || !String(value).length) return undefined;
+  const candidate = { [field.name]: { [operation.value]: value } } as any;
+  const schemaUri = catalog.capabilityObjectSchema(capability);
+  if (!schemaUri) throw new Error('No pinned object schema for ' + capability);
+  // Check the selector against its own generated capability contract before patching source.
+  const errors = pack.validate(schemaUri + '#/$defs/object', { ...already, ...candidate } as any);
+  if (errors.length) throw new Error('Capability schema rejected selector: ' + errors.join('; '));
+  return candidate;
+}
+
 async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string): Promise<any> {
   if (!pack) throw new Error('A verified offline metadata pack is required for schema-driven structural additions.');
   const source = new SourceBuffer(document.getText()); const catalog = new GuidedCatalog(pack);
@@ -318,10 +359,87 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
-  if (last === 'shared_objects') {
-    const id = await api.window.showInputBox({ prompt: 'New shared Object name', value: 'new-object' }); if (!id) return undefined;
-    const capability = await api.window.showQuickPick(catalog.capabilities(), { placeHolder: 'Choose the Object capability from the pinned metadata' }); if (!capability) return undefined;
-    const skeleton = { capability: capability.value } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'shared_objects', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+  if (last === 'shared_objects' && path.length === 2) {
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
+    const nameRule: any = spec?.propertyNames;
+    if (!nameRule?.pattern) throw new Error('Pinned Shared Object naming metadata is unavailable.');
+    const namePattern = new RegExp(nameRule.pattern);
+    const id = await api.window.showInputBox({
+      prompt: 'Shared Object ID (must end in -object)', value: 'new-object',
+      validateInput: (name: string) =>
+        namePattern.test(name) && name.length <= (nameRule.maxLength ?? 64) ? undefined :
+        'Use a lowercase hyphenated ID ending in -object.'
+    });
+    if (!id) return undefined;
+    const existing = valueAtPathForGraphical(source.json(), path);
+    if (existing && Object.prototype.hasOwnProperty.call(existing, id))
+      throw new Error('This Shared Object ID already exists.');
+    const title = await api.window.showInputBox({
+      prompt: 'Descriptive Object title (required by 0.4 schema)',
+      value: id.replace(/-object$/, '').replaceAll('-', ' '),
+      validateInput: (value: string) => value.trim() ? undefined : 'A Shared Object title is required.'
+    });
+    if (!title) return undefined;
+    const capability = await api.window.showQuickPick(catalog.capabilities(), {
+      placeHolder: 'Choose the capability this Object collects with'
+    });
+    if (!capability) return undefined;
+    const available = catalog.objectFields(capability.value);
+    if (!available.length)
+      throw new Error('This capability has no supported selector form in the pinned authoring pack; no incomplete Object was added.');
+    const requirements = catalog.objectRequirements(capability.value);
+    const candidates = requirements.filter(item => item.fields.every(name =>
+      available.some(field => field.name === name)));
+    let chosen = candidates[0];
+    if (candidates.length > 1) {
+      const picked = await api.window.showQuickPick(candidates.map((item, index) => ({
+        label: 'Selector alternative ' + (index + 1) + ': ' + item.fields.join(', '),
+        description: item.description, item
+      })), { placeHolder: 'Select a capability-supported Object selector alternative' });
+      chosen = picked?.item;
+      if (!chosen) return undefined;
+    }
+    const skeleton: any = { object_title: title.trim(), capability: capability.value };
+    const requiredFields: string[] = chosen?.fields?.length ? chosen.fields : [];
+    if (requiredFields.length) {
+      for (const fieldName of requiredFields) {
+        const next = await promptSharedSelector(api, catalog, pack, capability.value,
+          Object.fromEntries(Object.entries(skeleton).filter(([key]) => key !== 'object_title' && key !== 'capability')),
+          [fieldName]);
+        if (!next) return undefined;
+        Object.assign(skeleton, next);
+      }
+    } else {
+      const next = await promptSharedSelector(api, catalog, pack, capability.value, {});
+      if (!next) return undefined;
+      Object.assign(skeleton, next);
+    }
+    const capabilitySchema = catalog.capabilityObjectSchema(capability.value);
+    const selectors = Object.fromEntries(Object.entries(skeleton).filter(([key]) =>
+      key !== 'object_title' && key !== 'capability'));
+    const capabilityErrors = pack.validate(capabilitySchema + '#/$defs/object', selectors as any);
+    if (capabilityErrors.length) throw new Error('Object selectors are incomplete: ' + capabilityErrors.join('; '));
+    const edit = existing === undefined
+      ? source.insertMapEntry(['assessment'], 'shared_objects', { [id]: skeleton } as any, expectedHash)
+      : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected Shared Object: ' + errors.join('; '));
+    return edit;
+  }
+  if (path.length === 3 && path[0] === 'assessment' && path[1] === 'shared_objects') {
+    const selected: any = valueAtPathForGraphical(source.json(), path);
+    if (!selected || typeof selected !== 'object' || Array.isArray(selected) || !selected.capability)
+      throw new Error('Shared Object has no capability. Set a valid capability first.');
+    const newSelector = await promptSharedSelector(api, catalog, pack, selected.capability,
+      Object.fromEntries(Object.entries(selected).filter(([key]) =>
+        key !== 'object_title' && key !== 'capability')));
+    if (!newSelector) return undefined;
+    const [fieldName, value] = Object.entries(newSelector)[0] as [string, any];
+    const edit = source.insertMapEntry(path, fieldName, value as any, expectedHash);
+    const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+    if (errors.length) throw new Error('Complete or repair the Shared Object before adding selectors: ' + errors.join('; '));
+    return edit;
   }
   const existing = valueAtPathForGraphical(source.json(), path);
   if (Array.isArray(existing)) {
