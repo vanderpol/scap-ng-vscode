@@ -224,6 +224,24 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
 }
 
 
+function structuralReferencePaths(value: any, needle: string, prefix: (string | number)[] = []): string[] {
+  const paths: string[] = [];
+  const visit = (node: any, path: (string | number)[], depth: number) => {
+    if (paths.length >= 12 || depth > 80) return;
+    if (typeof node === 'string' && node === needle) { paths.push(path.map(String).join('.')); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, child] of Object.entries(node)) {
+      visit(child, path.concat(Array.isArray(node) ? Number(key) : key), depth + 1);
+    }
+  };
+  visit(value, prefix, 0);
+  return paths;
+}
+function structuralEntityName(collection: string): string {
+  return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
+    collection === 'inputs' ? 'Organizational Input' :
+    collection === 'shared_objects' ? 'Shared Object' : 'definition';
+}
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
 function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
 function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, capability: string) {
@@ -242,6 +260,46 @@ function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, ca
   const reported = preferred(catalog.reportedElements());
   return { test_title: title, capability, object, require, ...(reported ? { reported_elements: reported } : {}) } as any;
 }
+
+/** Build schema-backed Shared Object selectors without authoring invalid placeholders. */
+async function promptSharedSelector(api: any, catalog: GuidedCatalog,
+    capability: string, already: Record<string, any>, preferredNames?: string[]) {
+  const fields = catalog.objectFields(capability).filter(field => !Object.prototype.hasOwnProperty.call(already, field.name));
+  if (!fields.length) throw new Error('No additional schema-declared selectors are available for this capability. Use native YAML for advanced Object shapes.');
+  const field = preferredNames?.length ? fields.find(candidate => preferredNames.includes(candidate.name)) :
+    (await api.window.showQuickPick(fields.map(candidate => ({ label: candidate.label || candidate.name,
+      description: candidate.name, detail: candidate.description, candidate })), {
+      placeHolder: 'Select a collection selector for the Shared Object'
+    }))?.candidate;
+  if (!field) return undefined;
+  const ops = field.operations;
+  if (!ops?.length) throw new Error('The pinned capability metadata has no supported selector operations for ' + field.name);
+  const operation = ops.length === 1 ? ops[0] :
+    (await api.window.showQuickPick(ops.map(value => ({ label: value.label || value.value,
+      description: value.value, value })), { placeHolder: 'Choose how to select ' + field.name }))?.value;
+  if (!operation) return undefined;
+  let value: string | undefined;
+  if (field.enumValues.length) {
+    const picked = await api.window.showQuickPick(field.enumValues.map(entry => ({
+      label: entry, value: entry
+    })), { placeHolder: 'Select a valid ' + field.name + ' value' });
+    value = picked?.value;
+  } else {
+    value = await api.window.showInputBox({
+      prompt: 'Value for selector ' + field.name + ' (' + operation.value + ')',
+      value: '',
+      validateInput: (input: string) => input.trim().length ? undefined : 'Enter a selector value.'
+    });
+  }
+  if (value === undefined || !String(value).length) return undefined;
+  const candidate = { [field.name]: { [operation.value]: value } } as any;
+  const schemaUri = catalog.capabilityObjectSchema(capability);
+  if (!schemaUri) throw new Error('No pinned object schema for ' + capability);
+  // Validate the completed Object, not a partial alternative with missing required selectors.
+  // A multi-field selector branch may be incomplete until the final prompt has finished.
+  return candidate;
+}
+
 async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string): Promise<any> {
   if (!pack) throw new Error('A verified offline metadata pack is required for schema-driven structural additions.');
   const source = new SourceBuffer(document.getText()); const catalog = new GuidedCatalog(pack);
@@ -252,14 +310,189 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const title = await api.window.showInputBox({ prompt: 'Human-readable Test summary', value: 'New Assessment Test' }); if (!title) return undefined;
     const skeleton = graphicalTestSkeleton(pack, id, title, capability.value); const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'tests', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
+  if (last === 'inputs' && path.length === 2 && path[0] === 'assessment') {
+    // An Input declares a typed value supplied by the referring policy/Rule.
+    // It is not an external Assessment file reference (those use dependencies).
+    const assessmentSchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json');
+    const definition: any = assessmentSchema.properties?.assessment?.properties?.inputs;
+    const inputSpec: any = definition?.additionalProperties;
+    const nameSpec: any = definition?.propertyNames;
+    const cardinalityOptions: string[] = inputSpec?.properties?.cardinality?.enum;
+    const capabilitySchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/capability-common.schema.json');
+    const datatypeOptions: string[] = capabilitySchema.$defs?.native_datatype?.enum;
+    if (!nameSpec?.pattern || !Array.isArray(cardinalityOptions) || !cardinalityOptions.length ||
+        !Array.isArray(datatypeOptions) || !datatypeOptions.length) {
+      throw new Error('Pinned Input schema metadata is incomplete. No Input was added.');
+    }
+    const allowedName = new RegExp(nameSpec.pattern);
+    const name = await api.window.showInputBox({
+      prompt: 'Input ID — named value supplied when this Assessment is invoked (not an Assessment file)',
+      value: 'policy-value-input',
+      validateInput: (value: string) =>
+        allowedName.test(value) && value.length <= (nameSpec.maxLength ?? 64) ? undefined :
+        'Use a unique lowercase hyphenated Input ID ending in -input.'
+    });
+    if (!name) return undefined;
+    const authored = source.json();
+    const inputs: any = valueAtPathForGraphical(authored, path);
+    if (inputs !== undefined && (inputs === null || typeof inputs !== 'object' || Array.isArray(inputs))) {
+      throw new Error('The existing Inputs section is not a mapping. No source was changed.');
+    }
+    if (inputs && Object.prototype.hasOwnProperty.call(inputs, name)) {
+      throw new Error('An Input with this ID already exists.');
+    }
+    const datatype = await api.window.showQuickPick(datatypeOptions.map(value => ({ label: value, value })), {
+      placeHolder: 'Value datatype declared by this Input'
+    });
+    if (!datatype) return undefined;
+    const cardinality = await api.window.showQuickPick(cardinalityOptions.map(value => ({ label: value.replaceAll('_', ' '), value })), {
+      placeHolder: 'Number of values the caller may supply'
+    });
+    if (!cardinality) return undefined;
+    const required = await api.window.showQuickPick([
+      { label: 'Required — the caller must provide this Input', value: true },
+      { label: 'Optional — caller may omit this Input', value: false }
+    ], { placeHolder: 'Does this Input have to be supplied?' });
+    if (!required) return undefined;
+    const description = await api.window.showInputBox({
+      prompt: 'Describe what value the caller supplies (optional; Esc to cancel)',
+      value: ''
+    });
+    if (description === undefined) return undefined;
+    const skeleton = {
+      datatype: datatype.value,
+      cardinality: cardinality.value,
+      required: required.value,
+      ...(description.trim() ? { description: description.trim() } : {})
+    };
+    const edit = inputs === undefined
+      ? source.insertMapEntry(['assessment'], 'inputs', { [name]: skeleton } as any, expectedHash)
+      : source.insertMapEntry(path, name, skeleton as any, expectedHash);
+    const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected the new Input: ' + errors.join('; '));
+    return edit;
+  }
   if (last === 'variables') {
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
-  if (last === 'shared_objects') {
-    const id = await api.window.showInputBox({ prompt: 'New shared Object name', value: 'new-object' }); if (!id) return undefined;
-    const capability = await api.window.showQuickPick(catalog.capabilities(), { placeHolder: 'Choose the Object capability from the pinned metadata' }); if (!capability) return undefined;
-    const skeleton = { capability: capability.value } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'shared_objects', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+  if (last === 'shared_objects' && path.length === 2) {
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
+    const nameRule: any = spec?.propertyNames;
+    if (!nameRule?.pattern) throw new Error('Pinned Shared Object naming metadata is unavailable.');
+    const namePattern = new RegExp(nameRule.pattern);
+    const id = await api.window.showInputBox({
+      prompt: 'Shared Object ID (must end in -object)', value: 'new-object',
+      validateInput: (name: string) =>
+        namePattern.test(name) && name.length <= (nameRule.maxLength ?? 64) ? undefined :
+        'Use a lowercase hyphenated ID ending in -object.'
+    });
+    if (!id) return undefined;
+    const existing = valueAtPathForGraphical(source.json(), path);
+    if (existing && Object.prototype.hasOwnProperty.call(existing, id))
+      throw new Error('This Shared Object ID already exists.');
+    const title = await api.window.showInputBox({
+      prompt: 'Descriptive Object title (required by 0.4 schema)',
+      value: id.replace(/-object$/, '').replaceAll('-', ' '),
+      validateInput: (value: string) => value.trim() ? undefined : 'A Shared Object title is required.'
+    });
+    if (!title) return undefined;
+    const capability = await api.window.showQuickPick(catalog.capabilities(), {
+      placeHolder: 'Choose the capability this Object collects with'
+    });
+    if (!capability) return undefined;
+    const available = catalog.objectFields(capability.value);
+    if (!available.length)
+      throw new Error('This capability has no supported selector form in the pinned authoring pack; no incomplete Object was added.');
+    const requirements = catalog.objectRequirements(capability.value);
+    const candidates = requirements.filter(item => item.fields.every(name =>
+      available.some(field => field.name === name)));
+    let chosen = candidates[0];
+    if (candidates.length > 1) {
+      const picked = await api.window.showQuickPick(candidates.map((item, index) => ({
+        label: 'Selector alternative ' + (index + 1) + ': ' + item.fields.join(', '),
+        description: item.description, item
+      })), { placeHolder: 'Select a capability-supported Object selector alternative' });
+      chosen = picked?.item;
+      if (!chosen) return undefined;
+    }
+    const skeleton: any = { object_title: title.trim(), capability: capability.value };
+    const requiredFields: string[] = chosen?.fields?.length ? chosen.fields : [];
+    if (requiredFields.length) {
+      for (const fieldName of requiredFields) {
+        const next = await promptSharedSelector(api, catalog, capability.value,
+          Object.fromEntries(Object.entries(skeleton).filter(([key]) => key !== 'object_title' && key !== 'capability')),
+          [fieldName]);
+        if (!next) return undefined;
+        Object.assign(skeleton, next);
+      }
+    } else {
+      const next = await promptSharedSelector(api, catalog, capability.value, {});
+      if (!next) return undefined;
+      Object.assign(skeleton, next);
+    }
+    const capabilitySchema = catalog.capabilityObjectSchema(capability.value);
+    const selectors = Object.fromEntries(Object.entries(skeleton).filter(([key]) =>
+      key !== 'object_title' && key !== 'capability'));
+    const capabilityErrors = pack.validate(capabilitySchema + '#/$defs/object', selectors as any);
+    if (capabilityErrors.length) throw new Error('Object selectors are incomplete: ' + capabilityErrors.join('; '));
+    const edit = existing === undefined
+      ? source.insertMapEntry(['assessment'], 'shared_objects', { [id]: skeleton } as any, expectedHash)
+      : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected Shared Object: ' + errors.join('; '));
+    return edit;
+  }
+  if (path.length === 3 && path[0] === 'assessment' && path[1] === 'shared_objects') {
+    const selected: any = valueAtPathForGraphical(source.json(), path);
+    if (!selected || typeof selected !== 'object' || Array.isArray(selected) || !selected.capability)
+      throw new Error('Shared Object has no capability. Set a valid capability first.');
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
+    const validId = new RegExp(spec?.propertyNames?.pattern ?? '^$');
+    if (!validId.test(String(path[2])))
+      throw new Error('Shared Object ID must end in -object. Rename the key before adding selectors.');
+    if (!Object.prototype.hasOwnProperty.call(selected, 'object_title')) {
+      const title = await api.window.showInputBox({
+        prompt: 'Required Shared Object title',
+        value: String(path[2]).replace(/-object$/, '').replaceAll('-', ' '),
+        validateInput: (value: string) => value.trim() ? undefined : 'Enter a title.'
+      });
+      if (!title) return undefined;
+      const edit = source.insertMapEntry(path, 'object_title', title.trim() as any, expectedHash);
+      return edit; // A legacy partial Object may need additional selectors before full schema admission.
+    }
+    const newSelector = await promptSharedSelector(api, catalog, selected.capability,
+      Object.fromEntries(Object.entries(selected).filter(([key]) =>
+        key !== 'object_title' && key !== 'capability')));
+    if (!newSelector) return undefined;
+    const [fieldName, value] = Object.entries(newSelector)[0] as [string, any];
+    const edit = source.insertMapEntry(path, fieldName, value as any, expectedHash);
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected added selector: ' + errors.join('; '));
+    return edit;
+  }
+  if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'object') {
+    const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
+    if (!test) throw new Error('The Test definition was not found.');
+    const object = test.object;
+    if (typeof object === 'string')
+      throw new Error('This Test references a Shared Object. Edit that Shared Object to change its selectors.');
+    if (!object || typeof object !== 'object' || Array.isArray(object))
+      throw new Error('The Test Object is not an inline mapping. Use native YAML to repair it.');
+    if ('set' in object)
+      throw new Error('This Test uses an Object Set. Add operands under its Set node; do not add unrelated selectors beside the Set.');
+    const capability = String(test.capability||'');
+    if (!capability) throw new Error('The Test has no valid capability.');
+    const extra = await promptSharedSelector(api, catalog, capability, object);
+    if (!extra) return undefined;
+    const [fieldName, value] = Object.entries(extra)[0] as [string, any];
+    const edit = source.insertMapEntry(path, fieldName, value as any, expectedHash);
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected the added Object selector: ' + errors.join('; '));
+    return edit;
   }
   const existing = valueAtPathForGraphical(source.json(), path);
   if (Array.isArray(existing)) {
@@ -321,30 +554,89 @@ class AssessmentEditorProvider {
           if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) throw new Error('Document changed before this structural edit; refresh and try again.');
           const path = Array.isArray(message.path) ? message.path : [];
           if (message.action === 'reveal') { try { await revealNativeSource(api, document, new SourceBuffer(document.getText()).scalarRange(path)); } catch { await revealNativeSource(api, document); } return; }
-          if (message.action === 'rename') {
-            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Only authored mapping keys can be renamed safely.');
-            const oldKey = String(path.at(-1)); const newKey = await api.window.showInputBox({ prompt: `Rename ${oldKey}`, value: oldKey, validateInput: (value: string) => /^[A-Za-z0-9._/-]+$/.test(value) ? undefined : 'Use a simple YAML mapping key.' });
-            if (!newKey || newKey === oldKey) return;
-            const edit = new SourceBuffer(document.getText()).editMappingKey(path.slice(0, -1), oldKey, newKey, currentRevision);
-            await applySourceWorkspaceEdit(api, document, edit);
-            return;
-          }
-          if (message.action === 'remove') {
-            if (path.at(-1) === 'require') throw new Error('Test require is required by the pinned 0.4 schema; replace a branch or leave an explicit incomplete draft.');
-            if (path.length < 2) throw new Error('The Assessment root cannot be removed.');
-            const confirmation = await api.window.showWarningMessage(`Remove ${String(path.at(-1))}? References are not auto-repaired.`, { modal: true }, 'Remove');
-            if (confirmation !== 'Remove') return;
-            const edit = new SourceBuffer(document.getText()).removePath(path, currentRevision);
+          if (message.action === 'rename' || message.action === 'remove') {
+            const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
+            if (path.length !== 3 || path[0] !== 'assessment' ||
+                !collections.has(String(path[1])) || typeof path[2] !== 'string')
+              throw new Error('This action is available only for named Tests, Variables, Organizational Inputs and Shared Objects.');
+            const collection = String(path[1]), oldId = String(path[2]);
+            const entity = structuralEntityName(collection);
+            const source = new SourceBuffer(document.getText()), original = source.json();
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for structural edits.');
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schema: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
+            const rule: any = schema?.propertyNames;
+            if (!rule?.pattern) throw new Error('The pinned schema does not define the naming rules for ' + entity + '.');
+            // Never silently break Test/Evaluate, Object, Variable or Input references.
+            // The GUI does not yet support coordinated multi-reference rewrites.
+            const inUse = structuralReferencePaths(original, oldId);
+            if (inUse.length) throw new Error('Cannot ' + (message.action === 'rename' ? 'rename' : 'remove') +
+              ' ' + entity + ' "' + oldId + '" because it is referenced at ' +
+              inUse.slice(0,3).join(', ') +
+              '. Update references explicitly in YAML before changing its ID.');
+            const before = pack.validate(schemaUri, original);
+            if (message.action === 'rename') {
+              const namePattern = new RegExp(rule.pattern), max = rule.maxLength ?? 64;
+              const newId = await api.window.showInputBox({
+                prompt: 'Rename ' + entity + ' ID "' + oldId + '"',
+                value: oldId,
+                validateInput: (value: string) => namePattern.test(value) && value.length <= max
+                  ? undefined : 'The ' + entity + ' ID must match its schema naming rule (maximum ' + max + ' characters).'
+              });
+              if (!newId || newId === oldId) return;
+              const edit = source.editMappingKey(path.slice(0,-1), oldId, newId, currentRevision);
+              const errors = pack.validate(schemaUri, edit.document.json());
+              if (errors.length > before.length)
+                throw new Error('Renaming the ' + entity + ' would introduce validation errors: ' + errors.join('; '));
+              await applySourceWorkspaceEdit(api, document, edit);
+              if (errors.length) void panel.webview.postMessage({ type: 'status',
+                message: 'Renamed ' + entity + ' ID; pre-existing schema diagnostics remain.' });
+              return;
+            }
+            const confirmation = await api.window.showWarningMessage(
+              'Remove ' + entity + ' "' + oldId + '"? This deletes its entire definition from YAML.',
+              { modal: true }, 'Remove ' + entity);
+            if (confirmation !== 'Remove ' + entity) return;
+            const edit = source.removePath(path, currentRevision);
+            const errors = pack.validate(schemaUri, edit.document.json());
+            if (errors.length > before.length)
+              throw new Error('Removing ' + entity + ' would invalidate the Assessment: ' + errors.join('; '));
             await applySourceWorkspaceEdit(api, document, edit);
             return;
           }
           if (message.action === 'duplicate') {
-            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Duplicate is available for named mapping nodes.');
-            const oldKey = String(path.at(-1)); const value = valueAtPathForGraphical(new SourceBuffer(document.getText()).json(), path);
-            const suggested = `${oldKey}-copy`; const newKey = await api.window.showInputBox({ prompt: `Duplicate ${oldKey} as`, value: suggested, validateInput: (v: string) => /^[A-Za-z0-9._/-]+$/.test(v) ? undefined : 'Use a simple YAML mapping key.' });
+            const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
+            if (path.length !== 3 || path[0] !== 'assessment' || !collections.has(String(path[1])) || typeof path[2] !== 'string')
+              throw new Error('Duplicate applies only to named Tests, Variables, Organizational Inputs and Shared Objects. A Test has one Object. For multiple Object populations, use an Object Set or separate Tests.');
+            const pack = this.getPack();
+            if (!pack) throw new Error('A verified offline metadata pack is needed for safe duplication.');
+            const collection = String(path[1]), oldKey = String(path[2]);
+            const source = new SourceBuffer(document.getText()); const doc = source.json();
+            const value = valueAtPathForGraphical(doc, path);
+            if (value === undefined) throw new Error('The selected named definition does not exist.');
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
+            const rule: any = spec?.propertyNames;
+            if (!rule?.pattern) throw new Error('The pinned schema has no naming rule for this collection.');
+            const allowed = new RegExp(rule.pattern);
+            const suffix = collection === 'tests' ? 'test' : collection === 'variables' ? 'variable' : collection === 'inputs' ? 'input' : 'object';
+            const stem = oldKey.endsWith('-' + suffix) ? oldKey.slice(0, -suffix.length - 1) : oldKey;
+            const max = rule.maxLength ?? 64, postfix = '-copy-' + suffix;
+            const suggested = stem.slice(0, Math.max(1,max-postfix.length)).replace(/-+$/, '') + postfix;
+            const newKey = await api.window.showInputBox({
+              prompt: 'Duplicate ' + collection.replaceAll('_',' ') + ' "' + oldKey + '" as a new named definition',
+              value: suggested,
+              validateInput: (name: string) => allowed.test(name) && name.length <= max
+                ? undefined : 'Name must follow the pinned schema and end in -' + suffix + '.'
+            });
             if (!newKey) return;
-            const edit = new SourceBuffer(document.getText()).insertMapEntry(path.slice(0, -1), newKey, value, currentRevision);
-            await applySourceWorkspaceEdit(api, document, edit);
+            const duplicate = source.insertMapEntry(path.slice(0,-1), newKey, value, currentRevision);
+            const errors = pack.validate(schemaUri, duplicate.document.json());
+            if (errors.length) throw new Error('Pinned schema rejected the duplicated definition: ' + errors.join('; '));
+            await applySourceWorkspaceEdit(api, document, duplicate);
+            void panel.webview.postMessage({ type: 'status', message:
+              'Duplicated ' + oldKey + ' as ' + newKey + (collection === 'tests' ? '. This Test is not automatically included in Evaluate.' : '.') });
             return;
           }
           if (message.action === 'add') {

@@ -29,7 +29,7 @@ export class SourceBuffer {
     const [start, end] = node.range;
     const next = this.text.slice(0, start) + replacement + this.text.slice(end);
     const parsed = parseDocument(next, { uniqueKeys: true });
-    if (parsed.errors.length) throw new Error('Edit would break YAML');
+    if (parsed.errors.length) throw new Error('Edit would break YAML: ' + (parsed.errors[0]?.message ?? 'unknown parse error'));
     return { document: new SourceBuffer(next), range: [start, end], replacement,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
@@ -46,7 +46,7 @@ export class SourceBuffer {
     const pair: any = parent.items.find((candidate: any) => candidate.key && candidate.key.value === oldKey);
     if (!pair?.key?.range) throw new Error('Mapping key is not a safe scalar');
     const [start, end] = pair.key.range; const next = this.text.slice(0, start) + newKey + this.text.slice(end);
-    const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Edit would break YAML');
+    const parsed = parseDocument(next, { uniqueKeys: true }); if (parsed.errors.length) throw new Error('Edit would break YAML: ' + (parsed.errors[0]?.message ?? 'unknown parse error'));
     return { document: new SourceBuffer(next), range: [start, end], replacement: newKey,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
@@ -151,7 +151,7 @@ export class SourceBuffer {
 
 function assertYaml(text: string) {
   const parsed = parseDocument(text, { uniqueKeys: true });
-  if (parsed.errors.length) throw new Error('Edit would break YAML');
+  if (parsed.errors.length) throw new Error('Edit would break YAML: ' + (parsed.errors[0]?.message ?? 'unknown parse error'));
 }
 function yamlScalarOrBlock(value: Json): string {
   return stringify(value).trim();
