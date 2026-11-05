@@ -1,0 +1,78 @@
+# Work VS Code Codex — master requirements, UI prototypes and 65-benchmark acceptance
+**Date: 2026-11-05 | Repository: vanderpol/scap-ng-vscode | Owner-directed handoff**
+
+## Codex: do not implement until you have inventoried these sources
+
+This is the index of the SCAP-NG editor requirements and code mockups contributed during owner design reviews. The user cannot reliably paste long prompts into Work VS Code Codex. **Read all links below yourself and work autonomously.** Track evidence in GitHub issues/PRs. Do not ask the owner to run your first tests.
+
+1. [**Issue #44 — highest-priority graphical-editor contract**](https://github.com/vanderpol/scap-ng-vscode/issues/44). Read the *newest* sections first: desktop master–detail tree, single-node center property inspector, optional right help, right-click contextual structural editing, blank-slate complex authoring, Variables/Filters/Sets, Hide Defaults/Show All. The earlier image-like stacked-card layout and phone-like or triple-pane suggestions are superseded.
+2. [**Original graphical HTML R&D**](issue-44-graphical-editor.html). Demonstrates style, test navigation, fields, require widgets, collapsed panels and help. **Its stacked cards are NOT the approved layout.** Runs in a browser; sample controls and enum arrays are not canonical.
+3. [**Variables, Filters and nested Sets HTML R&D**](issue-44-variables-filters-sets.html). Demonstrates recursive Variable expressions, include/exclude Filters, Set operators and nested operands; local-only mock state, no YAML writing, schema validation or scanner.
+4. [**Issue #44 implementation R&D README**](README-issue-44.md). Source-safe VS Code integration, P1 first-pass Variables/Filters/Sets, structural node lifecycle, hideable defaults, compact context menus and desktop-layout corrections.
+5. [**Issue #7 — schema help and hideable defaults**](https://github.com/vanderpol/scap-ng-vscode/issues/7) and [full metadata/help contract on main](https://github.com/vanderpol/scap-ng-vscode/blob/main/docs/SCHEMA-DRIVEN-HELP-AND-PLAYGROUND.md). Defaults come only from pinned schema / x-scap-ng-authoring; hiding is **presentation only**, hidden count and Show All are essential; never silently mutate YAML.
+6. [**Issue #38 — YAML-first full-width default**](https://github.com/vanderpol/scap-ng-vscode/issues/38). Graphical is opt-in, no mandatory Source/Guided/Graphical pane arrangement.
+7. [**Issue #18 — editor usability for non-OVAL authors**](https://github.com/vanderpol/scap-ng-vscode/issues/18). Complex authoring must become understandable, with explanatory schema help.
+8. [**Issue #2 — lossless Source ↔ Structured contract**](https://github.com/vanderpol/scap-ng-vscode/issues/2). One vscode.TextDocument, revision-aware minimal WorkspaceEdit, safe no-op bytes, Undo/Redo.
+9. [**Issue #40 — YAML/conditional/default correctness risks**](https://github.com/vanderpol/scap-ng-vscode/issues/40). Enclosing Test/capability ancestry, oneOf/anyOf branch qualification, no unsafe default insertion.
+10. [**Issue #39 — restore deleted YAML structure**](https://github.com/vanderpol/scap-ng-vscode/issues/39), [**Issue #35 — Graphical & YAML issues**](https://github.com/vanderpol/scap-ng-vscode/issues/35), [**Issue #29 — native YAML IntelliSense/regex**](https://github.com/vanderpol/scap-ng-vscode/issues/29), [**Issue #41 — Regex and Sample Object Playground**](https://github.com/vanderpol/scap-ng-vscode/issues/41). Preserve these existing workflows; do not mix playground scope into Graphical rewrite.
+11. [**Issue #4 — Guided authoring**](https://github.com/vanderpol/scap-ng-vscode/issues/4) and [**Issue #30 — earlier Codex roadmap**](https://github.com/vanderpol/scap-ng-vscode/issues/30). Use for language coverage/bootstrap only; their original layout guidance is superseded by #38/#44.
+12. [**AGENTS.md**](https://github.com/vanderpol/scap-ng-vscode/blob/main/AGENTS.md), [**Editor blueprint**](https://github.com/vanderpol/scap-ng-vscode/blob/main/docs/EDITOR-BLUEPRINT.md), [**SCAP-NG primer**](https://github.com/vanderpol/scap-ng-vscode/blob/main/docs/SCAP-NG-PRIMER.md), [**one-clone bootstrap**](https://github.com/vanderpol/scap-ng-vscode/blob/main/docs/WORKSPACE-BOOTSTRAP.md), [**dependency pins**](https://github.com/vanderpol/scap-ng-vscode/blob/main/dependency-pins.json). Read actual files from current working ref before trusting links to main.
+
+## Sources, implementation and precedence
+
+**Precedence (highest to lowest):** actual immutable **pinned canonical SCAP-NG 0.4 schema + capability metadata** for language validity; latest owner UX requirements in #44 for presentation/interaction; current source-preservation and YAML-first contracts in #2/#38/#40; the prototype README; the two prototype HTML files for inspiration. No prototype invented property, enum, workflow or logic overrides the schema. Do not merge candidate native-selector PR #21 simply to satisfy mock UI. Verify which version is pinned in the actual working branch and document the exact source, tools, sample, pack SHAs.
+
+**Current architecture to protect:** real native VS Code TextEditor with Red Hat YAML support, schema diagnostics and context completion, extension host and existing Structured model, Assessment Studio explorer, offline metadata pack, source-preserving changes, host acceptance/mutation tests. Do not replace it with a separate React/HTML document copy or a phone-sized wizard. Use schema-driven generic recursive editors for complex allowed structures where specialized controls are not ready.
+
+**Required production UX:** document-local hierarchical tree ON THE LEFT (Assessment, Inputs, Variables, Shared Objects, Tests, per-Test Object/Filters/Set/Require/Fields/conditions, Evaluate); center shows properties of **ONLY the selected node**, not all Test cards; contextual help on optional collapsible RIGHT panel; compact dense desktop layout. Right-click tree nodes/empty headings for Add/Duplicate/Rename/Move/Remove/Replace/Reveal in YAML; Shift+F10/ellipsis alternatives; don't hijack normal text-field context menus.
+
+**Blank-slate acceptance:** create an empty Assessment and use Graphical alone to add two different capability Tests, inline/shared Objects, source/selector, Filters and nested Set operands, Variables with recursive expressions, Inputs where applicable, Item and Field requirements with nested logical groups and dynamic fields, multi-Test Evaluate. Show safe rename/remove/reference impact; required Test require cannot be silently deleted into a falsely valid state. Schema-specific incomplete drafts must remain visibly incomplete.
+
+**Defaults:** Show All / Hide Defaults with correct hidden count, visibility across selected nodes and tree, only verified applicable pinned defaults hidden, overrides/errors/unknown author intent always visible, no serialization mutation.
+
+## Crucial new owner requirement: full 65-benchmark content suite
+
+**Do not use a couple of simple fixtures as proof of readiness.** The editor must confront the most complex real content it can obtain: the full 65-benchmark authoring library, including tricky Variables, Filters, Sets, group logic, dynamic members, optional Input/presence, references, manual content and historical source edge cases.
+
+**Qualification blocker (verified 2026-11-05):** [scap-ng-evidence README](https://github.com/vanderpol/scap-ng-evidence/blob/main/README.md) and [evidence issue #1](https://github.com/vanderpol/scap-ng-evidence/issues/1) state **NO current SCAP-NG 0.4 full 65-stream corpus has been qualified since the November 2 grouped item_requirement amendment**. The October 30 historical 65-stream review package has 60 editable Benchmarks, five source-only streams, 6,817 native Assessments and 13,754 YAML files, but is **obsolete grammar**. Its archived source proofs apply to old pinned artifacts, NOT current schema. Do not link/promote obsolete download, train templates from it, treat it as current-schema valid, auto-convert it on opening, or silently normalize its files.
+
+**Codex must explicitly create two separate corpus tracks:**
+
+A. **Current-qualified 65-stream edit acceptance (required for unqualified-to-qualified promotion).** First search evidence issue #1 and current release/docs for a **fresh November 2+ regenerated corpus** with archive URL, SHA-256, manifest, schema/tool pins, 65-stream coverage ledger, manual preservation, validation/proof status and readable path audit. If available, download to ignored external test-data dir, verify hashes and schema association, retain it outside repo/VSIX/ordinary CI. If missing, mark this **BLOCKED: current full corpus not published**, file/coordinate a reproducible regeneration task in canonical/tools/evidence repos, and continue with pinned current small fixtures plus complexity targets. Never misrepresent completion.
+
+B. **Explicit owner-authorized historical stress inventory (not authoring goldens).** The owner here explicitly requests using the old corpus to **discover worst-case UI shapes and measure scale**. If an accessible copy exists, label it HISTORICAL / NOT CURRENT-SCHEMA-QUALIFIED; use as read-only structure inventory and *lossless* open/close/no-op/diff performance stress test. Do not derive normative fields/defaults or generate supposedly valid editor templates from it. Preserve historical bytes/proofs and keep all data external/read-only. If it is unavailable, document the archive access blocker and continue.
+
+**Coverage matrix:** enumerate ALL 65 source Benchmarks by stable source ID and state (current-qualified, historical-only, source-only/manual, missing, blocked); for each reachable Assessment/Test report capability, structural variants, variable expression kinds, nested Set/operator depth, Object & Set Filters, cardinality branches, nested logic, Inputs, record/dynamic field types, unusual YAML syntax and size. Generate worst-case workload selection, including (a) deepest Variable dependency; (b) nested Sets/Filters; (c) widest/nested Require; (d) most Tests/objects; (e) most complicated source formatting/comments; (f) manual and unsupported content. Do not skip failures and call it a success.
+
+## No owner-as-tester: automated edit / save / diff / reload gates
+
+**Every claim that Graphical editing works must be demonstrated by tests run by Codex in a real VS Code Extension Development Host, not by asking the owner to click around.**
+
+**Minimum regression pipeline:**
+1. **Open + close with NO EDIT:** capture baseline SHA-256 and exact source bytes of every test file; opening Graphical, browsing tree, toggling defaults, revealing help and save without edits must preserve bytes/hash exactly. If a corpus contains old schema content, treat only this byte preservation/no-false-mutation property as a stress expectation, not schema pass.
+2. **One scalar edit:** edit a schema-valid Object selector, field predicate, Variable literal, Filter action, or group operator as applicable via Graphical. Capture original and modified file; compute unified diff and assert only expected range changed, plus no destroyed comments, quotes, CRLF, anchors, flow-style mappings, field order or unrelated Tests.
+3. **Save → close editor → reopen VS Code document:** verify new value survives reload, Graphical and native YAML agree, schema validation results match, and unsaved document state is handled correctly.
+4. **Undo/Redo & stale documents:** native Undo restores exact original bytes; Redo re-applies intended patch. Force concurrent external YAML change/stale revision and verify rejection/refresh without lost user edits.
+5. **Structural operations:** from BLANK assessment add/duplicate/rename/remove/reorder Tests, Object/source, Filters, Variables and nested expressions, Sets/operands, Requirements/fields/group branches and Evaluate. Verify reference graph, safe rename/deletion prompts, IDs/branch invariants, schema validation (or explicit incomplete diagnostic while drafting), and diff locality.
+6. **Hidden defaults:** Hide Defaults ↔ Show All across Test/Object/Require/Filter/Variable; valid default source is pinned schema metadata, authored overrides stay visible, and YAML bytes remain unchanged.
+7. **Schema coverage:** compare current pinned document grammar, including all oneOf/anyOf branches, with Graphical create/edit/delete paths. Report specialized form / generic graphical tree / YAML-only / unsupported separately; never claim 100% when nodes are inaccessible.
+8. **Corpus-scale performance:** measure tree build, node selection, editing, save/reload and memory at thousands of Assessments; no all-65 eager parsing on every keystroke; avoid blocking the extension host. Use deterministic bounds and report actual observed measurements rather than invented targets.
+9. **Host/CI:** run existing npm lint/unit/integration, offline pack verification, all real host acceptance/redhat/mutation suites and VSIX packaging, adding test fixtures and checks for changed code. Respect environment quota: keep large corpus/output external or as summarized reports, not default GitHub Actions upload artifacts.
+
+**Deliverable evidence:** before/after YAML/diff for each tested shape; all no-op source checksums; count of files/tests per class and failures; machine-readable corpus coverage ledger; host screenshots showing tree left + one compact node inspector center + optional help right at 1920x1080; test command output, exact commits/pack pins; known defects and reproduction steps. Do not present screenshots of mockups as real host evidence.
+
+**Definition of Done for a milestone:** all relevant automated gates pass with visible report links and evidence; reviewer can inspect minimal diffs. Owner UAT comes **AFTER** machine/host tests and should assess usability, not discover basic broken buttons. When current full 65 qualified corpus is missing, label comprehensive release acceptance **BLOCKED**, while shipping independently tested incremental Graphical work for review.
+
+## Codex work plan — execute independently, report precisely
+
+1. Inspect working tree, current open PRs including #36 (Graphical), #42/#43 (playground), #24 (Test remove) and related issue status. Never overwrite another active Codex branch or merge unrelated work.
+2. Read EVERY listed issue/source. Publish short *requirements coverage map* and contradictions resolved by precedence; record inherited P0 functioning surfaces not to regress.
+3. Verify corpus publication and establish both qualified and legacy-only tracks; prepare reproducible **audit harness**, not manual ad hoc browsing.
+4. Implement desktop tree-and-single-node inspector first; use existing TextDocument + source-patch and schema metadata.
+5. Implement context menus, structural Add/Remove, Variables/Filters/Sets/Require and hideable defaults with both compact UX and full canonical schema coverage.
+6. Run **automated host edit → save → diff → close/reopen → undo/redo → schema** before asking for owner review.
+7. Publish scoped draft PR(s), screenshots, coverage ledger, exact test totals, blocking corpus gaps, follow-up issues; do not auto-merge. If the full 65 current corpus isn't available, clearly flag and coordinate regeneration rather than waiting idly or silently substituting historical content.
+
+## Very short Work Codex prompt
+
+> Work scap-ng-vscode Issue #44 and read docs/prototypes/WORK-CODEX-MASTER-HANDOFF-20261105.md on branch design/issue-44-graphical-prototype-20261104. Audit all linked requirements and code prototypes; verify 65-benchmark corpus qualification; test graphical edit/save/diff/reload in real VS Code host before owner UAT. Implement desktop tree + single selected-node editor via small tested draft PRs.
