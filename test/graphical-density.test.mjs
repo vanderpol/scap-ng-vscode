@@ -172,3 +172,41 @@ test('Only long or semantically wide properties get full rows and multiline edit
   assert.equal(helpers.fieldNeedsWide(prop(['tests','check-test','object','hive','equals'],'local_machine')),false);
   assert.equal(helpers.fieldNeedsMultiline({...longTitle,choices:['A','B']}),false);
 });
+
+
+test('Variable stages show collection, capture and concatenation in dependency order', () => {
+  const html = graphicalHtml();
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  const start = script.indexOf('function expressionBrief(expr)');
+  const end = script.indexOf('function stepControls(step)',start);
+  assert.ok(start>=0&&end>start,'Variable expression planner missing');
+  const planner = new Function(script.slice(start,end)+';return {variablePlan,expressionBrief}')();
+  const expression = {concat:[
+    {literal:{datatype:'string',value:'icacls '}},
+    {regex_capture:{pattern:'(^[a-zA-Z]:\\\\.+)\\\\sysvol',
+      value:{values:{object:{capability:'windows.registry',hive:{equals:'local_machine'},
+        key:{equals:'SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters'},
+        name:{equals:'SysVol'}},field:'value'}}}}
+  ]};
+  const path=['assessment','variables','icacls-and-path-to-sysvol-directory-variable','expression'];
+  const stages=planner.variablePlan(expression,path);
+  assert.deepEqual(stages.map(x=>x.title),[
+    'Read registry values','Extract with regular expression','Combine values in order']);
+  assert.deepEqual(stages[0].controls,[path.concat('concat',1,'regex_capture','value','values')]);
+  assert.deepEqual(stages[1].controls,[path.concat('concat',1,'regex_capture','pattern')]);
+  assert.deepEqual(stages[2].controls,[path.concat('concat',0,'literal')]);
+  assert.deepEqual(stages[2].operands,['Literal "icacls "','Regex capture result']);
+  assert.match(stages[2].note,/authored order/);
+});
+
+test('Variable UI preserves source-edit controls and never presents runtime-derived output', () => {
+  const html=graphicalHtml();
+  assert.match(html,/function variableInspector\(path\)/);
+  assert.match(html,/function stepControls\(step\)/);
+  assert.match(html,/function variableUsage\(id\)/);
+  assert.match(html,/function variableDefinition\(path\)/);
+  assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\)/);
+  assert.match(html,/No target system is queried by this editor/);
+  assert.match(html,/no registry value was collected, regex executed, or resulting command run/);
+  assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+});
