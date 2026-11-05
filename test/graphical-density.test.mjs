@@ -366,3 +366,29 @@ test('context menu labels represent authoring concepts, never generic YAML nodes
                      ['assessment','tests','first-test','require']])
     assert.ok(!labels(path).some(x=>/\b(node|key|child|new-property)\b/i.test(x)));
 });
+
+
+test('Require default-only item policy stays explicit without a misleading empty-controls row', () => {
+  const html=graphicalHtml();
+  const begin=html.indexOf('function requireSection(title,description,controls)');
+  const end=html.indexOf('function predicatePlan(requirement)',begin);
+  const body=html.slice(begin,end);
+  assert.ok(begin>=0 && end>begin);
+  assert.match(body,/section\.classList\.add\('compact-constant'\)/);
+  assert.match(body,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
+  assert.doesNotMatch(body,/No authored controls visible in this section/);
+  assert.match(html,/\.require-section\.compact-constant h2\{display:inline/);
+  const inspector=html.slice(html.indexOf('function requireInspector(path)'),html.indexOf('function groupedForm(path)'));
+  assert.match(inspector,/panel\.append\(requireSection\('1\. Item requirements'/);
+  assert.match(inspector,/if\(requirement\.field_requirement\)panel\.append\(requireSection\('2\. Field-value requirements'/);
+});
+
+test('Require density adjustment leaves all authored Field conditions and regex editing intact', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-fields\{display:flex;flex-direction:column;gap:7px/);
+  assert.match(html,/\.require-predicate\{border:1px solid var\(--vscode-panel-border\)/);
+  assert.match(html,/Regex patterns \(/);
+  assert.match(html,/require-regex-row/);
+  assert.match(html,/section\.append\(regex\)/);
+  assert.match(html,/return section\s*\}/);
+});
