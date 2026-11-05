@@ -40,3 +40,24 @@ test('help panel collapses and contextual actions preserve their node path', () 
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
   assert.match(html, /action:item\.action,path:target/);
 });
+
+test('simplified/all-fields only rerenders the inspector, never rebuilds the tree', () => {
+  const html = graphicalHtml();
+  assert.match(html, /function setDefaultsView\(next\)/);
+  const block = html.slice(html.indexOf('function setDefaultsView(next)'), html.indexOf('function defaultsSummary(path)'));
+  assert.match(block, /renderCenter\(\);renderHelp\(\)/);
+  assert.doesNotMatch(block, /renderTree\(\)|render\(current\)|revealPath\(/);
+  assert.match(html, /button\.onclick=\(\)=>setDefaultsView\(item\.value\)/);
+  assert.match(html, /action\.onclick=\(\)=>setDefaultsView\(!showDefaults\)/);
+  assert.match(html, /const objectFields=allFieldsUnder\(object\)/);
+  assert.match(html, /\|\|allFieldsUnder\(node\.path\)\.length>0/);
+});
+
+test('Test overview preserves Object-vs-Require semantics', () => {
+  const html = graphicalHtml();
+  assert.match(html, /Object — what to inspect/);
+  assert.match(html, /Require — what must be true/);
+  assert.match(html, /function semanticCard\(testPath,which\)/);
+  assert.match(html, /function testOverview\(path\)/);
+  assert.match(html, /if\(isCollection\(selectedPath\)\)root\.append\(collectionOverview\(selectedPath\)\)/);
+});
