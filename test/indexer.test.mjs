@@ -12,6 +12,7 @@ test('indexes logical documents and reverse Assessment usage without path identi
   assert.equal(index.find('assessment-a').length, 1);
   assert.equal(index.usedBy('assessment-a')[0].id, 'rule-r');
   assert.equal(index.search('WINDOWS.REGISTRY')[0].id, 'assessment-a');
+  assert.equal(index.search('a.assessment.yaml')[0].id, 'assessment-a');
   assert.equal(index.diagnostics().length, 0);
 });
 

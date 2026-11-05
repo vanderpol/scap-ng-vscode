@@ -69,7 +69,7 @@ Required regex UX:
 - Report invalid patterns, flags, unsupported constructs and input errors at the exact field; show case handling explicitly, never infer all Windows values are case-insensitive.
 - Show whether the pattern is matching the intended string, line, field, record, or collected Item. Offer an explicit comparison of expected versus observed for each sample.
 - Bound input, execution time and memory; provide cancellation and protection against pathological regex patterns. No opaque remote regex API and no uploads.
-- Crucially, use a regex engine/dialect **qualified to the selected SCAP-NG scanner/evaluator contract**. If the embedded preview uses a different dialect, prominently label it as an **editor regex preview** and block claims of scanner parity. Never silently substitute JavaScript/ECMAScript regex semantics for another scanner dialect.
+- Crucially, use a regex engine/dialect **qualified to the selected SCAP-NG scanner/evaluator contract**. The embedded preview is explicitly labeled **PCRE2 editor regex preview** and is not a claim of scanner parity until the SCAP-NG runtime dialect is qualified. Never silently substitute JavaScript/ECMAScript regex semantics for another scanner dialect.
 - Save/share sanitized sample cases with the project when the author explicitly chooses, and rerun them after edits. No secrets committed or uploaded automatically.
 
 Example boundary: original-source Windows/IOS-style text regex capturing `5` from `exec-timeout 5 0` is not the same as treating the whole source string as an integer; preview and diagnostics must distinguish input and capture result.

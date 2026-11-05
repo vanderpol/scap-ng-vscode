@@ -9,6 +9,11 @@ test('guided catalog is vocabulary/schema-driven and preserves exact logic disti
   const catalog = new GuidedCatalog(pack);
   assert.equal(catalog.platforms().find(option => option.value === 'windows').label, 'Windows');
   assert.deepEqual(catalog.objectFields('windows.registry').map(field => field.name), ['hive', 'key', 'name']);
+  assert.deepEqual(catalog.objectRequirements('windows.registry').map(requirement => requirement.fields), [['hive', 'key', 'name']]);
+  assert.deepEqual(catalog.objectRequirements('unix.file').map(requirement => requirement.fields), [['full_path'], ['directory', 'name']]);
+  assert.ok(catalog.objectFields('windows.registry').find(field => field.name === 'hive').enumValues.includes('local_machine'));
+  assert.deepEqual(catalog.objectFields('windows.registry').find(field => field.name === 'hive').operations.map(option => option.value), ['equals']);
+  assert.ok(catalog.objectFields('windows.registry').find(field => field.name === 'key').operations.some(option => option.value === 'matches_regex'));
   assert.ok(catalog.resultFields('linux.partition').some(field => field.name === 'mount_options'));
   assert.equal(catalog.modes().some(option => option.value === 'manual'), true);
   assert.deepEqual(catalog.logicalOperators().map(option => option.value), ['and', 'or', 'one', 'xor']);
@@ -24,5 +29,15 @@ test('guided manual and automated Windows Registry drafts validate against pinne
     { id: 'registry-presence-test', title: 'Registry presence', capability: 'windows.registry', object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization' }, name: { equals: 'NoLockScreenSlideshow' } }, presenceOnly: true }
   ] });
   assert.deepEqual(automated.diagnostics, []); assert.deepEqual(automated.document.assessment.evaluate.xor, [{ test: 'registry-value-test' }, { test: 'registry-presence-test' }]);
+  const itemUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
+  const fieldUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
+  const context = { documentVersion: pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] };
+  assert.deepEqual(automated.document.assessment.tests['registry-value-test'].require.item_requirement, pack.newObjectDefaults(itemUri, {}, context));
+  assert.deepEqual(automated.document.assessment.tests['registry-value-test'].require.field_requirement, pack.describe(fieldUri, context).suggested);
   assert.deepEqual(Object.keys(automated.document.assessment.tests['registry-value-test'].require), ['item_requirement', 'field_requirement', 'fields']);
+  const incomplete = createGuidedAssessment(pack, { platform: 'windows', id: 'incomplete-registry-assessment', title: 'Incomplete registry', mode: 'automated', className: 'compliance', tests: [
+    { id: 'incomplete-registry-test', title: 'Incomplete registry', capability: 'windows.registry', object: { hive: { equals: 'local_machine' } }, presenceOnly: true }
+  ] });
+  assert.deepEqual(Object.keys(incomplete.document.assessment.tests['incomplete-registry-test'].object), ['hive']);
+  assert.doesNotMatch(incomplete.yaml, /replace me/i);
 });

@@ -1,0 +1,27 @@
+assessment:
+  id: p0-unix-file-assessment
+  version: 1
+  assessment_title: Unix passwd file is present
+  mode: automated
+  class: compliance
+  specification:
+    id: scap-ng.pre-alpha.assessment
+    version: 0.4.0
+  tests:
+    unix-file-presence-test:
+      test_title: Unix passwd file is present
+      capability: unix.file
+      object:
+        filepath:
+          equals: /etc/passwd
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        field_requirement:
+          values_found: one_or_more
+          values_matching: every
+        fields:
+          path:
+            equals: /etc/passwd
+      reported_elements: all
+  evaluate:
+    test: unix-file-presence-test
