@@ -139,6 +139,19 @@ The owner specifically prefers the **wide, compact, well-organized original scre
 
 The target layout is a clean left Assessment outline, a large central content canvas, optional collapsible right help/diagnostics sidebar, and compact cards in sensible authoring order. Never sacrifice completeness merely for fewer controls.
 
+
+## Desktop layout correction (owner, 2026-11-05) — master-detail tree is mandatory
+
+Work Codex has produced several unsatisfactory smartphone-like UI attempts where a basic form takes the entire editor. The owner wants the **hierarchical Assessment tree on the left and an editor for ONLY the selected node in the center**, with an optional narrow context-sensitive Help/Diagnostics panel at right. This is the *primary* desired UX. See [Issue #44 desktop master-detail acceptance](https://github.com/vanderpol/scap-ng-vscode/issues/44).
+
+- **Document-local tree always visible at desktop widths in Graphical mode:** Assessment → Overview, Inputs, Variables (with expression child nodes), Shared Objects, Tests (with Object/Filters or Set operands/Filters, Require/item & field requirements/field or grouped conditions, reported elements), Evaluate. This is different from the workspace STIG Library / existing activity sidebar.
+- **Center single-selection property inspector:** click Object → only Object selector/acquisition fields; click a Filter → only that filter predicate/action; click Variable → selected declaration/expression; click Test → its title/capability/summary; click a nested Require group → that group. Do not render all Assessment/Test sections on screen at once.
+- **Compact desktop density:** fixed/resizeable modest tree width, large working canvas, optional collapsible right help. No giant cards with whitespace or mobile-style wizard stacking; small schema-derived form controls can align in compact grid rows. Preserve tree selection/expansion during editing.
+- **Context menus first:** right-click node and empty collection headings for Add/Duplicate/Rename/Move/Remove/Replace/Reveal in YAML, with keyboard Shift+F10 and subtle ellipsis equivalent. No always-visible CRUD buttons on every field; do not intercept native text-field context menus.
+- **Actual host screenshot is mandatory:** demonstrate the same 1920×1080 view displaying tree + small selected Object form + help simultaneously, with abundant unused vertical space rather than one form consuming the screen. Also prove selected Test, Variable nested expression, Filter, Set operand, Require group and Evaluate show separate center editors.
+- **Blank slate still required:** tree nodes and their context menus must let an author construct complete complex Assessments from nothing; do not trade feature coverage for density. No schema invention, no duplicated TextDocument, no regression of YAML-first.
+- **Prototype qualification:** the original HTML spike currently displays multiple cards and is only an illustrative first attempt. Its exact layout is **superseded** by this tree-and-single-property-inspector decision for production design; adapt its aesthetics and controls but NOT its all-cards-visible structure.
+
 ## Short Codex launch
 
 Work vanderpol/scap-ng-vscode issue #44. Read docs/prototypes/README-issue-44.md and issue-44-graphical-editor.html from branch design/issue-44-graphical-prototype-20261104. Adapt existing schema-driven Graphical UI; do not replace the YAML editor or merge PR #21. Implement in tested draft PRs.
