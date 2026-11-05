@@ -455,6 +455,27 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     if (errors.length) throw new Error('Pinned schema rejected added selector: ' + errors.join('; '));
     return edit;
   }
+  if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'object') {
+    const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
+    if (!test) throw new Error('The Test definition was not found.');
+    const object = test.object;
+    if (typeof object === 'string')
+      throw new Error('This Test references a Shared Object. Edit that Shared Object to change its selectors.');
+    if (!object || typeof object !== 'object' || Array.isArray(object))
+      throw new Error('The Test Object is not an inline mapping. Use native YAML to repair it.');
+    if ('set' in object)
+      throw new Error('This Test uses an Object Set. Add operands under its Set node; do not add unrelated selectors beside the Set.');
+    const capability = String(test.capability||'');
+    if (!capability) throw new Error('The Test has no valid capability.');
+    const extra = await promptSharedSelector(api, catalog, capability, object);
+    if (!extra) return undefined;
+    const [fieldName, value] = Object.entries(extra)[0] as [string, any];
+    const edit = source.insertMapEntry(path, fieldName, value as any, expectedHash);
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected the added Object selector: ' + errors.join('; '));
+    return edit;
+  }
   const existing = valueAtPathForGraphical(source.json(), path);
   if (Array.isArray(existing)) {
     if (last === 'filters') return source.insertArrayItem(path, { include: {} } as any, expectedHash);
