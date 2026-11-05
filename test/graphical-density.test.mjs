@@ -210,3 +210,69 @@ test('Variable UI preserves source-edit controls and never presents runtime-deri
   assert.match(html,/no registry value was collected, regex executed, or resulting command run/);
   assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
 });
+
+
+test('Require predicate planner preserves separate statuses, regex list and value_match', () => {
+  const html=graphicalHtml();
+  const script=html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  const start=script.indexOf('function requireDefinition(path)');
+  const end=script.indexOf('function groupedForm(path)',start);
+  assert.ok(start>=0 && end>start);
+  const factory=new Function(script.slice(start,end)+';return {predicatePlan,cardinalityWords}')();
+  const requirement={
+    item_requirement:{items_found:'one_or_more',items_satisfying:'every'},
+    field_requirement:{values_found:'one_or_more',values_matching:'every'},
+    fields:{
+      exit_status:{equals:0},
+      stdout_line:{matches_regex:[
+        '(?i)NT AUTHORITY\\\\Authenticated Users:\\(RX\\)',
+        '(?i)NT AUTHORITY\\\\SYSTEM:\\(F\\)'],value_match:'one_or_more'},
+      stderr_line:{values_found:'none'}
+    }
+  };
+  const plans=factory.predicatePlan(requirement);
+  assert.deepEqual(plans.map(p=>p.name),['exit_status','stdout_line','stderr_line']);
+  assert.deepEqual(plans[0].operators,['equals']);
+  assert.equal(plans[1].patterns.length,2);
+  assert.equal(plans[1].expectedMatch,'one_or_more');
+  assert.equal(plans[2].absence,true);
+  assert.equal(factory.cardinalityWords('one_or_more'),'at least one');
+  assert.equal(factory.cardinalityWords('every'),'every');
+});
+
+test('Require inspector groups Item, Field and predicate requirements with editable patterns', () => {
+  const html=graphicalHtml();
+  assert.match(html,/function requireInspector\(path\)/);
+  assert.match(html,/function fieldCheckCard\(path,plan\)/);
+  assert.match(html,/1\. Item requirements/);
+  assert.match(html,/2\. Field-value requirements/);
+  assert.match(html,/3\. Field conditions/);
+  assert.match(html,/Regex patterns \(/);
+  assert.match(html,/Pattern '\+\(Number\(f\.path\.at\(-1\)\)\+1\)/);
+  assert.match(html,/regex\.append\(entry\)/);
+  assert.match(html,/Distinct from the field-value and Item requirements above|distinct from the field-value and Item requirements above/);
+  assert.match(html,/requireDefinition\(editPath\)\?requireInspector\(editPath\)/);
+});
+
+test('Object Variable references expose an inline preview and editor navigation', () => {
+  const html=graphicalHtml();
+  const script=html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  const start=script.indexOf('function variableReferenceId(f)');
+  const end=script.indexOf('function compactGrid(fields,style)',start);
+  assert.ok(start>=0&&end>start);
+  const factory=new Function(script.slice(start,end)+';return {variableReferenceId}')();
+  const ref={
+    path:['assessment','tests','permissions-must-conform-to-minimum-requirements-test',
+      'object','command','variable'],
+    value:'icacls-and-path-to-sysvol-directory-variable'
+  };
+  assert.equal(factory.variableReferenceId(ref),ref.value);
+  assert.equal(factory.variableReferenceId({path:['assessment','variables','one-variable','expression','variable'],value:ref.value}),null);
+  assert.equal(factory.variableReferenceId({...ref,value:''}),null);
+  assert.match(html,/Show Variable: /);
+  assert.match(html,/Unresolved Variable: /);
+  assert.match(html,/Open Variable editor/);
+  assert.match(html,/open\.onclick=\(\)=>select\(\['assessment','variables',id\]\)/);
+  assert.match(html,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
+  assert.match(html,/not evaluated here/);
+});
