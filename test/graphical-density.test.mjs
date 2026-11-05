@@ -61,3 +61,80 @@ test('Test overview preserves Object-vs-Require semantics', () => {
   assert.match(html, /function testOverview\(path\)/);
   assert.match(html, /if\(isCollection\(selectedPath\)\)root\.append\(collectionOverview\(selectedPath\)\)/);
 });
+
+function evaluationHarness(assessment) {
+  const html = graphicalHtml();
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, 'webview script missing');
+  const start = script.indexOf('function evalChild(');
+  const end = script.indexOf('function hasVisible(', start);
+  assert.ok(start >= 0 && end > start, 'evaluation outline functions missing');
+  const logic = script.slice(start, end);
+  const factory = new Function('current', [
+    'let evaluationNodes = new Map();',
+    "const key = path => path.map(String).join('/');",
+    'const same = (a,b) => Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>v===b[i]);',
+    'const hasPrefix = (path,prefix) => path.length>prefix.length&&prefix.every((v,i)=>v===path[i]);',
+    'const allFieldsUnder = path => (current.fields||[]).filter(f=>hasPrefix(f.path,path));',
+    logic,
+    'return {treeModel,evaluationSelection,testPathForSelection};'
+  ].join('\n'));
+  return factory({ fields: [], assessment });
+}
+
+test('Evaluate tree follows actual nested expression and resolves Test IDs without duplication', () => {
+  const ctx = evaluationHarness({
+    mode: 'automated',
+    tests: [
+      {id:'mount-nosuid-test',title:'Full mount test'},
+      {id:'config-option-test',title:'Full config check'},
+      {id:'registry-policy-test',title:'Full Windows test'}
+    ],
+    evaluate: {and:[
+      {test:'mount-nosuid-test'},
+      {or:[{test:'config-option-test'},{test:'registry-policy-test'}]}
+    ]}
+  });
+  const tree = ctx.treeModel().root;
+  const evalRoot = tree.children.find(n=>n.path[1]==='evaluate');
+  assert.equal(evalRoot.label, 'Evaluate — AND');
+  assert.equal(evalRoot.children[0].label, 'mount-nosuid-test');
+  assert.equal(evalRoot.children[1].label, 'OR');
+  assert.deepEqual(evalRoot.children[1].children.map(n=>n.label), ['config-option-test','registry-policy-test']);
+  assert.deepEqual(ctx.testPathForSelection(evalRoot.children[1].children[1].path),
+    ['assessment','tests','registry-policy-test']);
+  assert.ok(tree.children.find(n=>n.path[1]==='tests'), 'Definitions remain separate');
+});
+
+test('Single Test, conditional evaluation and manual Assessment retain their true shapes', () => {
+  const single = evaluationHarness({
+    mode: 'automated',
+    tests: [{id:'single-test'}],
+    evaluate: {test:'single-test'}
+  });
+  const singleTree = single.treeModel().root.children.find(n=>n.path[1]==='evaluate');
+  assert.equal(singleTree.label, 'Evaluate — Test');
+  assert.equal(singleTree.children[0].label, 'single-test');
+
+  const conditional = evaluationHarness({
+    mode: 'automated',
+    tests: [{id:'single-test'}],
+    evaluate: {if:{input_provided:'optional-input'}, then:{test:'single-test'},
+      else:{not_applicable:{reason:'missing optional input'}}}
+  });
+  const conditionalTree = conditional.treeModel().root.children.find(n=>n.path[1]==='evaluate');
+  assert.equal(conditionalTree.label, 'Evaluate — IF');
+  assert.deepEqual(conditionalTree.children.map(n=>n.label),
+    ['IF: Input provided: optional-input','THEN: single-test','ELSE: Not applicable']);
+
+  const manual = evaluationHarness({mode:'manual',tests:[]});
+  assert.ok(!manual.treeModel().root.children.some(n=>n.path[1]==='evaluate'));
+});
+
+test('Evaluate group UI is explicitly read-only, source-backed and does not imply implicit AND', () => {
+  const html = graphicalHtml();
+  assert.match(html, /function renderEvalOverview\(node\)/);
+  assert.match(html, /To change the logic, use Reveal in YAML/);
+  assert.match(html, /fillEvalTree\(evalRoot,current\?\.assessment\?\.evaluate/);
+  assert.doesNotMatch(html, /last==='evaluate'\)items\.push\(\{label:'Add child'/);
+});
