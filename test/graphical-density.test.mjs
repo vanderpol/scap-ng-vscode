@@ -324,7 +324,7 @@ test('Shared Object inspector explains selector authoring and does not hide miss
   assert.match(html,/Add selector/);
   assert.match(html,/A Test must use its object_ref ID/);
   assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\):sharedObjectDefinition\(editPath\)\?sharedObjectInspector\(editPath\)/);
-  assert.match(html,/path\[1\]==='shared_objects'&&path\.length===3\)items\.push\(\{label:'Add selector \/ required title'/);
+  assert.match(html,/label:'Add Object selector \/ required title'/);
 });
 
 test('Shared Object context exposes the original authored controls and source-backed Add action', () => {
@@ -334,4 +334,35 @@ test('Shared Object context exposes the original authored controls and source-ba
   assert.match(html,/action:'add',path,revision:current\?\.revision,version:current\?\.version/);
   assert.match(html,/function friendlyLabel\(f\)/);
   assert.match(html,/if\(p\[1\]==='shared_objects'&&p\.length>4\)/);
+});
+
+
+test('context menu labels represent authoring concepts, never generic YAML nodes and keys', () => {
+  const html=graphicalHtml();
+  const script=html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  const start=script.indexOf('function menuItems(path)');
+  const end=script.indexOf('function showMenu(path',start);
+  assert.ok(start>=0&&end>start);
+  const menuItems=new Function(script.slice(start,end)+';return menuItems')();
+  const labels=path=>menuItems(path).filter(x=>!x.separator).map(x=>x.label);
+  assert.deepEqual(labels(['assessment','tests']),['Add Test','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','inputs']),['Add Organizational Input','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','variables']),['Add Variable','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','shared_objects']),['Add Shared Object','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','tests','first-test']),[
+    'Duplicate Test','Rename Test ID','Remove Test','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','variables','first-variable']),[
+    'Duplicate Variable','Rename Variable ID','Remove Variable','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','inputs','first-input']),[
+    'Duplicate Organizational Input','Rename Organizational Input ID','Remove Organizational Input','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','shared_objects','first-object']),[
+    'Add Object selector / required title','Duplicate Shared Object',
+    'Rename Shared Object ID','Remove Shared Object','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','tests','first-test','object']),[
+    'Add Object selector','Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','tests','first-test','require']),['Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','tests','first-test','object','hive']),['Reveal in YAML']);
+  for(const path of [['assessment'],['assessment','shared_objects','first-object'],
+                     ['assessment','tests','first-test','require']])
+    assert.ok(!labels(path).some(x=>/\b(node|key|child|new-property)\b/i.test(x)));
 });
