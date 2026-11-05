@@ -138,3 +138,37 @@ test('Evaluate group UI is explicitly read-only, source-backed and does not impl
   assert.match(html, /fillEvalTree\(evalRoot,current\?\.assessment\?\.evaluate/);
   assert.doesNotMatch(html, /last==='evaluate'\)items\.push\(\{label:'Add child'/);
 });
+
+
+test('Assessment and Test forms prioritize readable columns and whole-value controls', () => {
+  const html = graphicalHtml();
+  assert.match(html, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.property-grid \.field-entry\.wide\{grid-column:1\/-1\}/);
+  assert.match(html, /container-name:inspector/);
+  assert.match(html, /@container inspector \(max-width:440px\)/);
+  assert.match(html, /function fieldNeedsWide\(f\)/);
+  assert.match(html, /function fieldNeedsMultiline\(f\)/);
+  assert.match(html, /fieldNeedsWide\(item\)\?' wide'/);
+  assert.match(html, /input\.rows=Math\.min\(4,Math\.max\(2,/);
+  assert.doesNotMatch(html, /\.field-entry>label\{[^}]*text-overflow:ellipsis/);
+});
+
+test('Only long or semantically wide properties get full rows and multiline editors', () => {
+  const html = graphicalHtml();
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  const start = script.indexOf('function fieldNeedsWide(');
+  const end = script.indexOf('function makeInput(f)',start);
+  assert.ok(start >= 0 && end > start);
+  const helpers = new Function(script.slice(start,end)+';return {fieldNeedsWide,fieldNeedsMultiline}')();
+  const prop = (keys,value,kind='string') => ({path:['assessment',...keys],value,kind,choices:[]});
+  const longTitle = prop(['assessment_title'],'A full-length readable human title describing one Assessment');
+  assert.equal(helpers.fieldNeedsWide(longTitle),true);
+  assert.equal(helpers.fieldNeedsMultiline(longTitle),true);
+  assert.equal(helpers.fieldNeedsWide(prop(['mode'],'automated')),false);
+  assert.equal(helpers.fieldNeedsMultiline(prop(['class'],'compliance')),false);
+  assert.equal(helpers.fieldNeedsWide(prop(['tests','check-test','test_title'],'Short title')),true);
+  assert.equal(helpers.fieldNeedsWide(prop(['tests','check-test','object','mount_point','matches_regex'],'^/home')),true);
+  assert.equal(helpers.fieldNeedsWide(prop(['tests','check-test','object','hive','equals'],'local_machine')),false);
+  assert.equal(helpers.fieldNeedsMultiline({...longTitle,choices:['A','B']}),false);
+});
