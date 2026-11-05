@@ -123,6 +123,22 @@ The original HTML can switch among pre-populated Tests and add/remove field pred
 
 The standalone HTML remains illustrative UX research. Codex must implement the full P1 lifecycle in the actual pinned schema-driven Graphical editor, not copy fixed demo arrays or pretend an incomplete Assessment is validated.
 
+
+## UX amendment — compact canvas, right-click context menus (2026-11-05)
+
+The owner specifically prefers the **wide, compact, well-organized original screenshot**. Treat context menus as the **primary structural edit affordance** rather than permanently visible Add/Remove/Duplicate buttons. The HTML prototype's visible buttons are scaffolding to demonstrate operations, NOT the target UI density.
+
+- Outline node single-click selects and displays the node's properties; double-click focuses an edit. Right-click opens a schema- and node-specific menu. Apply this consistently to Tests, Objects, Variables, Inputs, Filters, Sets and their operands, Require, field/record conditions and nested expression/group nodes. Allow right-click on an empty group or section header to add its first child.
+- Example Test menu: Add Test, Duplicate, Rename, Move, Delete, Reveal in YAML. Example Require menu: Replace requirement branch, Add Field/Condition, Duplicate/Remove optional branch, Reveal. Example Set menu: Add Object/Nested Set operand, Change operation, Add Filter; an Object operand should expose its own Filter operations. Example Variable menu: Add/Duplicate/Rename/Delete, Find Uses.
+- **No permanent action-button rows** on every card or field. Use minimal disclosure affordances: an ellipsis on selected/hovered/focused items, brief one-time "Right-click for actions" help, and a contextual menu triggered from section headers or outline.
+- Keyboard parity: Shift+F10/context-menu key for focused node, arrows for outline navigation, Enter for editing, visual focus treatment and screen-reader labels. Menu actions should be available via a small ellipsis or VS Code commands for users who cannot right-click.
+- Do not hijack context menus in native YAML or editable text fields (copy/cut/paste still needed). Prevent webview built-in handling only for appropriate non-text structural nodes.
+- Menu availability is **schema-driven** and must honor node context, actual capability, required-vs-optional properties, source references, Set cardinality and expression branch. Explain disabled operations. Never treat a required Test 'require' removal as a valid completed state.
+- High-risk Remove/Rename must expose affected references and proposed YAML diff before applying. Honor one canonical TextDocument, stale edit/version protection, native Undo/Redo and no-op byte identity.
+- Test the interaction in a real Extension Development Host at wide and narrow monitor widths and in high contrast. Verify context menu placement, overflow, keyboard navigation, no redundant permanent buttons, and no right-click regression in native YAML.
+
+The target layout is a clean left Assessment outline, a large central content canvas, optional collapsible right help/diagnostics sidebar, and compact cards in sensible authoring order. Never sacrifice completeness merely for fewer controls.
+
 ## Short Codex launch
 
 Work vanderpol/scap-ng-vscode issue #44. Read docs/prototypes/README-issue-44.md and issue-44-graphical-editor.html from branch design/issue-44-graphical-prototype-20261104. Adapt existing schema-driven Graphical UI; do not replace the YAML editor or merge PR #21. Implement in tested draft PRs.
