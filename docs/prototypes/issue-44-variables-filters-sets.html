@@ -1,0 +1,166 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCAP-NG Graphical R&D — Variables / Filters / Sets</title><style>
+:root{font:13px/1.5 system-ui,sans-serif;background:#eef3f9;color:#20364e}
+*{box-sizing:border-box}body{margin:0}
+header{background:#f9fbff;border-bottom:1px solid #cad7e9;padding:13px 20px;display:flex;align-items:center;gap:20px}
+header h1{font-size:17px;margin:0}header span{font-size:11px;color:#657a92}
+.layout{display:grid;grid-template-columns:220px minmax(740px,1fr) 270px;min-height:calc(100vh - 48px)}
+nav{background:#f9fbff;border-right:1px solid #cbd8e8;padding:16px 8px}
+nav h4{font-size:11px;letter-spacing:.07em;color:#789;margin:17px 12px 8px}
+button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #4395ff;outline-offset:2px}
+nav button{width:100%;text-align:left;border:0;background:transparent;padding:9px 13px;color:#365370}
+nav button.selected{background:#d9e9ff;color:#1863b9;border-radius:5px;font-weight:700}
+main{padding:16px 22px;min-width:0}aside{background:#f9fbff;border-left:1px solid #cbd8e8;padding:16px 13px}
+h2{font-size:19px;margin:0 0 5px}h3{font-size:14px;margin:0 0 9px}h4{font-size:12px;margin:9px 0}
+p{margin:4px 0 10px}.hint{color:#73879f;font-size:11px}.notice{padding:12px;border-radius:7px;background:#fff5df;color:#715626;margin:10px 0 16px;font-size:12px}
+.card{background:#fff;border:1px solid #d1ddeb;border-radius:9px;margin:12px 0;box-shadow:0 1px 2px #d9e2ed}
+.card>h3{background:#e5f0ff;padding:11px 14px;border-bottom:1px solid #d2dfea;border-radius:9px 9px 0 0;margin:0}
+.body{padding:13px 15px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:11px;font-weight:650;margin:8px 0 4px}
+input,select{font:inherit;width:100%;padding:7px 8px;border:1px solid #bed0e5;border-radius:5px;background:white;color:#243a53}
+.action{margin-top:8px;background:#f3f8ff;color:#2565ab;border:1px solid #a9c6e5;border-radius:5px;padding:7px 10px;font-size:12px}
+.mini{padding:10px;background:#fafcff;border:1px solid #dce5f0;border-radius:6px;margin:9px 0}
+.nested{padding:9px;background:#f3f8ff;border-left:3px solid #a5bee2;margin:10px 0 10px 16px;border-radius:4px}
+.side{background:white;border:1px solid #d4deea;border-radius:7px;padding:11px;margin-bottom:11px}
+.side p{font-size:12px} .side h3{font-size:13px}
+.stack{display:grid;grid-template-columns:220px 1fr;gap:15px}
+.pill{color:#2463ab;background:#e8f2ff;border-radius:10px;padding:3px 8px;font-size:11px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.row strong{font-size:12px}
+.grid.three{grid-template-columns:1fr 1fr 1fr}.right{text-align:right}
+@media(max-width:1250px){aside{display:none}.layout{grid-template-columns:200px minmax(650px,1fr)}}
+@media(max-width:850px){nav{display:none}.layout{grid-template-columns:minmax(650px,1fr)}}
+</style></head><body>
+<header><h1>▣ SCAP-NG Assessment Studio</h1><span>Issue #44 — interactive dataflow editor R&D • offline</span></header>
+<div class="layout"><nav><h4>ASSESSMENT OUTLINE</h4>
+<button id="navVariables" class="selected">{} &nbsp; Variables (2)</button>
+<button id="navObject">◎ &nbsp; Object + Filters</button>
+<button id="navSet">⑂ &nbsp; Set Composition</button>
+<button>☑ &nbsp; Require (separate)</button>
+<button>◉ &nbsp; Evaluate (separate)</button>
+<h4>AUTHORING PRINCIPLE</h4><p class="hint" style="padding:0 12px">Variables and collection Filters are first-class editing surfaces, not advanced YAML-only exceptions.</p>
+</nav>
+<main><h2>Variables, Filters &amp; Set Composition</h2>
+<p class="hint">Illustrative visual prototype. Source grammar and operators in production must come from the exact pinned SCAP-NG schema.</p>
+<div class="notice">R&D ONLY — controls edit in-memory examples. No actual YAML edits, scanner execution, schema validation, or runtime compliance results.</div>
+<section class="card" id="variablesCard"><h3>{ } &nbsp; Variables — declaration &amp; expression builder</h3><div class="body stack">
+<div><h4>Variable library</h4><div id="variableList"></div><button id="addVariable" class="action">+ Add variable</button><p class="hint">Variables are distinct from organizational Inputs.</p></div>
+<div><div class="row"><h4>Selected Variable</h4><span class="pill">Recursive expression</span></div><div id="variableDetails"></div></div>
+</div></section>
+<section class="card" id="objectCard"><h3>◎ &nbsp; Inline Object &amp; Collection Filters</h3><div class="body"><div class="grid three">
+<div><label>Capability (illustrative)</label><input value="windows.registry" readonly></div>
+<div><label>Hive / selector</label><input value="local_machine" readonly></div>
+<div><label>Value name / selector</label><input value="EnableFirewall" readonly></div></div>
+<p class="hint">Object selectors choose acquisition targets. Filters then include/exclude observed Items, BEFORE require checks compliance.</p>
+<div id="objectFilterDetails"></div><button id="addObjectFilter" class="action">+ Add Object Filter</button></div></section>
+<section class="card" id="setCard"><h3>⑂ &nbsp; Set — editable operands, nested Sets &amp; Filters</h3><div class="body"><p class="hint">Set operators: union / intersection / difference (difference has at most two operands). Each Object operand has its own Filters.</p><div id="setDetails"></div></div></section>
+</main>
+<aside><div class="side"><h3>Schema-sourced help</h3><p><b>Variables</b> can hold literals, values from other Variables and collected Objects, or nested expressions.</p><p><b>Filters</b> include or exclude Items using field/record predicates. They are not requirement checks.</p><p><b>Sets</b> compose Object collections and nested Set operands.</p></div>
+<div class="side"><h3>Qualification</h3><p>YAML validation: not connected</p><p>Scanner evidence: unavailable</p><p id="count">Edits: 0 (local demo)</p></div>
+<div class="side"><h3>Production contract</h3><p>Use the pinned JSON Schemas to populate enum choices, descriptions, dynamic field names and nested expression alternatives. Preserve minimal edits and native YAML as the source of truth.</p></div></aside>
+</div>
+<script>
+'use strict';
+const vars=[
+{id:'enabled-value-variable',kind:'constant',datatype:'string',title:'Domain firewall expected value',expression:{literal:'1'}},
+{id:'domain-profile-key-variable',kind:'local',datatype:'string',title:'Derived registry key',expression:{concat:[{literal:'SOFTWARE/Policies/Microsoft/WindowsFirewall/'},{literal:'DomainProfile'}]}}
+];
+const objectFilters=[{action:'exclude',field:'value',operator:'equals',expected:'0'}];
+const setRoot={operator:'union',operands:[
+{kind:'object',name:'domain-firewall-object',filters:[{action:'include',field:'name',operator:'equals',expected:'EnableFirewall'}]},
+{kind:'set',set:{operator:'intersection',operands:[{kind:'object',name:'policy-exclusions-object',filters:[{action:'exclude',field:'name',operator:'matches_regex',expected:'^Temporary'}]}]}}
+]};
+let selected=1,edits=0;
+const byId=id=>document.getElementById(id);
+const escapeText=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const choices=(arr,selected)=>arr.map(v=>'<option value="'+escapeText(v)+'"'+(v===selected?' selected':'')+'>'+escapeText(v)+'</option>').join('');
+function getValue(obj,path){return path.reduce((p,k)=>p?.[k],obj)}
+function setValue(obj,path,value){let target=obj;for(let i=0;i<path.length-1;i++)target=target[path[i]];target[path[path.length-1]]=value}
+function control(label,value,path,select){
+ const key=escapeText(JSON.stringify(path));
+ return '<div><label>'+escapeText(label)+'</label>'+(select?
+ '<select data-var="'+key+'">'+choices(select,value)+'</select>':
+ '<input data-var="'+key+'" value="'+escapeText(value)+'">')+'</div>';
+}
+const types=['literal','variable','values','concat','regex_capture','unique','merge'];
+function blankExpression(t){
+ if(t==='variable')return {variable:'enabled-value-variable'};
+ if(t==='values')return {values:{object:{object_ref:'source-object'},field:'name'}};
+ if(t==='concat')return {concat:[{literal:''},{literal:''}]};
+ if(t==='regex_capture')return {regex_capture:{pattern:'^(.*)$',value:{literal:''}}};
+ if(t==='unique')return {unique:{literal:''}};
+ if(t==='merge')return {merge:{delimiter:',',sort:'document',order:'ascending',values:{literal:''}}};
+ return {literal:''}
+}
+function expressionUI(obj,path,depth=0){
+ if(depth>7)return '<p class="hint">Deep expression: use YAML in this R&D prototype.</p>';
+ const kind=Object.keys(obj)[0],key=escapeText(JSON.stringify(path));
+ let html='<div class="mini"><label>Expression form</label><select data-kind="'+key+'">'+choices(types,kind)+'</select>';
+ if(kind==='literal')html+=control('Literal',obj.literal,path.concat('literal'));
+ if(kind==='variable')html+=control('Reference',obj.variable,path.concat('variable'),vars.map(v=>v.id));
+ if(kind==='values'){html+=control('Object reference',obj.values.object.object_ref,path.concat(['values','object','object_ref']));html+=control('Field',obj.values.field,path.concat(['values','field']));}
+ if(kind==='concat'){html+='<p class="hint">Ordered nested components</p>';obj.concat.forEach((child,i)=>{html+='<div class="nested"><div class="row"><strong>Component '+(i+1)+'</strong><button class="action" data-remove="'+escapeText(JSON.stringify(path.concat(['concat',i])))+'">Remove</button></div>'+expressionUI(child,path.concat(['concat',i]),depth+1)+'</div>';});html+='<button class="action" data-add="'+escapeText(JSON.stringify(path.concat('concat')))+'">+ Component</button>';}
+ if(kind==='regex_capture'){html+=control('Pattern',obj.regex_capture.pattern,path.concat(['regex_capture','pattern']));html+=expressionUI(obj.regex_capture.value,path.concat(['regex_capture','value']),depth+1)}
+ if(kind==='unique')html+=expressionUI(obj.unique,path.concat('unique'),depth+1);
+ if(kind==='merge'){html+=control('Delimiter',obj.merge.delimiter,path.concat(['merge','delimiter']));html+='<div class="grid">'+control('Sort',obj.merge.sort,path.concat(['merge','sort']),['document','lexical','numeric','natural'])+control('Order',obj.merge.order,path.concat(['merge','order']),['ascending','descending'])+'</div>';html+=expressionUI(obj.merge.values,path.concat(['merge','values']),depth+1)}
+ return html+'</div>';
+}
+function filterUI(items,path){
+ let html='';
+ items.forEach((f,i)=>{
+ const p=escapeText(JSON.stringify(path.concat(i)));
+ html+='<div class="mini"><div class="grid three"><div><label>Action</label><select data-filter="'+p+'" data-field="action">'+choices(['include','exclude'],f.action)+'</select></div>'+
+ '<div><label>Field</label><input data-filter="'+p+'" data-field="field" value="'+escapeText(f.field)+'"></div>'+
+ '<div><label>Operator</label><select data-filter="'+p+'" data-field="operator">'+choices(['equals','not_equal','matches_regex'],f.operator)+'</select></div></div>'+
+ '<label>Expected</label><input data-filter="'+p+'" data-field="expected" value="'+escapeText(f.expected)+'">'+
+ '<button class="action" data-filter-remove="'+p+'">Remove Filter</button></div>';
+ });
+ return html+'<button class="action" data-filter-add="'+escapeText(JSON.stringify(path))+'">+ Filter</button>';
+}
+function setUI(set,path,depth=0){
+ if(depth>6)return '<p class="hint">Nested Set: use YAML in this R&D prototype.</p>';
+ let html='<div class="mini"><label>Operator</label><select data-setoperator="'+escapeText(JSON.stringify(path))+'">'+choices(['union','intersection','difference'],set.operator)+'</select>';
+ set.operands.forEach((op,i)=>{
+ const p=path.concat(['operands',i]),key=escapeText(JSON.stringify(p));
+ html+='<div class="nested"><div class="row"><strong>Operand '+(i+1)+' — '+escapeText(op.kind)+'</strong><button class="action" data-operand-remove="'+key+'">Remove</button></div>';
+ if(op.kind==='set')html+=setUI(op.set,p.concat('set'),depth+1);
+ else{html+='<label>Object reference</label><input data-object="'+key+'" value="'+escapeText(op.name)+'"><h4>Filters on this operand</h4>'+filterUI(op.filters,p.concat('filters'))}
+ html+='</div>';
+ });
+ html+='<button class="action" data-operand-add="'+escapeText(JSON.stringify(path))+'" data-operand-type="object">+ Object operand</button> '+
+ '<button class="action" data-operand-add="'+escapeText(JSON.stringify(path))+'" data-operand-type="set">+ Nested Set</button></div>';
+ return html;
+}
+function render(){
+ byId('variableList').innerHTML=vars.map((v,i)=>'<button class="'+(i===selected?'selected':'')+'" data-select="'+i+'">'+escapeText(v.id)+'</button>').join('');
+ const v=vars[selected];
+ byId('variableDetails').innerHTML=control('Variable name',v.id,['id'])+
+ '<div class="grid">'+control('Kind',v.kind,['kind'],['local','constant'])+control('Datatype',v.datatype,['datatype'],['string','integer','boolean','record'])+'</div>'+
+ control('Title',v.title,['title'])+'<h4>Expression</h4>'+expressionUI(v.expression,['expression']);
+ byId('objectFilterDetails').innerHTML=filterUI(objectFilters,[]);
+ byId('setDetails').innerHTML=setUI(setRoot,[]);
+ byId('count').textContent='Edits: '+edits+' (local demo, not YAML)';
+}
+function record(){edits++;render()}
+document.addEventListener('change',event=>{
+ const e=event.target,p=e.dataset;
+ if(p.var){const path=JSON.parse(p.var);setValue(vars[selected],path,e.value);if(path[0]==='kind'&&e.value==='constant')vars[selected].expression={literal:''};record()}
+ if(p.kind){const path=JSON.parse(p.kind);if(vars[selected].kind==='constant'&&e.value!=='literal'){render();return}setValue(vars[selected],path,blankExpression(e.value));record()}
+ if(p.filter!==undefined){const path=JSON.parse(p.filter);const obj=path.length===1?objectFilters:getValue(setRoot,path.slice(0,-1));const f=path.length===1?obj[path[0]]:obj[path[path.length-1]];f[p.field]=e.value;record()}
+ if(p.setoperator){const set=getValue(setRoot,JSON.parse(p.setoperator));set.operator=e.value;if(e.value==='difference')set.operands=set.operands.slice(0,2);record()}
+ if(p.object){const op=getValue(setRoot,JSON.parse(p.object));op.name=e.value;record()}
+});
+document.addEventListener('click',event=>{
+ const b=event.target.closest('button');if(!b)return;const p=b.dataset;
+ if(p.select!==undefined){selected=Number(p.select);render()}
+ if(p.add){getValue(vars[selected],JSON.parse(p.add)).push({literal:''});record()}
+ if(p.remove){const path=JSON.parse(p.remove),arr=getValue(vars[selected],path.slice(0,-1));if(arr.length>2){arr.splice(path[path.length-1],1);record()}}
+ if(p.filterAdd!==undefined){const path=JSON.parse(p.filterAdd),arr=path.length?getValue(setRoot,path):objectFilters;arr.push({action:'include',field:'name',operator:'equals',expected:''});record()}
+ if(p.filterRemove!==undefined){const path=JSON.parse(p.filterRemove),arr=path.length===1?objectFilters:getValue(setRoot,path.slice(0,-1));arr.splice(path[path.length-1],1);record()}
+ if(p.operandAdd!==undefined){const set=getValue(setRoot,JSON.parse(p.operandAdd));if(set.operator==='difference'&&set.operands.length>=2)return;set.operands.push(p.operandType==='set'?{kind:'set',set:{operator:'union',operands:[{kind:'object',name:'source-object',filters:[]}]}}:{kind:'object',name:'source-object',filters:[]});record()}
+ if(p.operandRemove!==undefined){const path=JSON.parse(p.operandRemove),arr=getValue(setRoot,path.slice(0,-1));if(arr.length>1){arr.splice(path[path.length-1],1);record()}}
+});
+byId('addVariable').onclick=()=>{vars.push({id:'new-'+(vars.length+1)+'-variable',kind:'constant',datatype:'string',title:'New Variable',expression:{literal:''}});selected=vars.length-1;record()};
+byId('addObjectFilter').onclick=()=>{objectFilters.push({action:'exclude',field:'value',operator:'equals',expected:''});record()};
+for(const [a,b] of [['navVariables','variablesCard'],['navObject','objectCard'],['navSet','setCard']]){byId(a).onclick=()=>byId(b).scrollIntoView({behavior:'smooth'});}
+render();
+</script></body></html>
