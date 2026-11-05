@@ -59,7 +59,7 @@ test('Test overview preserves Object-vs-Require semantics', () => {
   assert.match(html, /Require — what must be true/);
   assert.match(html, /function semanticCard\(testPath,which\)/);
   assert.match(html, /function testOverview\(path\)/);
-  assert.match(html, /if\(isCollection\(selectedPath\)\)root\.append\(collectionOverview\(selectedPath\)\)/);
+  assert.match(html, /else if\(isCollection\(editPath\)\)root\.append\(collectionOverview\(editPath\)\)/);
 });
 
 function evaluationHarness(assessment) {
