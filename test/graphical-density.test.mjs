@@ -392,3 +392,21 @@ test('Require density adjustment leaves all authored Field conditions and regex 
   assert.match(html,/section\.append\(regex\)/);
   assert.match(html,/return section\s*\}/);
 });
+
+
+test('Require field name and small explanatory text share a responsive heading row', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-predicate-heading\{display:flex;align-items:baseline;flex-wrap:wrap/);
+  assert.match(html,/\.require-predicate-heading h3\{margin:0;flex:0 0 auto\}/);
+  assert.match(html,/\.require-predicate-heading \.hint\{margin:0;flex:1 1 180px;min-width:0;line-height:1\.4\}/);
+  const start=html.indexOf('function fieldCheckCard(path,plan)');
+  const end=html.indexOf('function requireInspector(path)',start);
+  assert.ok(start>=0&&end>start);
+  const card=html.slice(start,end);
+  assert.match(card,/const heading=document\.createElement\('div'\);heading\.className='require-predicate-heading'/);
+  assert.match(card,/heading\.append\(note\);section\.append\(heading\)/);
+  assert.doesNotMatch(card,/section\.append\(title\)/);
+  assert.doesNotMatch(card,/section\.append\(note\)/);
+  assert.match(card,/const meta=visible\.filter/);
+  assert.match(card,/section\.append\(regex\)/);
+});
