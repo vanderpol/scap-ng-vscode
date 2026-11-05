@@ -111,6 +111,7 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   // Preserve the authored Require hierarchy for explanation of population, predicates
   // and ordered regex arrays. Edits still target original source scalar paths.
   base.requireDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) && assessment.tests && typeof assessment.tests === 'object' ? Object.fromEntries(Object.entries(assessment.tests).map(([testId, test]: [string, any]) => [testId, test?.require ?? {}])) : {};
+  base.sharedObjectDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) && assessment.shared_objects && typeof assessment.shared_objects === 'object' ? assessment.shared_objects : {};
   if (!assessment || typeof assessment !== 'object' || !assessment.tests || typeof assessment.tests !== 'object') return { ...base, assessment: undefined, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
   const catalog = pack ? new GuidedCatalog(pack) : undefined; const tests = Object.entries(assessment.tests).map(([id, test]: [string, any]) => {
     const path = ['assessment', 'tests', id]; const titlePath = [...path, 'test_title']; const titleField = fieldAt(base.fields, titlePath); const controls: any[] = [];
