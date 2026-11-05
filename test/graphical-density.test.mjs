@@ -311,3 +311,27 @@ test('Organizational Inputs page describes policy-supplied values and has Add co
   const center = html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
   assert.match(center, /!\s*isCollection\(editPath\)\)heading\.append\(viewToggle\(editPath\)\)/);
 });
+
+
+test('Shared Object inspector explains selector authoring and does not hide missing required fields', () => {
+  const html = graphicalHtml();
+  assert.match(html,/function sharedObjectInspector\(path\)/);
+  assert.match(html,/function sharedObjectDefinition\(path\)/);
+  assert.match(html,/function sharedObjectUsage\(id\)/);
+  assert.match(html,/No selectors are authored/);
+  assert.match(html,/Missing required object_title/);
+  assert.match(html,/Shared Object names must end in -object/);
+  assert.match(html,/Add selector/);
+  assert.match(html,/A Test must use its object_ref ID/);
+  assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\):sharedObjectDefinition\(editPath\)\?sharedObjectInspector\(editPath\)/);
+  assert.match(html,/path\[1\]==='shared_objects'&&path\.length===3\)items\.push\(\{label:'Add selector \/ required title'/);
+});
+
+test('Shared Object context exposes the original authored controls and source-backed Add action', () => {
+  const html = graphicalHtml();
+  assert.match(html,/const controls=editorFields\(path\)/);
+  assert.match(html,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
+  assert.match(html,/action:'add',path,revision:current\?\.revision,version:current\?\.version/);
+  assert.match(html,/function friendlyLabel\(f\)/);
+  assert.match(html,/if\(p\[1\]==='shared_objects'&&p\.length>4\)/);
+});
