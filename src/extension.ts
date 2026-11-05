@@ -224,6 +224,24 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
 }
 
 
+function structuralReferencePaths(value: any, needle: string, prefix: (string | number)[] = []): string[] {
+  const paths: string[] = [];
+  const visit = (node: any, path: (string | number)[], depth: number) => {
+    if (paths.length >= 12 || depth > 80) return;
+    if (typeof node === 'string' && node === needle) { paths.push(path.map(String).join('.')); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, child] of Object.entries(node)) {
+      visit(child, path.concat(Array.isArray(node) ? Number(key) : key), depth + 1);
+    }
+  };
+  visit(value, prefix, 0);
+  return paths;
+}
+function structuralEntityName(collection: string): string {
+  return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
+    collection === 'inputs' ? 'Organizational Input' :
+    collection === 'shared_objects' ? 'Shared Object' : 'definition';
+}
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
 function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
 function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, capability: string) {
@@ -536,20 +554,54 @@ class AssessmentEditorProvider {
           if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) throw new Error('Document changed before this structural edit; refresh and try again.');
           const path = Array.isArray(message.path) ? message.path : [];
           if (message.action === 'reveal') { try { await revealNativeSource(api, document, new SourceBuffer(document.getText()).scalarRange(path)); } catch { await revealNativeSource(api, document); } return; }
-          if (message.action === 'rename') {
-            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Only authored mapping keys can be renamed safely.');
-            const oldKey = String(path.at(-1)); const newKey = await api.window.showInputBox({ prompt: `Rename ${oldKey}`, value: oldKey, validateInput: (value: string) => /^[A-Za-z0-9._/-]+$/.test(value) ? undefined : 'Use a simple YAML mapping key.' });
-            if (!newKey || newKey === oldKey) return;
-            const edit = new SourceBuffer(document.getText()).editMappingKey(path.slice(0, -1), oldKey, newKey, currentRevision);
-            await applySourceWorkspaceEdit(api, document, edit);
-            return;
-          }
-          if (message.action === 'remove') {
-            if (path.at(-1) === 'require') throw new Error('Test require is required by the pinned 0.4 schema; replace a branch or leave an explicit incomplete draft.');
-            if (path.length < 2) throw new Error('The Assessment root cannot be removed.');
-            const confirmation = await api.window.showWarningMessage(`Remove ${String(path.at(-1))}? References are not auto-repaired.`, { modal: true }, 'Remove');
-            if (confirmation !== 'Remove') return;
-            const edit = new SourceBuffer(document.getText()).removePath(path, currentRevision);
+          if (message.action === 'rename' || message.action === 'remove') {
+            const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
+            if (path.length !== 3 || path[0] !== 'assessment' ||
+                !collections.has(String(path[1])) || typeof path[2] !== 'string')
+              throw new Error('This action is available only for named Tests, Variables, Organizational Inputs and Shared Objects.');
+            const collection = String(path[1]), oldId = String(path[2]);
+            const entity = structuralEntityName(collection);
+            const source = new SourceBuffer(document.getText()), original = source.json();
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for structural edits.');
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schema: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
+            const rule: any = schema?.propertyNames;
+            if (!rule?.pattern) throw new Error('The pinned schema does not define the naming rules for ' + entity + '.');
+            // Never silently break Test/Evaluate, Object, Variable or Input references.
+            // The GUI does not yet support coordinated multi-reference rewrites.
+            const inUse = structuralReferencePaths(original, oldId);
+            if (inUse.length) throw new Error('Cannot ' + (message.action === 'rename' ? 'rename' : 'remove') +
+              ' ' + entity + ' "' + oldId + '" because it is referenced at ' +
+              inUse.slice(0,3).join(', ') +
+              '. Update references explicitly in YAML before changing its ID.');
+            const before = pack.validate(schemaUri, original);
+            if (message.action === 'rename') {
+              const namePattern = new RegExp(rule.pattern), max = rule.maxLength ?? 64;
+              const newId = await api.window.showInputBox({
+                prompt: 'Rename ' + entity + ' ID "' + oldId + '"',
+                value: oldId,
+                validateInput: (value: string) => namePattern.test(value) && value.length <= max
+                  ? undefined : 'The ' + entity + ' ID must match its schema naming rule (maximum ' + max + ' characters).'
+              });
+              if (!newId || newId === oldId) return;
+              const edit = source.editMappingKey(path.slice(0,-1), oldId, newId, currentRevision);
+              const errors = pack.validate(schemaUri, edit.document.json());
+              if (errors.length > before.length)
+                throw new Error('Renaming the ' + entity + ' would introduce validation errors: ' + errors.join('; '));
+              await applySourceWorkspaceEdit(api, document, edit);
+              if (errors.length) void panel.webview.postMessage({ type: 'status',
+                message: 'Renamed ' + entity + ' ID; pre-existing schema diagnostics remain.' });
+              return;
+            }
+            const confirmation = await api.window.showWarningMessage(
+              'Remove ' + entity + ' "' + oldId + '"? This deletes its entire definition from YAML.',
+              { modal: true }, 'Remove ' + entity);
+            if (confirmation !== 'Remove ' + entity) return;
+            const edit = source.removePath(path, currentRevision);
+            const errors = pack.validate(schemaUri, edit.document.json());
+            if (errors.length > before.length)
+              throw new Error('Removing ' + entity + ' would invalidate the Assessment: ' + errors.join('; '));
             await applySourceWorkspaceEdit(api, document, edit);
             return;
           }
