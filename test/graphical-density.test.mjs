@@ -298,3 +298,16 @@ test('Test Object and Require summaries show all properties, not an unexpandable
   assert.match(semantic,/Edit Object/);
   assert.match(semantic,/Edit Require/);
 });
+
+
+test('Organizational Inputs page describes policy-supplied values and has Add control', () => {
+  const html = graphicalHtml();
+  assert.match(html, /Organizational Inputs/);
+  assert.match(html, /do not reference external Assessment files; those use dependencies/);
+  assert.match(html, /No Organizational Inputs declared/);
+  assert.match(html, /\+ Add Organizational Input/);
+  assert.match(html, /add\.onclick=\(\)=>vscode\.postMessage\(\{type:'structural',action:'add',path,revision:current\?\.revision,version:current\?\.version\}\)/);
+  assert.match(html, /last==='inputs'\)items\.push\(\{label:'Add Organizational Input',action:'add'\}\)/);
+  const center = html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
+  assert.match(center, /!\s*isCollection\(editPath\)\)heading\.append\(viewToggle\(editPath\)\)/);
+});
