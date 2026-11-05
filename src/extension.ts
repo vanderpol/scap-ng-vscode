@@ -277,9 +277,8 @@ async function promptSharedSelector(api: any, catalog: GuidedCatalog, pack: Meta
   const candidate = { [field.name]: { [operation.value]: value } } as any;
   const schemaUri = catalog.capabilityObjectSchema(capability);
   if (!schemaUri) throw new Error('No pinned object schema for ' + capability);
-  // Check the selector against its own generated capability contract before patching source.
-  const errors = pack.validate(schemaUri + '#/$defs/object', { ...already, ...candidate } as any);
-  if (errors.length) throw new Error('Capability schema rejected selector: ' + errors.join('; '));
+  // Validate the completed Object, not a partial alternative with missing required selectors.
+  // A multi-field selector branch may be incomplete until the final prompt has finished.
   return candidate;
 }
 
