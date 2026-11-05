@@ -279,7 +279,9 @@ function sharedObjectInspector(path){
   add.disabled=!validId;
   add.title=validId?'Add the next schema-supported selector or repair a missing Object title':'Rename this Shared Object to a valid -object ID first';
   add.onclick=()=>vscode.postMessage({type:'structural',action:'add',path,revision:current?.revision,version:current?.version});
-  actions.append(add);section.append(actions);
+  actions.append(add);
+  if(!validId){const rename=document.createElement('button');rename.type='button';rename.textContent='Rename Object ID';rename.title='Choose a valid ID ending in -object';rename.onclick=()=>vscode.postMessage({type:'structural',action:'rename',path,revision:current?.revision,version:current?.version});actions.append(rename)}
+  section.append(actions);
   const users=sharedObjectUsage(path[2]);
   const usage=document.createElement('p');usage.className='shared-object-usage';
   usage.textContent=users.length?'Referenced by Test'+(users.length===1?' ':'s ')+users.join(', ')+'.':'No Test currently references this Shared Object. A Test must use its object_ref ID to collect evidence from it.';
