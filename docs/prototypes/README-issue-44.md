@@ -4,7 +4,8 @@
 
 ## Open and inspect
 
-- [Interactive standalone HTML prototype](issue-44-graphical-editor.html) — open locally in a browser; no installation, server, internet, or external dependencies.
+- [Interactive standalone HTML prototype](issue-44-graphical-editor.html) — Test/Object/Require layout; open locally without an install or internet.
+- [Interactive first-class Variables / Filters / Sets prototype](issue-44-variables-filters-sets.html) — separate offline browser UI with editable recursive Variable expressions, include/exclude Object and operand Filters, and nested Set composition. All controls are local-only illustrative design research; NOT an SCAP-NG-compatible evaluator or YAML serializer.
 - [Issue #44](https://github.com/vanderpol/scap-ng-vscode/issues/44) specifies the design and owner acceptance requirements.
 - This HTML is the durable, machine-readable substitute for the image mockup. Codex does NOT need image-capable model support.
 
