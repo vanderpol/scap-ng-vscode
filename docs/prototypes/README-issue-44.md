@@ -90,6 +90,39 @@ The primary wide canvas is the visual authoring surface. Left is Assessment/Test
 **Note:** The standalone browser mockup is presentation R&D, not an evaluator, qualified YAML serializer, or compliance tool. The production editor must provide these capabilities even if some branches use a generic schema-driven property tree rather than a specialized card.
 
 
+
+## P1 structural authoring amendment — create, duplicate, remove, reorder (owner, 2026-11-05)
+
+The original HTML can switch among pre-populated Tests and add/remove field predicate rows, but it cannot create/delete Tests or Object sources or manage whole requirements. **The initial Graphical implementation must support constructing an entire Assessment, not just editing an existing YAML skeleton.** This is a non-deferable P1 criterion, alongside Variables, Filters, and nested Sets.
+
+### Test lifecycle
+- From Assessment/Test outline: Add Test; Duplicate Test; Delete Test; Rename ID; Reorder/Move Test when order is meaningful for presentation and can be changed safely; show all applicable modes and live schema/graph validation.
+- Add invokes an editor wizard with capability selection and a schema-valid minimal skeleton; do not invent collectors, selector values or quantifier intent. Duplicating assigns a unique new Test ID, explicitly handles references and preserves original untouched bytes.
+- Before deletion or rename, inspect all evaluation branches and references; display the affected evaluate tree and allow an explicit repair/review rather than leaving silently dangling Test IDs or silently changing Boolean truth.
+- After an add/rename/delete, native YAML source, Graphical outline, diagnostics and contextual help synchronize; keep native Undo/Redo.
+
+### Object/source lifecycle
+- Test editor must offer Add/Replace/Remove Object (where allowed), switch between inline Object and object_ref, choose source from qualified shared_objects, and edit capability-specific selectors, acquisition properties and Filters. Also support variable-as-source for capabilities that allow it.
+- Add/Remove shared Object definitions and Set operands, with a Used By/reference check. Removing an Object currently referenced by a Test, Variable or Set must prompt for an explicit resolution; never cascade-delete behind the user's back.
+- Distinguish removing an entire Object/source from removing one selector or Filter. Do not permit source-less invalid Tests as if they were ready; show incomplete status if author deliberately leaves a draft.
+- Reorder source elements only where semantically safe, preserving inline maps and formatting when possible.
+
+### Requirement lifecycle
+- Provide Add/Remove/Replace controls at each valid level: item_requirement, field_requirement, fields, nested and/or/one/xor condition groups, field/record predicates, and branch operands.
+- Crucial canonical fact: in the current 0.4 schema, automated Test **requires a require property**. Therefore **do not present unrestricted Delete Require as a valid completed Test operation**. The UI may temporarily show an incomplete Test during authoring, with a diagnostic, or offer Replace/Reset Require with a schema-supported form (existence-only vs comparison) subject to explicit choice. Never invent defaults.
+- Removal of individual optional requirement portions and conditions is allowed only if the result is schema-valid (or visibly an incomplete draft). Cardinalities, named branches and dependencies must stay consistent with pinned schemas.
+- Provide a clear plus menu at Test, Object, Require and Condition headings, plus contextual Remove/Duplicate actions and keyboard-friendly confirmation. Deletion must have review/undo, no silent mutation of unrelated text.
+
+### Acceptance demonstrations
+- [ ] Start an empty automated Assessment; add two Tests with different capabilities; select a capability; create a qualified Object and a requirement branch for each; edit Fields; add an explicit Evaluate grouping as appropriate.
+- [ ] Duplicate a Test, rename it, and delete a Test referenced by Evaluate; demonstrate safe reference-impact review, not silent orphaning.
+- [ ] Add/remove an inline Object, switch to a referenced shared Object, create/edit/remove a Set operand and its Filters, and demonstrate Used By checks before deleting a shared Object.
+- [ ] Change a comparison Test to an existence-only requirement through explicit schema-backed branch selection; add/remove field/record/group predicates; validate removal/replacement of required nodes.
+- [ ] Exercise stale documents, malformed/partial YAML, no-op byte identity, minimal source diffs, comments/quotes/flow maps, native Undo/Redo, Red Hat YAML diagnostics, and actual VS Code host tests. No separate YAML truth store.
+- [ ] Remain fully offline and avoid runtime PASS/FAIL claims; no merge of candidate PR #21 without separate review.
+
+The standalone HTML remains illustrative UX research. Codex must implement the full P1 lifecycle in the actual pinned schema-driven Graphical editor, not copy fixed demo arrays or pretend an incomplete Assessment is validated.
+
 ## Short Codex launch
 
 Work vanderpol/scap-ng-vscode issue #44. Read docs/prototypes/README-issue-44.md and issue-44-graphical-editor.html from branch design/issue-44-graphical-prototype-20261104. Adapt existing schema-driven Graphical UI; do not replace the YAML editor or merge PR #21. Implement in tested draft PRs.
