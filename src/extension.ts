@@ -252,6 +252,68 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const title = await api.window.showInputBox({ prompt: 'Human-readable Test summary', value: 'New Assessment Test' }); if (!title) return undefined;
     const skeleton = graphicalTestSkeleton(pack, id, title, capability.value); const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'tests', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
+  if (last === 'inputs' && path.length === 2 && path[0] === 'assessment') {
+    // An Input declares a typed value supplied by the referring policy/Rule.
+    // It is not an external Assessment file reference (those use dependencies).
+    const assessmentSchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json');
+    const definition: any = assessmentSchema.properties?.assessment?.properties?.inputs;
+    const inputSpec: any = definition?.additionalProperties;
+    const nameSpec: any = definition?.propertyNames;
+    const cardinalityOptions: string[] = inputSpec?.properties?.cardinality?.enum;
+    const capabilitySchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/capability-common.schema.json');
+    const datatypeOptions: string[] = capabilitySchema.$defs?.native_datatype?.enum;
+    if (!nameSpec?.pattern || !Array.isArray(cardinalityOptions) || !cardinalityOptions.length ||
+        !Array.isArray(datatypeOptions) || !datatypeOptions.length) {
+      throw new Error('Pinned Input schema metadata is incomplete. No Input was added.');
+    }
+    const allowedName = new RegExp(nameSpec.pattern);
+    const name = await api.window.showInputBox({
+      prompt: 'Input ID — named value supplied when this Assessment is invoked (not an Assessment file)',
+      value: 'policy-value-input',
+      validateInput: (value: string) =>
+        allowedName.test(value) && value.length <= (nameSpec.maxLength ?? 64) ? undefined :
+        'Use a unique lowercase hyphenated Input ID ending in -input.'
+    });
+    if (!name) return undefined;
+    const authored = source.json();
+    const inputs: any = valueAtPathForGraphical(authored, path);
+    if (inputs !== undefined && (inputs === null || typeof inputs !== 'object' || Array.isArray(inputs))) {
+      throw new Error('The existing Inputs section is not a mapping. No source was changed.');
+    }
+    if (inputs && Object.prototype.hasOwnProperty.call(inputs, name)) {
+      throw new Error('An Input with this ID already exists.');
+    }
+    const datatype = await api.window.showQuickPick(datatypeOptions.map(value => ({ label: value, value })), {
+      placeHolder: 'Value datatype declared by this Input'
+    });
+    if (!datatype) return undefined;
+    const cardinality = await api.window.showQuickPick(cardinalityOptions.map(value => ({ label: value.replaceAll('_', ' '), value })), {
+      placeHolder: 'Number of values the caller may supply'
+    });
+    if (!cardinality) return undefined;
+    const required = await api.window.showQuickPick([
+      { label: 'Required — the caller must provide this Input', value: true },
+      { label: 'Optional — caller may omit this Input', value: false }
+    ], { placeHolder: 'Does this Input have to be supplied?' });
+    if (!required) return undefined;
+    const description = await api.window.showInputBox({
+      prompt: 'Describe what value the caller supplies (optional; Esc to cancel)',
+      value: ''
+    });
+    if (description === undefined) return undefined;
+    const skeleton = {
+      datatype: datatype.value,
+      cardinality: cardinality.value,
+      required: required.value,
+      ...(description.trim() ? { description: description.trim() } : {})
+    };
+    const edit = inputs === undefined
+      ? source.insertMapEntry(['assessment'], 'inputs', { [name]: skeleton } as any, expectedHash)
+      : source.insertMapEntry(path, name, skeleton as any, expectedHash);
+    const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected the new Input: ' + errors.join('; '));
+    return edit;
+  }
   if (last === 'variables') {
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
