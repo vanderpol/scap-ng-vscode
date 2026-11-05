@@ -533,12 +533,37 @@ class AssessmentEditorProvider {
             return;
           }
           if (message.action === 'duplicate') {
-            if (path.length < 2 || typeof path.at(-1) !== 'string') throw new Error('Duplicate is available for named mapping nodes.');
-            const oldKey = String(path.at(-1)); const value = valueAtPathForGraphical(new SourceBuffer(document.getText()).json(), path);
-            const suggested = `${oldKey}-copy`; const newKey = await api.window.showInputBox({ prompt: `Duplicate ${oldKey} as`, value: suggested, validateInput: (v: string) => /^[A-Za-z0-9._/-]+$/.test(v) ? undefined : 'Use a simple YAML mapping key.' });
+            const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
+            if (path.length !== 3 || path[0] !== 'assessment' || !collections.has(String(path[1])) || typeof path[2] !== 'string')
+              throw new Error('Duplicate applies only to named Tests, Variables, Organizational Inputs and Shared Objects. A Test has one Object. For multiple Object populations, use an Object Set or separate Tests.');
+            const pack = this.getPack();
+            if (!pack) throw new Error('A verified offline metadata pack is needed for safe duplication.');
+            const collection = String(path[1]), oldKey = String(path[2]);
+            const source = new SourceBuffer(document.getText()); const doc = source.json();
+            const value = valueAtPathForGraphical(doc, path);
+            if (value === undefined) throw new Error('The selected named definition does not exist.');
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
+            const rule: any = spec?.propertyNames;
+            if (!rule?.pattern) throw new Error('The pinned schema has no naming rule for this collection.');
+            const allowed = new RegExp(rule.pattern);
+            const suffix = collection === 'tests' ? 'test' : collection === 'variables' ? 'variable' : collection === 'inputs' ? 'input' : 'object';
+            const stem = oldKey.endsWith('-' + suffix) ? oldKey.slice(0, -suffix.length - 1) : oldKey;
+            const max = rule.maxLength ?? 64, postfix = '-copy-' + suffix;
+            const suggested = stem.slice(0, Math.max(1,max-postfix.length)).replace(/-+$/, '') + postfix;
+            const newKey = await api.window.showInputBox({
+              prompt: 'Duplicate ' + collection.replaceAll('_',' ') + ' "' + oldKey + '" as a new named definition',
+              value: suggested,
+              validateInput: (name: string) => allowed.test(name) && name.length <= max
+                ? undefined : 'Name must follow the pinned schema and end in -' + suffix + '.'
+            });
             if (!newKey) return;
-            const edit = new SourceBuffer(document.getText()).insertMapEntry(path.slice(0, -1), newKey, value, currentRevision);
-            await applySourceWorkspaceEdit(api, document, edit);
+            const duplicate = source.insertMapEntry(path.slice(0,-1), newKey, value, currentRevision);
+            const errors = pack.validate(schemaUri, duplicate.document.json());
+            if (errors.length) throw new Error('Pinned schema rejected the duplicated definition: ' + errors.join('; '));
+            await applySourceWorkspaceEdit(api, document, duplicate);
+            void panel.webview.postMessage({ type: 'status', message:
+              'Duplicated ' + oldKey + ' as ' + newKey + (collection === 'tests' ? '. This Test is not automatically included in Evaluate.' : '.') });
             return;
           }
           if (message.action === 'add') {
