@@ -414,8 +414,8 @@ test('Require field name and small explanatory text share a responsive heading r
 test('Require policy and predicate editor labels align inline with their controls', () => {
   const html=graphicalHtml();
   // Layout-only: retain the current schema-derived controls and source editor.
-  assert.match(html,/\.require-section>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(92px,37%\) minmax\(0,1fr\)/);
-  assert.match(html,/\.require-predicate>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(92px,37%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-section>\.property-grid \.field-entry,\.require-predicate>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(92px,37%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-section>\.property-grid \.field-entry>label,\.require-predicate>\.property-grid \.field-entry>label\{display:block;padding:0/);
   assert.match(html,/@media\(max-width:760px\)\{\.require-section>\.property-grid/);
   const section=html.slice(html.indexOf('function requireSection(title,description,controls)'),html.indexOf('function predicatePlan(requirement)'));
   assert.match(section,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
