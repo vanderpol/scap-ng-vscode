@@ -282,7 +282,7 @@ test('Test summary always shows authored metadata without an inapplicable defaul
   const html=graphicalHtml();
   const center=html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
   assert.match(center,/const isTestOverview=editPath\.length===3&&editPath\[1\]==='tests'/);
-  assert.match(center,/&&\!isTestOverview\)heading\.append\(viewToggle\(editPath\)\)/);
+  assert.match(center,/&&\!isTestOverview&&\!isCollection\(editPath\)\)heading\.append\(viewToggle\(editPath\)\)/);
   assert.match(center,/if\(!isTestOverview\)root\.append\(defaultsSummary\(editPath\)\)/);
   const overview=html.slice(html.indexOf('function testOverview(path)'),html.indexOf('function requireDefinition(path)'));
   assert.match(overview,/const headFields=sectionFields\(path\)/, 'Summary shows authored Test metadata regardless of display preference');
