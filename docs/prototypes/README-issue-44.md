@@ -54,6 +54,41 @@ Adapt existing model types rather than requiring this exact DTO.
 
 The primary wide canvas is the visual authoring surface. Left is Assessment/Test outline; center has editable cards (Header, Object, Require/fields, optional Evaluate); right is contextual schema Help/Diagnostics/Preview that can collapse. The working native YAML editor remains the default and stays synchronized from one TextDocument. The demo's fixture values are illustrative, not a source of SCAP-NG truth.
 
+
+## P1 scope amendment — Variables, Filters, nested Sets (owner decision 2026-11-04)
+
+**Required on the initial graphical release, not phase-two or YAML-only.** The first standalone HTML mockup omitted these controls. The implementation must use *current, exact pinned* 0.4 schema and capability metadata, not the illustrative values in HTML.
+
+### Variables — first-class assessment-level editor
+
+- Navigable Variables section alongside Tests and Inputs: list/search, count, add/delete/rename with reference-aware review, source navigation and Used By.
+- Edit name, kind (local/constant), datatype, optional title and expression.
+- Recursive expression builder for all current schema-approved alternatives in variable-expression.schema.json: literal scalar/list/typed record, reference to Variable, collected values from Object/field, concat with ordered nested components, regex_capture pattern and nested input, unique, merge with delimiter/sort/order/input; only present functions supported by the exact pinned schema.
+- Add/remove/reorder recursive operands; preserve type, list ordering, duplicates, expression status and source paths. Constant Variables must obey the schema literal-only constraint. Validate unresolved/cyclic references, type incompatibilities and branch constraints. An unsupported runtime evaluation is not a PASS.
+- Organizational Inputs and Variables are separate concepts and source locations; do not merge their editors.
+
+### Filters and Sets — first-class collection editor
+
+- Collection Filters section appears between Object/collection source and Require. Filters include/exclude *collected Items*; Require governs expected Test results; these are not interchangeable.
+- Add/edit/remove/reorder each Filter with action include/exclude, a schema-derived field condition (including nested and/or/one/xor, record fields where qualified), comparison operator/value, and schema help.
+- Support both inline Object post-collection filters and Filters on each Set Object operand.
+- For Set composition, show editable nested Set/operand tree; expose union/intersection/difference, source Object selection/references, nested Set operations and per-operand filters; enforce schema operand bounds (difference maximum two).
+- Preserve distinction among selector, Filter, require.item_requirement, require.field_requirement, require.fields and multi-Test evaluate. Never invent old OVAL State registry or implicit semantics.
+- Every valid nested structure stays visible and editable, using generic schema-backed tree editor for unsupported specialized widgets; if a *specific edit* is unsafe, offer Reveal in YAML or diff review, not silent document rewrite.
+
+### P1 acceptance gates
+
+- [ ] Open a real pinned Assessment containing a constant and nested derived Variable; edit declarations, references, literal values and nested components in Graphical; verify minimal YAML source diffs and diagnostics.
+- [ ] Show a real Object Filter and Set operand Filter, with include/exclude action, nested predicate and operations derived from pinned schema, not hardcoded catalog.
+- [ ] Demonstrate Set composition with at least two operands and a nested operand; enforce difference bounds.
+- [ ] Validate empty/missing/invalid/duplicate/cyclic Variable references, typing and unsupported expressions; preserve unknown/error status.
+- [ ] Opening/switching/closing with no edit leaves YAML bytes unchanged; edits support undo/redo, preserve comments/flow maps/quotes, and synchronize immediately with native YAML.
+- [ ] Test in actual VS Code host with canonical Windows and Linux examples, plus one complex approved Set/Variable case from pinned content. Run unit/integration, offline pack, host mutation and VSIX checks.
+- [ ] Do not repin or merge candidate PR #21 because of this design task. Escalate true language-contract gaps; never invent semantics.
+
+**Note:** The standalone browser mockup is presentation R&D, not an evaluator, qualified YAML serializer, or compliance tool. The production editor must provide these capabilities even if some branches use a generic schema-driven property tree rather than a specialized card.
+
+
 ## Short Codex launch
 
 Work vanderpol/scap-ng-vscode issue #44. Read docs/prototypes/README-issue-44.md and issue-44-graphical-editor.html from branch design/issue-44-graphical-prototype-20261104. Adapt existing schema-driven Graphical UI; do not replace the YAML editor or merge PR #21. Implement in tested draft PRs.
