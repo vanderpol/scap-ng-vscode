@@ -38,7 +38,7 @@ test('help panel collapses and contextual actions preserve their node path', () 
   assert.match(html, /workspace\.help-collapsed/);
   assert.match(html, /classList\.toggle\('help-collapsed',!helpOpen\)/);
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
-  assert.match(html, /action:item\.action,path:target/);
+  assert.match(html, /action:item\.action,path:testPathForSelection\(target\)\|\|target/);
 });
 
 test('simplified/all-fields only rerenders the inspector, never rebuilds the tree', () => {
@@ -71,7 +71,7 @@ function evaluationHarness(assessment) {
   assert.ok(start >= 0 && end > start, 'evaluation outline functions missing');
   const logic = script.slice(start, end);
   const factory = new Function('current', [
-    'let evaluationNodes = new Map();',
+    'let evaluationNodes = new Map();let visualTestPaths = new Map();',
     "const key = path => path.map(String).join('/');",
     'const same = (a,b) => Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>v===b[i]);',
     'const hasPrefix = (path,prefix) => path.length>prefix.length&&prefix.every((v,i)=>v===path[i]);',
@@ -103,7 +103,7 @@ test('Evaluate tree follows actual nested expression and resolves Test IDs witho
   assert.deepEqual(evalRoot.children[1].children.map(n=>n.label), ['config-option-test','registry-policy-test']);
   assert.deepEqual(ctx.testPathForSelection(evalRoot.children[1].children[1].path),
     ['assessment','tests','registry-policy-test']);
-  assert.ok(tree.children.find(n=>n.path[1]==='tests'), 'Definitions remain separate');
+  assert.ok(!tree.children.find(n=>n.path[1]==='tests'), 'Only Evaluate normally navigates Tests');
 });
 
 test('Single Test, conditional evaluation and manual Assessment retain their true shapes', () => {
@@ -343,7 +343,7 @@ test('context menu labels represent authoring concepts, never generic YAML nodes
   const start=script.indexOf('function menuItems(path)');
   const end=script.indexOf('function showMenu(path',start);
   assert.ok(start>=0&&end>start);
-  const menuItems=new Function(script.slice(start,end)+';return menuItems')();
+  const menuItems=new Function('testPathForSelection',script.slice(start,end)+';return menuItems')(()=>null);
   const labels=path=>menuItems(path).filter(x=>!x.separator).map(x=>x.label);
   assert.deepEqual(labels(['assessment','tests']),['Add Test','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','inputs']),['Add Organizational Input','Reveal in YAML']);
@@ -457,4 +457,32 @@ test('Variable stages share heading/help row and all property forms align labels
   assert.match(inspector,/help\.textContent=step\.note;heading\.append\(help\)/);
   assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
   assert.doesNotMatch(inspector,/help\.textContent=step\.note;card\.append\(help\)/);
+});
+
+test('Evaluate Test references expose Object/Require once per occurrence while keeping source identities', () => {
+  const ctx=evaluationHarness({mode:'automated',tests:[
+    {id:'first-test',title:'First'}, {id:'second-test',title:'Second'}, {id:'orphan-test',title:'Orphan'}
+  ],evaluate:{and:[{test:'first-test'},{or:[{test:'second-test'},{test:'first-test'}]}]}});
+  const {root,meaningful}=ctx.treeModel();
+  assert.equal(root.children.some(n=>n.path[1]==='tests'),false);
+  const evaluate=root.children.find(n=>n.path[1]==='evaluate');
+  assert.equal(evaluate.children[0].label,'first-test');
+  assert.deepEqual(evaluate.children[0].children.map(n=>n.path.at(-1)),['object','require']);
+  assert.deepEqual(ctx.testPathForSelection(['assessment','evaluate','and',0,'require']),
+    ['assessment','tests','first-test','require']);
+  assert.deepEqual(ctx.testPathForSelection(['assessment','evaluate','and',1,'or',1,'object']),
+    ['assessment','tests','first-test','object']);
+  const orphans=root.children.find(n=>n.path[1]==='unreferenced_tests');
+  assert.equal(orphans.label,'Unreferenced Tests (1)');
+  assert.deepEqual(orphans.children[0].children.map(n=>n.path.at(-1)),['object','require']);
+  assert.deepEqual(ctx.testPathForSelection(['assessment','unreferenced_tests','orphan-test','require']),
+    ['assessment','tests','orphan-test','require']);
+  assert.ok(meaningful.has('assessment/evaluate/and/0/require'));
+});
+test('Absent/missing Evaluate reference does not masquerade as authored Test',()=>{
+  const ctx=evaluationHarness({mode:'automated',tests:[{id:'real-test'}],evaluate:{test:'missing-test'}});
+  const tree=ctx.treeModel().root;
+  assert.equal(tree.children.find(n=>n.path[1]==='evaluate').children[0].label,'missing-test');
+  assert.equal(ctx.testPathForSelection(['assessment','evaluate','test']),null);
+  assert.equal(tree.children.find(n=>n.path[1]==='unreferenced_tests').children[0].label,'real-test');
 });
