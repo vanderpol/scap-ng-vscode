@@ -101,6 +101,22 @@ function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, pa
   for(const node of sources)collect(node);
   return [...values]
 }
+function testChoiceOptions(pack:MetadataPack|undefined,path:EditPath):string[] {
+  if(!pack||path[0]!=='assessment'||path[1]!=='tests'||path.length!==4)return [];
+  if(path[3]==='capability')return Object.keys(pack.manifest.capabilities||{}).sort();
+  if(path[3]==='reported_elements'){
+    const schemaUri=pack.manifest.resources.find((resource:any)=>resource.kind==='schema'&&resource.uri.endsWith('/reported-elements.schema.json'))?.uri;
+    if(!schemaUri)return [];
+    const choices=new Set<string>();
+    for(const location of schemaNodes(pack,schemaUri)){
+      const node=location.node;
+      if(Array.isArray(node.enum))for(const value of node.enum)if(typeof value==='string')choices.add(value);
+      if(typeof node.const==='string')choices.add(node.const);
+    }
+    return [...choices];
+  }
+  return []
+}
 function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefined {
   if(path.at(-1)!=='variable')return undefined;
   const inTest=path[1]==='tests'&&path[3]==='object';
@@ -113,7 +129,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
     const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
     return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields: scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || '', choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || '', choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
     }) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
