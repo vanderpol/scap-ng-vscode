@@ -208,7 +208,7 @@ test('Variable UI preserves source-edit controls and never presents runtime-deri
   assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\)/);
   assert.match(html,/No target system is queried by this editor/);
   assert.match(html,/no registry value was collected, regex executed, or resulting command run/);
-  assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields,gridStyleForFields\(fields\)\)\)/);
 });
 
 
@@ -456,7 +456,7 @@ test('Variable stages share heading/help row and all property forms align labels
   const inspector=html.slice(start,end);
   assert.ok(start>=0&&end>start);
   assert.match(inspector,/help\.textContent=step\.note;heading\.append\(help\)/);
-  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields,gridStyleForFields\(fields\)\)\)/);
   assert.doesNotMatch(inspector,/help\.textContent=step\.note;card\.append\(help\)/);
 });
 
@@ -511,7 +511,7 @@ test('Object controls retain source-provided enumerations, rather than inventing
 test('Object selector source control switches typed string mappings through revision-safe host action',()=>{
  const html=graphicalHtml();
  assert.match(html,/function sourceChoiceForObject\(field\)/);
- assert.match(html,/if\(!inTest&&!inShared\|\|field\.kind!=='string'\)return null/);
+ assert.match(html,/if\(!inTest&&!inShared&&!inVariable\|\|field\.kind!=='string'\)return null/);
  assert.match(html,/\['equals','Fixed value'\]/);
  assert.match(html,/\['variable','Variable reference'\]/);
  assert.match(html,/type:'selectorSource',path:parts\.slice\(0,-1\)/);

@@ -590,7 +590,7 @@ class AssessmentEditorProvider {
           const before: any=source.json();
           const prior=valueAtPathForGraphical(before,path);
           const existing=prior && typeof prior==='object'&&!Array.isArray(prior) ? Object.keys(prior) : [];
-          const legal=existing.length===1 ? comparisonOperations(this.getPack(),before?.assessment,[...path,existing[0]]) : [];
+          const legal=existing.length===1 ? comparisonOperations(this.getPack(),before?.assessment,[...path,existing[0]],true) : [];
           if(!legal.includes(op))throw new Error('The pinned schema does not permit this operator in the selected field.');
           if(op==='variable' &&
              (typeof message.value!=='string'||!Object.hasOwn(before?.assessment?.variables||{},message.value)))
@@ -620,7 +620,8 @@ class AssessmentEditorProvider {
           const variant = message.variant;
           if (!Array.isArray(path) || path[0] !== 'assessment' ||
               !(path[1] === 'tests' && path[3] === 'object' ||
-                path[1] === 'shared_objects' && path.length >= 4) ||
+                path[1] === 'shared_objects' && path.length >= 4 ||
+                path[1] === 'variables' && path.lastIndexOf('object') >= 3) ||
               !['equals', 'variable'].includes(variant) ||
               typeof message.value !== 'string' || !message.value.length)
             throw new Error('Invalid Object selector source request');
