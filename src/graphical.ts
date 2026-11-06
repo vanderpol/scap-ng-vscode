@@ -297,6 +297,8 @@ function fieldCheckCard(path,plan){
   heading.append(note);section.append(heading);
   if(plan.absence){const badge=document.createElement('span');badge.className='require-badge';badge.textContent='Values found: none';section.append(badge)}
   const visible=editorFields(path).filter(f=>hasPrefix(f.path,base));
+  const contextual=visible.find(f=>typeof f.description==='string'&&f.description.trim())?.description;
+  if(contextual&&contextual!==note.textContent){const details=document.createElement('p');details.className='hint field-schema-note';details.textContent=contextual;section.append(details)}
   const meta=visible.filter(f=>f.path.length===base.length+1&&f.path.at(-1)!=='matches_regex');
   if(meta.length)section.append(compactGrid(meta));const opControls=visible.filter(f=>plan.operators.includes(String(f.path.at(-1)))&&f.path.length===base.length+1);if(opControls.length){const row=document.createElement('div');row.className='require-operator-controls';for(const f of opControls){const chooser=operationChoiceForField(f);if(chooser)row.append(chooser)}if(row.childNodes.length)section.append(row)}
   if(plan.patterns.length){
