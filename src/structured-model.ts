@@ -1,6 +1,7 @@
 import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
+import { schemaNodes } from './schema-resolver.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -66,12 +67,82 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
   return `Collect ${capability}${objectValues.length ? ` (${objectValues.join(', ')}` : ''}${objectValues.length ? ')' : ''}; pass conditions require ${itemText}${satisfyText}${fieldText}${condition}.${evaluate}${inputBranch}${variableChain} This is an authoring explanation, not a scanner result.`;
 }
 
+/** Allowed scalar Object values from the pinned capability-specific schema.
+ * Resolve the actual property and comparison branch, not arbitrary YAML paths.
+ */
+/** Resolve capability-specific selector options wherever a collected Object is authored:
+ * inline Test Objects, Shared Objects, and nested Variable collection expressions.
+ * The pinned capability schema is the only source of enum options.
+ */
+function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+  if (!pack || path[0] !== 'assessment' || path.at(-1) !== 'equals') return [];
+  const objectIndex = path.lastIndexOf('object');
+  if (objectIndex < 0 || objectIndex + 2 !== path.length - 1) return [];
+  const selector = String(path[objectIndex + 1]);
+  let source: any = { assessment };
+  for (const key of path.slice(0, objectIndex + 1)) source = source?.[key as any];
+  const capability = source?.capability;
+  if (typeof capability !== 'string') return [];
+  const uri = (pack.manifest.capabilities as any)?.[capability]?.schema_uri;
+  if (typeof uri !== 'string') return [];
+  const escape = (name: string) => name.replaceAll('~', '~0').replaceAll('/', '~1');
+  const propertyUri = uri + '#/$defs/object/properties/' + escape(selector);
+  const options = new Set<string>();
+  const collect = (node: any, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 12) return;
+    if (Array.isArray(node.enum)) for (const value of node.enum) if (typeof value === 'string') options.add(value);
+    if (typeof node.const === 'string') options.add(node.const);
+    for (const branch of ['oneOf', 'allOf', 'anyOf']) {
+      if (Array.isArray(node[branch])) for (const child of node[branch]) collect(child, depth + 1);
+    }
+  };
+  for (const location of schemaNodes(pack, propertyUri)) {
+    const equals = location.node.properties?.equals;
+    if (equals) collect(equals);
+    if (equals && typeof equals.$ref === 'string') {
+      const uri = new URL(equals.$ref, location.uri).href;
+      for (const target of schemaNodes(pack, uri)) collect(target.node);
+    }
+  }
+  return [...options];
+}
+function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): string[] {
+  if (!pack || path[0] !== 'assessment') return [];
+  if (path.at(-1) === 'capability') {
+    const testCapability = path[1] === 'tests' && path.length === 4;
+    const sharedCapability = path[1] === 'shared_objects' && path.length === 4;
+    const nestedObjectCapability = path[1] === 'variables' && path.includes('object') &&
+      path[path.length - 2] === 'object';
+    if (testCapability || sharedCapability || nestedObjectCapability)
+      return Object.keys(pack.manifest.capabilities || {}).sort();
+  }
+  if (path[1] === 'tests' && path.length === 4 && path[3] === 'reported_elements') {
+    const schemaUri = pack.manifest.resources.find((resource: any) =>
+      resource.kind === 'schema' && resource.uri.endsWith('/reported-elements.schema.json'))?.uri;
+    if (!schemaUri) return [];
+    const choices = new Set<string>();
+    for (const location of schemaNodes(pack, schemaUri)) {
+      if (Array.isArray(location.node.enum)) for (const value of location.node.enum)
+        if (typeof value === 'string') choices.add(value);
+      if (typeof location.node.const === 'string') choices.add(location.node.const);
+    }
+    return [...choices];
+  }
+  return [];
+}
+function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefined {
+  if(path.at(-1)!=='variable')return undefined;
+  const inTest=path[1]==='tests'&&path[3]==='object';
+  const inShared=path[1]==='shared_objects';
+  if(!inTest&&!inShared)return undefined;
+  return Object.keys(assessment?.variables||{})
+}
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
     const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
     return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields: scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || '', choices: help?.choices || [], suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || '', choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
     }) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }

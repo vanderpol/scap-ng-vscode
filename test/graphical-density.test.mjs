@@ -501,7 +501,7 @@ test('Object controls retain source-provided enumerations, rather than inventing
   const html=graphicalHtml();
   const section=html.slice(html.indexOf('function makeInput(f)'),html.indexOf('function friendlyLabel(f)'));
   assert.match(section,/const choices=Array\.isArray\(f\.choices\)\?f\.choices:\[\]/);
-  assert.match(section,/if\(choices\.length\)\{input=document\.createElement\('select'\)/);
+  assert.match(section,/if\(choices\.length\|\|f\.pickerOnly\)\{input=document\.createElement\('select'\)/);
   assert.match(section,/choices\.forEach\(choice=>/);
   assert.match(section,/o\.selected=JSON\.stringify\(choice\)===JSON\.stringify\(f\.value\)/);
   assert.match(section,/revision:current\.revision,version:current\.version/);
@@ -517,4 +517,14 @@ test('Object selector source control switches typed string mappings through revi
  assert.match(html,/revision:current\.revision,version:current\.version/);
  assert.match(html,/style==='object-fields'\)\{const chooser=sourceChoiceForObject\(item\)/);
  assert.match(html,/\.object-source-switch\{grid-column:2;display:grid/);
+});
+
+test('GUI uses finite dropdowns for enum-backed fields and current Assessment Variables',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/if\(choices\.length\|\|f\.pickerOnly\)\{input=document\.createElement\('select'\)/);
+ assert.match(html,/No Variables declared/);
+ assert.match(html,/Unresolved: /);
+ assert.match(html,/Choose Assessment Variable/);
+ assert.match(html,/Object value source|Value source/);
+ assert.match(html,/type:'selectorSource'/);
 });
