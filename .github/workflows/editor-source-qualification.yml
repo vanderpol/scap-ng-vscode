@@ -1,0 +1,29 @@
+name: Editor source qualification (no artifacts)
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'scripts/audit-graphical-schema.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/editor-source-qualification.yml'
+  workflow_dispatch:
+jobs:
+  source-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact lockfile dependencies
+        run: npm ci --ignore-scripts
+      - name: TypeScript typecheck
+        run: npm run lint
+      - name: Unit and source regression tests
+        run: npm test

@@ -92,6 +92,34 @@ export class SourceBuffer {
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  /** A single, explicit structural edit for an Object/Require comparison.
+   * Only one-operation mappings are supported. Every proposed value is checked by
+   * the host's pinned schema before a native WorkspaceEdit is applied.
+   */
+  replaceComparison(path: (string | number)[], operation: string, value: Json, expectedHash: string) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    if (!/^[a-z][a-z0-9_]*$/.test(operation)) throw new Error('Invalid comparison operator');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML remains editable in Source.');
+    const node: any = doc.getIn(path, true);
+    if (!isMap(node) || node.tag || node.anchor || !Array.isArray(node.range) ||
+        node.items.length !== 1 || !isScalar(node.items[0]?.key) ||
+        node.items[0]?.key?.anchor || node.items[0]?.key?.tag)
+      throw new Error('Only simple one-operation mappings can be changed safely.');
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean' &&
+        !(Array.isArray(value) && value.every(v => typeof v === 'string')))
+      throw new Error('Unsupported comparison value; use native YAML.');
+    const [start, end] = node.range;
+    const content = this.text.slice(start, end);
+    if (content.includes('#')) throw new Error('Comparison has a YAML comment; edit in Source to preserve it.');
+    const replacement = JSON.stringify({[operation]: value});
+    const next = this.text.slice(0, start) + replacement + this.text.slice(end);
+    assertYaml(next);
+    return {document: new SourceBuffer(next), range: [start, end] as [number, number],
+      replacement, undo: () => new SourceBuffer(this.text),
+      assessmentExecution: 'unavailable' as const};
+  }
+
   editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string, allowedKeys?: readonly string[]) {
     if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
     if (allowedKeys && !allowedKeys.includes(newKey)) throw new Error(`Operation '${newKey}' is not permitted by the pinned schema; use Source mode`);

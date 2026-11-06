@@ -420,7 +420,7 @@ test('Require policy and predicate editor labels align inline with their control
   const section=html.slice(html.indexOf('function requireSection(title,description,controls)'),html.indexOf('function predicatePlan(requirement)'));
   assert.match(section,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
   const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
-  assert.match(card,/if\(meta\.length\)section\.append\(compactGrid\(meta\)\)/);
+  assert.match(card,/if\(meta\.length\)section\.append\(compactGrid\(meta,'comparison-fields'\)\)/);
   assert.match(card,/section\.append\(regex\)/);
 });
 
@@ -538,4 +538,25 @@ test('Require regex list has Add and Remove controls guarded by source revision'
  assert.match(html,/addButton\.disabled=!pattern\.value\.trim\(\)/);
  assert.match(html,/path:base\.concat\('matches_regex'\)/);
  assert.match(html,/revision:current\.revision,version:current\.version/);
+});
+
+test('shared Object control combines schema operator, Variable source and value on one row',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/function operationChoiceForField\(field\)/);
+ assert.match(html,/mode\.value===original/);
+ assert.match(html,/mode\.value==='variable'/);
+ assert.match(html,/Object\.keys\(current\?\.variableDefinitions\|\|\{\}\)/);
+ assert.match(html,/type:'comparisonChange'/);
+ assert.match(html,/operation:mode\.value,value:val,allowedOperations:options/);
+ assert.match(html,/const operators=\(style==='object-fields'\|\|style==='comparison-fields'\)\?operationChoiceForField\(item\):null/);
+ assert.match(html,/if\(operators\)\{entry\.append\(operators\)\}/);
+ assert.match(html,/\.operator-choice\{grid-column:2;display:grid/);
+});
+
+test('Require scalar comparisons reuse the shared single-row operator/value editor',()=>{
+ const html=graphicalHtml();
+ const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
+ assert.match(card,/compactGrid\(meta,'comparison-fields'\)/);
+ assert.doesNotMatch(card,/const opControls=visible\.filter/);
+ assert.match(html,/\.property-grid\.comparison-fields\{grid-template-columns:minmax\(0,1fr\)/);
 });
