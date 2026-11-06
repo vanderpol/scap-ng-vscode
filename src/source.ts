@@ -34,6 +34,29 @@ export class SourceBuffer {
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  /** Replace an authored selector variant mapping with a literal or Variable reference.
+   * The surrounding YAML, including other fields and comments, is left untouched.
+   * Caller must validate the result against the pinned assessment schema.
+   */
+  replaceSelectorSource(path: (string | number)[], variant: 'equals' | 'variable', value: string, expectedHash: string) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    if (typeof value !== 'string' || !value.length) throw new Error('A non-empty source value is required');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const node: any = doc.getIn(path, true);
+    if (!isMap(node) || node.anchor || node.tag || !Array.isArray(node.range))
+      throw new Error('Selector is not a safely replaceable YAML mapping');
+    if (node.items.length !== 1 || !['equals', 'variable'].includes(String(node.items[0]?.key?.value)) ||
+        isAlias(node.items[0]?.value) || node.items[0]?.value?.anchor || node.items[0]?.value?.tag)
+      throw new Error('Selector contains additional operations or anchors; use YAML to change its source');
+    const [start, end] = node.range;
+    const replacement = '{' + variant + ': ' + JSON.stringify(value) + '}';
+    const next = this.text.slice(0, start) + replacement + this.text.slice(end);
+    assertYaml(next);
+    return { document: new SourceBuffer(next), range: [start, end] as [number, number], replacement,
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string, allowedKeys?: readonly string[]) {
     if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
     if (allowedKeys && !allowedKeys.includes(newKey)) throw new Error(`Operation '${newKey}' is not permitted by the pinned schema; use Source mode`);
