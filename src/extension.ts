@@ -548,6 +548,42 @@ class AssessmentEditorProvider {
         const previews = await previewRegexSafe(message.patterns.filter((pattern: any) => typeof pattern === 'string'), message.input, typeof message.flags === 'string' ? message.flags : '', 100);
         panel.webview.postMessage({ type: 'regexPreviewResult', previews }); return;
       }
+      if (message.type === 'selectorSource') {
+        try {
+          const revision = sha256(document.getText());
+          if (message.revision !== revision ||
+              (message.version !== undefined && message.version !== document.version))
+            throw new Error('Document changed before selector replacement; refresh and retry.');
+          const path = message.path;
+          const variant = message.variant;
+          if (!Array.isArray(path) || path[0] !== 'assessment' ||
+              !(path[1] === 'tests' && path[3] === 'object' ||
+                path[1] === 'shared_objects' && path.length >= 4) ||
+              !['equals', 'variable'].includes(variant) ||
+              typeof message.value !== 'string' || !message.value.length)
+            throw new Error('Invalid Object selector source request');
+          const source = new SourceBuffer(document.getText());
+          const original: any = valueAtPathForGraphical(source.json(),path);
+          if (!original || typeof original !== 'object' || Array.isArray(original) ||
+              Object.keys(original).length !== 1 ||
+              !['equals','variable'].includes(Object.keys(original)[0]))
+            throw new Error('This Object selector cannot be switched safely; use native YAML.');
+          const pack = this.getPack();
+          if (!pack) throw new Error('A pinned offline schema pack is required.');
+          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const before = pack.validate(schemaUri, source.json());
+          const edit = source.replaceSelectorSource(path, variant, message.value, revision);
+          const after = pack.validate(schemaUri, edit.document.json());
+          const introduced = after.filter((error: string) => !before.includes(error));
+          if (introduced.length) throw new Error('The pinned schema rejected this selector: ' + introduced.join('; '));
+          await applySourceWorkspaceEdit(api, document, edit);
+          panel.webview.postMessage({ type: 'status', message: 'Object selector source updated; native Undo/Redo remains available.' });
+        } catch (error) {
+          panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+          send();
+        }
+        return;
+      }
       if (message.type === 'structural') {
         try {
           const currentRevision = sha256(document.getText());
