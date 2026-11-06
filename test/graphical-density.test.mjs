@@ -486,3 +486,23 @@ test('Absent/missing Evaluate reference does not masquerade as authored Test',()
   assert.equal(ctx.testPathForSelection(['assessment','evaluate','test']),null);
   assert.equal(tree.children.find(n=>n.path[1]==='unreferenced_tests').children[0].label,'real-test');
 });
+
+test('Object inspectors give selectors full-width rows and schema-backed short descriptions',()=>{
+  const html=graphicalHtml();
+  assert.match(html,/\.property-grid\.object-fields\{grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{grid-column:1\/-1/);
+  assert.match(html,/\.object-field-description\{font-size:11px/);
+  assert.match(html,/style==='object-fields'/);
+  assert.match(html,/desc\.textContent=item\.description/);
+  assert.match(html,/compactGrid\(fields,path\.at\(-1\)==='object'\?'object-fields':undefined\)/);
+  assert.match(html,/compactGrid\(controls,'object-fields'\)/);
+});
+test('Object controls retain source-provided enumerations, rather than inventing option lists',()=>{
+  const html=graphicalHtml();
+  const section=html.slice(html.indexOf('function makeInput(f)'),html.indexOf('function friendlyLabel(f)'));
+  assert.match(section,/const choices=Array\.isArray\(f\.choices\)\?f\.choices:\[\]/);
+  assert.match(section,/if\(choices\.length\)\{input=document\.createElement\('select'\)/);
+  assert.match(section,/choices\.forEach\(choice=>/);
+  assert.match(section,/o\.selected=JSON\.stringify\(choice\)===JSON\.stringify\(f\.value\)/);
+  assert.match(section,/revision:current\.revision,version:current\.version/);
+});
