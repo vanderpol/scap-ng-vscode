@@ -410,3 +410,51 @@ test('Require field name and small explanatory text share a responsive heading r
   assert.match(card,/const meta=visible\.filter/);
   assert.match(card,/section\.append\(regex\)/);
 });
+
+test('Require policy and predicate editor labels align inline with their controls', () => {
+  const html=graphicalHtml();
+  // Layout-only: retain the current schema-derived controls and source editor.
+  assert.match(html,/\.require-section>\.property-grid \.field-entry,\.require-predicate>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(92px,37%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-section>\.property-grid \.field-entry>label,\.require-predicate>\.property-grid \.field-entry>label\{display:block;padding:0/);
+  assert.match(html,/@media\(max-width:760px\)\{\.require-section>\.property-grid/);
+  const section=html.slice(html.indexOf('function requireSection(title,description,controls)'),html.indexOf('function predicatePlan(requirement)'));
+  assert.match(section,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
+  const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
+  assert.match(card,/if\(meta\.length\)section\.append\(compactGrid\(meta\)\)/);
+  assert.match(card,/section\.append\(regex\)/);
+});
+
+test('Regex pattern editor aligns numbered labels with editable expression controls', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-regex-row\{display:grid;grid-template-columns:minmax\(70px,90px\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-regex-row label\{font-size:11px;display:block;padding:6px 0 0\}/);
+  const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
+  assert.match(card,/entry\.append\(label,makeInput\(f\)\);regex\.append\(entry\)/);
+  assert.match(card,/const controls=visible\.filter/);
+});
+
+test('Require section headings and explanations share a line including Field conditions', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-section>h2\{display:inline;margin:0 8px 0 0\}/);
+  assert.match(html,/\.require-section>\.hint\{display:inline;line-height:1\.4\}/);
+  assert.match(html,/\.require-section>\.property-grid\{margin-top:6px\}/);
+  const inspector=html.slice(html.indexOf('function requireInspector(path)'),html.indexOf('function groupedForm(path)'));
+  assert.match(inspector,/requireSection\('2\. Field-value requirements'/);
+  assert.match(inspector,/title\.textContent='3\. Field conditions';group\.append\(title\)/);
+  assert.match(inspector,/guide\.textContent='These are the conditions applied to collected evidence fields\.';group\.append\(guide\)/);
+});
+
+test('Variable stages share heading/help row and all property forms align labels inline', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(96px,34%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid \.field-entry\.wide\{grid-template-columns:minmax\(110px,24%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.variable-step-heading\{display:flex;align-items:baseline;flex-wrap:wrap/);
+  assert.match(html,/\.variable-step-heading>\.hint\{margin:0;flex:1 1 240px/);
+  const start=html.indexOf('function variableInspector(path)');
+  const end=html.indexOf('function collectionOverview(path)',start);
+  const inspector=html.slice(start,end);
+  assert.ok(start>=0&&end>start);
+  assert.match(inspector,/help\.textContent=step\.note;heading\.append\(help\)/);
+  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.doesNotMatch(inspector,/help\.textContent=step\.note;card\.append\(help\)/);
+});
