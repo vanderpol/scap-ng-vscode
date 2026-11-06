@@ -350,7 +350,7 @@ function selectorFieldSpec(pack: MetadataPack, capability: string, field: string
   for (const branch of branches) if (branch?.properties?.[field]) return { uri, spec: branch.properties[field] };
   return undefined;
 }
-function selectorOperatorChoices(pack: MetadataPack, capability: string, field: string, requireField: boolean): CompletionChoice[] {
+export function selectorOperatorChoices(pack: MetadataPack, capability: string, field: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];
   return selectorOperators(pack, context.uri, context.spec).map(({ value, spec }) => propertyChoice(pack, context.uri, '', value, spec, `${value}: `));
@@ -362,7 +362,7 @@ function mappingEnumValues(pack: MetadataPack, capability: string, field: string
   const values = requireField ? mapping.native?.state_value_enums?.[field] : mapping.native?.selector_value_enums?.[field];
   return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
 }
-function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
+export function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];
   const properties = schemaPropertyMap(pack, context.uri, context.spec);
