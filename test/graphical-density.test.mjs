@@ -426,10 +426,11 @@ test('Require policy and predicate editor labels align inline with their control
 
 test('Regex pattern editor aligns numbered labels with editable expression controls', () => {
   const html=graphicalHtml();
-  assert.match(html,/\.require-regex-row\{display:grid;grid-template-columns:minmax\(70px,90px\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-regex-row\{display:grid;grid-template-columns:minmax\(70px,90px\) minmax\(0,1fr\) auto/);
   assert.match(html,/\.require-regex-row label\{font-size:11px;display:block;padding:6px 0 0\}/);
   const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
-  assert.match(card,/entry\.append\(label,makeInput\(f\)\);regex\.append\(entry\)/);
+  assert.match(card,/entry\.append\(label,makeInput\(f\)\)/);
+  assert.match(card,/entry\.append\(remove\);regex\.append\(entry\)/);
   assert.match(card,/const controls=visible\.filter/);
 });
 
@@ -527,4 +528,14 @@ test('GUI uses finite dropdowns for enum-backed fields and current Assessment Va
  assert.match(html,/Choose Assessment Variable/);
  assert.match(html,/Object value source|Value source/);
  assert.match(html,/type:'selectorSource'/);
+});
+
+test('Require regex list has Add and Remove controls guarded by source revision',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/type:'regexList',action:'remove'/);
+ assert.match(html,/type:'regexList',action:'add'/);
+ assert.match(html,/remove\.disabled=plan\.patterns\.length<=1/);
+ assert.match(html,/addButton\.disabled=!pattern\.value\.trim\(\)/);
+ assert.match(html,/path:base\.concat\('matches_regex'\)/);
+ assert.match(html,/revision:current\.revision,version:current\.version/);
 });
