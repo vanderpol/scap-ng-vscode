@@ -147,7 +147,7 @@ function comparisonOperations(pack: MetadataPack | undefined, assessment: any, p
   if (isObjectSelector) {
     let obj: any = { assessment };
     for (const part of parentPath.slice(0, objectIndex + 1)) obj = obj?.[part as any];
-    const capability = obj?.capability;
+    const capability = obj?.capability || (parentPath[1]==='tests' ? assessment?.tests?.[String(parentPath[2])]?.capability : undefined);
     const uri = typeof capability === 'string' ? (pack.manifest.capabilities as any)?.[capability]?.schema_uri : undefined;
     if (!uri) return [];
     const selector = String(parentPath[objectIndex + 1]).replaceAll('~','~0').replaceAll('/','~1');
