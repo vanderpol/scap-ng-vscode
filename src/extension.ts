@@ -563,7 +563,10 @@ class AssessmentEditorProvider {
               typeof message.value !== 'string' || !message.value.length)
             throw new Error('Invalid Object selector source request');
           const source = new SourceBuffer(document.getText());
-          const original: any = valueAtPathForGraphical(source.json(),path);
+          const authored: any = source.json();
+          if (variant === 'variable' && !Object.prototype.hasOwnProperty.call(authored?.assessment?.variables || {}, message.value))
+            throw new Error('Choose an existing Assessment Variable; the requested Variable ID was not found.');
+          const original: any = valueAtPathForGraphical(authored,path);
           if (!original || typeof original !== 'object' || Array.isArray(original) ||
               Object.keys(original).length !== 1 ||
               !['equals','variable'].includes(Object.keys(original)[0]))
