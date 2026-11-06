@@ -432,3 +432,14 @@ test('Regex pattern editor aligns numbered labels with editable expression contr
   assert.match(card,/entry\.append\(label,makeInput\(f\)\);regex\.append\(entry\)/);
   assert.match(card,/const controls=visible\.filter/);
 });
+
+test('Require section headings and explanations share a line including Field conditions', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-section>h2\{display:inline;margin:0 8px 0 0\}/);
+  assert.match(html,/\.require-section>\.hint\{display:inline;line-height:1\.4\}/);
+  assert.match(html,/\.require-section>\.property-grid\{margin-top:6px\}/);
+  const inspector=html.slice(html.indexOf('function requireInspector(path)'),html.indexOf('function groupedForm(path)'));
+  assert.match(inspector,/requireSection\('2\. Field-value requirements'/);
+  assert.match(inspector,/title\.textContent='3\. Field conditions';group\.append\(title\)/);
+  assert.match(inspector,/guide\.textContent='These are the conditions applied to collected evidence fields\.';group\.append\(guide\)/);
+});
