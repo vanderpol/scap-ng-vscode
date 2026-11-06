@@ -518,3 +518,13 @@ test('Object selector source control switches typed string mappings through revi
  assert.match(html,/style==='object-fields'\)\{const chooser=sourceChoiceForObject\(item\)/);
  assert.match(html,/\.object-source-switch\{grid-column:2;display:grid/);
 });
+
+test('GUI uses finite dropdowns for enum-backed fields and current Assessment Variables',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/if\(choices\.length\|\|f\.pickerOnly\)\{input=document\.createElement\('select'\)/);
+ assert.match(html,/No Variables declared/);
+ assert.match(html,/Unresolved: /);
+ assert.match(html,/Choose Assessment Variable/);
+ assert.match(html,/Object value source|Value source/);
+ assert.match(html,/type:'selectorSource'/);
+});
