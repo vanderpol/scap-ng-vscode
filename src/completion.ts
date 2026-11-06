@@ -424,6 +424,23 @@ function mappingEnumValues(pack: MetadataPack, capability: string, field: string
   const values = requireField ? mapping.native?.state_value_enums?.[field] : mapping.native?.selector_value_enums?.[field];
   return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
 }
+export function selectorValueSourceChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): string[] {
+  const context = selectorFieldSpec(pack, capability, field, requireField);
+  if (!context) return [];
+  const properties = schemaPropertyMap(pack, context.uri, context.spec);
+  const root = properties[operator];
+  const sources = new Set<string>();
+  const visit = (node: any, seen = new Set<any>()) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node.type) ? node.type.some((type: string) => ['string', 'number', 'boolean', 'array'].includes(type)) : ['string', 'number', 'boolean', 'array'].includes(node.type)) sources.add('fixed');
+    for (const required of node.required ?? []) if (required === 'variable' || (requireField && required === 'input')) sources.add(required);
+    if (typeof node.$ref === 'string') { try { visit(pack.node(new URL(node.$ref, context.uri).href), seen); } catch {} }
+    for (const key of ['oneOf', 'anyOf', 'allOf']) for (const child of node[key] ?? []) visit(child, seen);
+  };
+  visit(root);
+  return [...sources].sort((left, right) => ({ fixed: 0, variable: 1, input: 2 }[left] ?? 9) - ({ fixed: 0, variable: 1, input: 2 }[right] ?? 9));
+}
 export function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];

@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
 import { completionChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
-import { comparisonOperations } from '../../dist/structured-model.js';
+import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from '../../dist/structured-model.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -232,6 +232,47 @@ test('graphical operator controls resolve every Object/Require context from the 
  const incompatible=invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.mount_point.float_equals');
  assert.ok(incompatible); assert.equal(incompatible.operatorCompatible,false); assert.ok(incompatible.operatorChoices.includes('float_equals'));
  assert.deepEqual(comparisonOperations(pack,invalid.assessment,['assessment','tests','registry-test','object','mount_point','float_equals'],true),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex','float_equals']);
+});
+
+test('Object and Require Variable contracts stay schema-backed and datatype-compatible',()=>{
+ const raw=`assessment:
+  id: variable-contract-assessment
+  version: 1
+  assessment_title: Variable contract
+  mode: automated
+  class: compliance
+  variables:
+    registry-string-variable:
+      kind: local
+      datatype: string
+      expression: {literal: {datatype: string, value: local_machine}}
+    registry-integer-variable:
+      kind: local
+      datatype: integer
+      expression: {literal: {datatype: integer, value: 1}}
+  tests:
+    registry-test:
+      test_title: Registry test
+      capability: windows.registry
+      object:
+        hive: {equals: {variable: registry-string-variable}}
+        key: {equals: {variable: registry-string-variable}}
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        fields:
+          type: {equals: {variable: registry-string-variable}}
+          value: {equals: {variable: registry-integer-variable}}
+`;
+ const value=new SourceBuffer(raw).json();const assessment=value.assessment;
+ assert.deepEqual(comparisonValueSources(pack,assessment,['assessment','tests','registry-test','object','hive','equals']),['fixed','variable']);
+ assert.deepEqual(comparisonValueSources(pack,assessment,['assessment','tests','registry-test','require','fields','type','equals']),['fixed','variable','input']);
+ assert.equal(comparisonVariableCompatible(pack,assessment,['assessment','tests','registry-test','object','hive','equals'],'registry-string-variable'),true);
+ assert.equal(comparisonVariableCompatible(pack,assessment,['assessment','tests','registry-test','require','fields','type','equals'],'registry-integer-variable'),false);
+ const model=assessmentEditorModel({getText:()=>raw,version:1},pack);
+ const key=model.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.key.equals.variable');
+ const type=model.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.require.fields.type.equals.variable');
+ assert.deepEqual(key?.valueSources,['fixed','variable']);assert.deepEqual(type?.valueSources,['fixed','variable','input']);
+ assert.deepEqual(key?.variableChoices,['registry-string-variable']);assert.deepEqual(type?.variableChoices,['registry-string-variable']);
 });
 
 test('canonical Windows Registry Assessment rejects stale edits without changing source',()=>{

@@ -2,7 +2,7 @@ import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
-import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
+import { selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -142,53 +142,71 @@ function comparisonContext(pack: MetadataPack | undefined, assessment: any, path
   return typeof capability === 'string' ? { capability, field, requireField: true } : undefined;
 }
 
-function authoredComparisonDatatype(assessment: any, path: EditPath): string | undefined {
-  const parent = path.slice(0, -1);
-  const datatype = parent.concat('datatype');
+function comparisonDescriptor(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
+  if (!pack) return undefined;
+  const tail = String(path.at(-1) ?? '');
+  const operationPath = tail === 'variable' || tail === 'input' ? path.slice(0, -1) : path;
+  const context = comparisonContext(pack, assessment, operationPath);
+  if (!context) return undefined;
+  return { ...context, operationPath, operation: String(operationPath.at(-1)), source: tail === 'variable' || tail === 'input' ? tail : 'fixed' };
+}
+
+function authoredComparisonDatatype(assessment: any, operationPath: EditPath): string | undefined {
+  const datatype = operationPath.slice(0, -1).concat('datatype');
   let value: any = assessment;
   for (const part of datatype.slice(1)) value = value?.[part as any];
   return typeof value === 'string' ? value : undefined;
 }
 
+export function comparisonValueSources(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  return selectorValueSourceChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField);
+}
+
 export function comparisonOperatorDescriptions(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): Record<string, string> {
-  const context = comparisonContext(pack, assessment, path);
-  if (!context || !pack) return {};
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return {};
   try {
-    const choices = selectorOperatorChoices(pack, context.capability, context.field, context.requireField, authoredComparisonDatatype(assessment, path));
+    const choices = selectorOperatorChoices(pack, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath));
     const result = Object.fromEntries(choices.map(choice => [choice.value, choice.description || choice.label || choice.value]));
-    const operation = String(path.at(-1) || '');
-    if (includeIncompatible && operation && !Object.hasOwn(result, operation)) result[operation] = 'Authored operator is not valid for the selected datatype.';
+    if (includeIncompatible && descriptor.operation && !Object.hasOwn(result, descriptor.operation)) result[descriptor.operation] = 'Authored operator is not valid for the selected datatype.';
     return result;
   } catch { return {}; }
 }
 
 export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): string[] {
-  const context = comparisonContext(pack, assessment, path);
-  if (!context) return [];
-  const operation = String(path.at(-1));
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor) return [];
   try {
-    const allowed = selectorOperatorChoices(pack!, context.capability, context.field, context.requireField, authoredComparisonDatatype(assessment, path)).map(choice => choice.value);
-    if (includeIncompatible && operation && !allowed.includes(operation)) return [...allowed, operation];
-    return allowed.includes(operation) ? allowed : [];
+    const allowed = selectorOperatorChoices(pack!, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath)).map(choice => choice.value);
+    if (includeIncompatible && descriptor.operation && !allowed.includes(descriptor.operation)) return [...allowed, descriptor.operation];
+    return allowed.includes(descriptor.operation) ? allowed : [];
   } catch { return []; }
 }
 
 function comparisonValueChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
-  const context = comparisonContext(pack, assessment, path);
-  if (!context) return [];
-  try {
-    return selectorValueChoices(pack!, context.capability, context.field, String(path.at(-1)), context.requireField).map(choice => choice.value);
-  } catch { return []; }
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField).map(choice => choice.value); }
+  catch { return []; }
 }
 
 function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   const current = comparisonValueChoices(pack, assessment, path);
   if (current.length) return current;
-  const context = comparisonContext(pack, assessment, path);
-  if (!context) return [];
-  try {
-    return selectorValueChoices(pack!, context.capability, context.field, 'equals', context.requireField).map(choice => choice.value);
-  } catch { return []; }
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, 'equals', descriptor.requireField).map(choice => choice.value); }
+  catch { return []; }
+}
+
+export function comparisonVariableCompatible(pack: MetadataPack | undefined, assessment: any, path: EditPath, variableId: string): boolean {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  const variable = assessment?.variables?.[variableId];
+  if (!descriptor || !variable || typeof variable.datatype !== 'string') return false;
+  const datatypes = selectorFieldDatatypes(pack!, descriptor.capability, descriptor.field, descriptor.requireField);
+  return !datatypes.length || datatypes.includes(variable.datatype);
 }
 
 /** Return contextual authoring help from the exact pinned capability predicate. */
@@ -271,13 +289,18 @@ export function modelFor(document: any, pack?: MetadataPack) {
       const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false;
       const variableChoices = assessmentVariableChoices((value as any)?.assessment, field.path);
       const testChoices = testChoiceOptions(pack, field.path);
+      const descriptor = comparisonDescriptor(pack, (value as any)?.assessment, field.path);
       const comparisonChoices = comparisonValueChoices(pack, (value as any)?.assessment, field.path);
       const scalarChoices = objectScalarChoices(pack, (value as any)?.assessment, field.path);
-      const choices = variableChoices ?? (testChoices.length ? testChoices : (comparisonChoices.length ? comparisonChoices : (scalarChoices.length ? scalarChoices : help?.choices || [])));
-      const legalOperators = comparisonOperations(pack, (value as any)?.assessment, field.path);
-      const operatorChoices = comparisonOperations(pack, (value as any)?.assessment, field.path, true);
-      const operatorDescriptions = comparisonOperatorDescriptions(pack, (value as any)?.assessment, field.path, true);
-      const fixedChoices = comparisonFixedChoices(pack, (value as any)?.assessment, field.path);
+      const sourceChoices = comparisonValueSources(pack, (value as any)?.assessment, field.path);
+      const expressionVariableChoices = sourceChoices.includes('variable') && descriptor ? Object.keys((value as any)?.assessment?.variables || {}).filter(id => comparisonVariableCompatible(pack, (value as any)?.assessment, descriptor.operationPath, id)) : [];
+      const expressionInputChoices = sourceChoices.includes('input') ? Object.keys((value as any)?.assessment?.inputs || {}) : [];
+      const choices = descriptor?.source === 'variable' ? expressionVariableChoices : descriptor?.source === 'input' ? expressionInputChoices : variableChoices ?? (testChoices.length ? testChoices : (comparisonChoices.length ? comparisonChoices : (scalarChoices.length ? scalarChoices : help?.choices || [])));
+      const legalOperators = descriptor ? comparisonOperations(pack, (value as any)?.assessment, descriptor.operationPath) : [];
+      const operatorChoices = descriptor ? comparisonOperations(pack, (value as any)?.assessment, descriptor.operationPath, true) : [];
+      const operatorDescriptions = descriptor ? comparisonOperatorDescriptions(pack, (value as any)?.assessment, descriptor.operationPath, true) : {};
+      const fixedChoices = descriptor ? comparisonFixedChoices(pack, (value as any)?.assessment, descriptor.operationPath) : [];
+      const valueSources = descriptor ? sourceChoices : [];
       return {
         ...field,
         label: help?.title || pathLabel(field.path),
@@ -286,7 +309,13 @@ export function modelFor(document: any, pack?: MetadataPack) {
         pickerOnly: variableChoices !== undefined,
         operatorChoices,
         operatorDescriptions,
-        operatorCompatible: operatorChoices.length ? legalOperators.includes(String(field.path.at(-1))) : undefined,
+        comparisonOperation: descriptor?.operation,
+        comparisonPath: descriptor?.operationPath,
+        valueSource: descriptor?.source,
+        valueSources,
+        variableChoices: expressionVariableChoices,
+        inputChoices: expressionInputChoices,
+        operatorCompatible: descriptor && operatorChoices.length ? legalOperators.includes(descriptor.operation) : undefined,
         fixedChoices: fixedChoices.length ? fixedChoices : (field.path.at(-1) === 'equals' ? scalarChoices : objectScalarChoices(pack, (value as any)?.assessment, [...field.path.slice(0, -1), 'equals'])),
         suggested: help?.suggested,
         hasSuggestion: help?.hasSuggestion ?? false,

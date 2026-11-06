@@ -543,11 +543,13 @@ test('Require regex list has Add and Remove controls guarded by source revision'
 test('shared Object control combines schema operator, Variable source and value on one row',()=>{
  const html=graphicalHtml();
  assert.match(html,/function operationChoiceForField\(field\)/);
- assert.match(html,/mode\.value===original/);
- assert.match(html,/mode\.value==='variable'/);
+ assert.match(html,/currentOperation\(\)/);
+ assert.match(html,/currentSource\(\)/);
+ assert.match(html,/Fixed value/);
+ assert.match(html,/Variable reference/);
  assert.match(html,/Object\.keys\(current\?\.variableDefinitions\|\|\{\}\)/);
  assert.match(html,/type:'comparisonChange'/);
- assert.match(html,/operation:mode\.value,value:val,allowedOperations:options/);
+ assert.match(html,/operation:op,source:selected,value,allowedOperations:options/);
  assert.match(html,/const operators=\(style==='object-fields'\|\|style==='comparison-fields'\)\?operationChoiceForField\(item\):null/);
  assert.match(html,/if\(operators\)\{entry\.append\(operators\)\}/);
  assert.match(html,/\.operator-choice\{grid-column:2;display:grid/);
