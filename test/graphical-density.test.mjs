@@ -488,13 +488,13 @@ test('Absent/missing Evaluate reference does not masquerade as authored Test',()
   assert.equal(tree.children.find(n=>n.path[1]==='unreferenced_tests').children[0].label,'real-test');
 });
 
-test('Object inspectors give selectors full-width rows and schema-backed short descriptions',()=>{
+test('Object inspectors give selectors full-width rows and contextual help on hover',()=>{
   const html=graphicalHtml();
   assert.match(html,/\.property-grid\.object-fields\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{grid-column:1\/-1/);
-  assert.match(html,/\.object-field-description\{font-size:11px/);
+  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
   assert.match(html,/style==='object-fields'/);
-  assert.match(html,/desc\.textContent=item\.description/);
+  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
   assert.match(html,/compactGrid\(fields,path\.at\(-1\)==='object'\?'object-fields':undefined\)/);
   assert.match(html,/compactGrid\(controls,'object-fields'\)/);
 });
@@ -559,4 +559,12 @@ test('Require scalar comparisons reuse the shared single-row operator/value edit
  assert.match(card,/compactGrid\(meta,'comparison-fields'\)/);
  assert.doesNotMatch(card,/const opControls=visible\.filter/);
  assert.match(html,/\.property-grid\.comparison-fields\{grid-template-columns:minmax\(0,1fr\)/);
+});
+
+test('Object and Require operator dropdowns share capability-specific selector resolution',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/const options=Array\.isArray\(field\.operatorChoices\)\?field\.operatorChoices:\[\]/);
+ assert.match(html,/style==='object-fields'\|\|style==='comparison-fields'/);
+ assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
+ assert.doesNotMatch(html,/desc\.textContent=item\.description/);
 });

@@ -2,6 +2,7 @@ import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
+import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -74,37 +75,18 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
  * inline Test Objects, Shared Objects, and nested Variable collection expressions.
  * The pinned capability schema is the only source of enum options.
  */
+/** Finite selector values must come from the same capability map as YAML completion. */
 function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
-  if (!pack || path[0] !== 'assessment' || path.at(-1) !== 'equals') return [];
-  const objectIndex = path.lastIndexOf('object');
-  if (objectIndex < 0 || objectIndex + 2 !== path.length - 1) return [];
-  const selector = String(path[objectIndex + 1]);
-  let source: any = { assessment };
-  for (const key of path.slice(0, objectIndex + 1)) source = source?.[key as any];
-  const capability = source?.capability;
-  if (typeof capability !== 'string') return [];
-  const uri = (pack.manifest.capabilities as any)?.[capability]?.schema_uri;
-  if (typeof uri !== 'string') return [];
-  const escape = (name: string) => name.replaceAll('~', '~0').replaceAll('/', '~1');
-  const propertyUri = uri + '#/$defs/object/properties/' + escape(selector);
-  const options = new Set<string>();
-  const collect = (node: any, depth = 0) => {
-    if (!node || typeof node !== 'object' || depth > 12) return;
-    if (Array.isArray(node.enum)) for (const value of node.enum) if (typeof value === 'string') options.add(value);
-    if (typeof node.const === 'string') options.add(node.const);
-    for (const branch of ['oneOf', 'allOf', 'anyOf']) {
-      if (Array.isArray(node[branch])) for (const child of node[branch]) collect(child, depth + 1);
-    }
-  };
-  for (const location of schemaNodes(pack, propertyUri)) {
-    const equals = location.node.properties?.equals;
-    if (equals) collect(equals);
-    if (equals && typeof equals.$ref === 'string') {
-      const uri = new URL(equals.$ref, location.uri).href;
-      for (const target of schemaNodes(pack, uri)) collect(target.node);
-    }
-  }
-  return [...options];
+  if(!pack||path[0]!=='assessment'||path.at(-1)!=='equals')return [];
+  const objectIndex=path.lastIndexOf('object');
+  if(objectIndex<0||objectIndex+2!==path.length-1)return [];
+  let obj:any={assessment};
+  for(const part of path.slice(0,objectIndex+1))obj=obj?.[part as any];
+  const capability=obj?.capability || (path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
+  const field=String(path[objectIndex+1]);
+  if(typeof capability!=='string')return [];
+  try{return selectorValueChoices(pack,capability,field,'equals',false).map(choice=>choice.value)}
+  catch{return []}
 }
 function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment') return [];
@@ -134,41 +116,36 @@ function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): stri
  * Object selectors use the actual capability schema, whereas Require fields
  * use the shared scalar predicate grammar. No per-capability operator lists.
  */
+/** Capability-scoped operations shared with the Red Hat YAML completion adapter.
+ * Never expand a single selector to the generic all-datatype vocabulary.
+ */
 export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment' || path.length < 5) return [];
-  const operation = String(path.at(-1));
-  const parentPath = path.slice(0, -1);
-  const objectIndex = parentPath.lastIndexOf('object');
-  const isObjectSelector = objectIndex >= 0 && objectIndex === parentPath.length - 2;
-  const isRequireField = parentPath.includes('require') &&
-    parentPath[parentPath.indexOf('require') + 1] === 'fields' &&
-    parentPath.length === parentPath.indexOf('require') + 3;
-  let locations: any[] = [];
-  if (isObjectSelector) {
-    let obj: any = { assessment };
-    for (const part of parentPath.slice(0, objectIndex + 1)) obj = obj?.[part as any];
-    const capability = obj?.capability || (parentPath[1]==='tests' ? assessment?.tests?.[String(parentPath[2])]?.capability : undefined);
-    const uri = typeof capability === 'string' ? (pack.manifest.capabilities as any)?.[capability]?.schema_uri : undefined;
-    if (!uri) return [];
-    const selector = String(parentPath[objectIndex + 1]).replaceAll('~','~0').replaceAll('/','~1');
-    locations = schemaNodes(pack, uri + '#/$defs/object/properties/' + selector);
-  } else if (isRequireField) {
-    const schemaUri = pack.manifest.resources.find((resource: any) =>
-      resource.kind === 'schema' && resource.uri.endsWith('/assessment-language.schema.json'))?.uri;
-    if (!schemaUri) return [];
-    locations = schemaNodes(pack, schemaUri + '#/$defs/scalar_field_predicate');
-  } else return [];
-  const names = new Set<string>();
-  for (const location of locations) {
-    for (const name of Object.keys(location.node.properties || {})) names.add(name);
-    // Alternative branches may require exactly one comparison operation.
-    for (const key of ['oneOf','anyOf']) for (const branch of location.node[key] || [])
-      for (const name of Object.keys(branch.properties || {})) names.add(name);
+  const operation=String(path.at(-1));
+  const parent=path.slice(0,-1);
+  const objectIndex=parent.lastIndexOf('object');
+  let capability: string | undefined, field: string | undefined;
+  let requireField=false;
+  if(objectIndex>=0 && objectIndex===parent.length-2){
+    let obj:any={assessment};
+    for(const part of parent.slice(0,objectIndex+1))obj=obj?.[part as any];
+    capability=obj?.capability || (parent[1]==='tests'?assessment?.tests?.[String(parent[2])]?.capability:undefined);
+    field=String(parent.at(-1));
+  }else{
+    const req=parent.indexOf('require');
+    if(req<0||parent[req+1]!=='fields'||parent.length!==req+3||parent[1]!=='tests')return [];
+    requireField=true;
+    capability=assessment?.tests?.[String(parent[2])]?.capability;
+    field=String(parent.at(-1));
   }
-  const metadata = new Set(['datatype','values_found','values_matching','value_match',
-    'redact_result','items_found','items_satisfying']);
-  const allowed = [...names].filter(name => !metadata.has(name));
-  return allowed.includes(operation) ? allowed : [];
+  if(typeof capability!=='string'||!field)return [];
+  try {
+    // Reuse the completion resolver: it intersects the capability-specific
+    // propertyNames contract with required oneOf alternatives.
+    const choices=selectorOperatorChoices(pack,capability,field,requireField)
+      .map(choice=>choice.value);
+    return choices.includes(operation)?choices:[];
+  }catch{return []}
 }
 /** Return contextual authoring help from the exact pinned capability predicate. */
 function contextualFieldDescription(pack: MetadataPack | undefined, assessment: any, path: EditPath): string {
@@ -200,6 +177,27 @@ function contextualFieldDescription(pack: MetadataPack | undefined, assessment: 
   }
   return '';
 }
+/** Never show authoring-implementation metadata as end-user field help. */
+function usefulFieldHelp(schemaDescription:string|undefined, assessment:any, path:EditPath, contextual:string):string {
+  const description=String(schemaDescription||contextual||'').trim();
+  const generic=/explicit new.authoring selection|preserve source.effective values|selector operator;|visible overrides; no runtime fallback/i;
+  if(description&&!generic.test(description))return description;
+  const objectIndex=path.lastIndexOf('object');
+  if(objectIndex>=0&&objectIndex<path.length-1){
+    let object:any={assessment};
+    for(const part of path.slice(0,objectIndex+1))object=object?.[part as any];
+    const cap=object?.capability||(path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
+    const field=String(path[objectIndex+1]).replaceAll('_',' ');
+    return 'Select the '+field+' value used by '+String(cap||'this capability')+
+      ' to identify collected items. Only supported comparisons are offered.';
+  }
+  const req=path.indexOf('require');
+  if(req>=0&&path[req+1]==='fields'&&path.length>req+2){
+    return 'Comparison applied to the collected '+String(path[req+2]).replaceAll('_',' ')+
+      ' field. Only operators supported by this capability are available.';
+  }
+  return generic.test(description)?'':description;
+}
 function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefined {
   if(path.at(-1)!=='variable')return undefined;
   const inTest=path[1]==='tests'&&path[3]==='object';
@@ -212,7 +210,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
     const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
     return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields: scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || contextualFieldDescription(pack,(value as any)?.assessment,field.path), choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, operatorChoices: comparisonOperations(pack,(value as any)?.assessment,field.path), fixedChoices: field.path.at(-1)==='equals'?objectScalarChoices(pack,(value as any)?.assessment,field.path):objectScalarChoices(pack,(value as any)?.assessment,[...field.path.slice(0,-1),'equals']), suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: usefulFieldHelp(help?.description,(value as any)?.assessment,field.path,contextualFieldDescription(pack,(value as any)?.assessment,field.path)), choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, operatorChoices: comparisonOperations(pack,(value as any)?.assessment,field.path), fixedChoices: field.path.at(-1)==='equals'?objectScalarChoices(pack,(value as any)?.assessment,field.path):objectScalarChoices(pack,(value as any)?.assessment,[...field.path.slice(0,-1),'equals']), suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
     }) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
