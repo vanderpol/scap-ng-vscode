@@ -423,3 +423,12 @@ test('Require policy and predicate editor labels align inline with their control
   assert.match(card,/if\(meta\.length\)section\.append\(compactGrid\(meta\)\)/);
   assert.match(card,/section\.append\(regex\)/);
 });
+
+test('Regex pattern editor aligns numbered labels with editable expression controls', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.require-regex-row\{display:grid;grid-template-columns:minmax\(70px,90px\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-regex-row label\{font-size:11px;display:block;padding:6px 0 0\}/);
+  const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
+  assert.match(card,/entry\.append\(label,makeInput\(f\)\);regex\.append\(entry\)/);
+  assert.match(card,/const controls=visible\.filter/);
+});
