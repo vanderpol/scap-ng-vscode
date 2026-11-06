@@ -134,7 +134,7 @@ function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): stri
  * Object selectors use the actual capability schema, whereas Require fields
  * use the shared scalar predicate grammar. No per-capability operator lists.
  */
-function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment' || path.length < 5) return [];
   const operation = String(path.at(-1));
   const parentPath = path.slice(0, -1);
