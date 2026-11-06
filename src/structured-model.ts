@@ -85,7 +85,7 @@ function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, pa
   if (typeof capability !== 'string') return [];
   const uri = (pack.manifest.capabilities as any)?.[capability]?.schema_uri;
   if (typeof uri !== 'string') return [];
-  const escape = (name: string) => name.replace(/~/g, '~0').replace(/\\//g, '~1');
+  const escape = (name: string) => name.replaceAll('~', '~0').replaceAll('/', '~1');
   const propertyUri = uri + '#/$defs/object/properties/' + escape(selector);
   const options = new Set<string>();
   const collect = (node: any, depth = 0) => {
