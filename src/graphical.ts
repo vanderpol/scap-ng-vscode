@@ -117,7 +117,7 @@ function sourceChoiceForObject(field){
  if(variant!=='equals'&&variant!=='variable')return null;
  const inTest=parts[1]==='tests'&&parts[3]==='object'&&parts.length===6;
  const inShared=parts[1]==='shared_objects'&&parts.length===5;
- if(!inTest&&!inShared)return null;
+ if(!inTest&&!inShared||field.kind!=='string')return null;
  const bar=document.createElement('div');bar.className='object-source-switch';
  const choice=document.createElement('select');choice.setAttribute('aria-label','Value source');
  for(const [id,label] of [['equals','Fixed value'],['variable','Variable reference']]){
@@ -129,7 +129,7 @@ function sourceChoiceForObject(field){
  const confirm=document.createElement('button');confirm.type='button';confirm.textContent='Apply';
  confirm.disabled=true;
  const names=Object.keys(current?.variableDefinitions||{});
- const candidates=document.createElement('datalist');candidates.id='object-source-'+Math.random().toString(36).slice(2);
+ const candidates=document.createElement('datalist');candidates.id='object-source-'+parts.map(String).join('-').replace(/[^a-zA-Z0-9-]/g,'-');
  for(const name of names){const option=document.createElement('option');option.value=name;candidates.append(option)}
  function refresh(){
   if(choice.value!==variant)value.value='';
