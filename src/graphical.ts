@@ -327,8 +327,8 @@ function fieldCheckCard(path,plan){
   heading.append(note);section.append(heading);
   if(plan.absence){const badge=document.createElement('span');badge.className='require-badge';badge.textContent='Values found: none';section.append(badge)}
   const visible=editorFields(path).filter(f=>hasPrefix(f.path,base));
-  const contextual=visible.find(f=>typeof f.description==='string'&&f.description.trim())?.description;
-  if(contextual&&contextual!==note.textContent){const details=document.createElement('p');details.className='hint field-schema-note';details.textContent=contextual;section.append(details)}
+  // Field-level schema help belongs in Contextual Help and on control hover.
+  // Never attach the first scalar's description to the entire Require group.
   const meta=visible.filter(f=>f.path.length===base.length+1&&f.path.at(-1)!=='matches_regex');
   if(meta.length)section.append(compactGrid(meta,'comparison-fields'));
   if(plan.patterns.length){
