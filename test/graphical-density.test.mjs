@@ -506,3 +506,15 @@ test('Object controls retain source-provided enumerations, rather than inventing
   assert.match(section,/o\.selected=JSON\.stringify\(choice\)===JSON\.stringify\(f\.value\)/);
   assert.match(section,/revision:current\.revision,version:current\.version/);
 });
+
+test('Object selector source control switches typed string mappings through revision-safe host action',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/function sourceChoiceForObject\(field\)/);
+ assert.match(html,/if\(!inTest&&!inShared\|\|field\.kind!=='string'\)return null/);
+ assert.match(html,/\['equals','Fixed value'\]/);
+ assert.match(html,/\['variable','Variable reference'\]/);
+ assert.match(html,/type:'selectorSource',path:parts\.slice\(0,-1\)/);
+ assert.match(html,/revision:current\.revision,version:current\.version/);
+ assert.match(html,/style==='object-fields'\)\{const chooser=sourceChoiceForObject\(item\)/);
+ assert.match(html,/\.object-source-switch\{grid-column:2;display:grid/);
+});
