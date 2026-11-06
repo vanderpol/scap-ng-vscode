@@ -443,3 +443,18 @@ test('Require section headings and explanations share a line including Field con
   assert.match(inspector,/title\.textContent='3\. Field conditions';group\.append\(title\)/);
   assert.match(inspector,/guide\.textContent='These are the conditions applied to collected evidence fields\.';group\.append\(guide\)/);
 });
+
+test('Variable stages share heading/help row and all property forms align labels inline', () => {
+  const html=graphicalHtml();
+  assert.match(html,/\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(96px,34%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid \.field-entry\.wide\{grid-template-columns:minmax\(110px,24%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.variable-step-heading\{display:flex;align-items:baseline;flex-wrap:wrap/);
+  assert.match(html,/\.variable-step-heading>\.hint\{margin:0;flex:1 1 240px/);
+  const start=html.indexOf('function variableInspector(path)');
+  const end=html.indexOf('function collectionOverview(path)',start);
+  const inspector=html.slice(start,end);
+  assert.ok(start>=0&&end>start);
+  assert.match(inspector,/help\.textContent=step\.note;heading\.append\(help\)/);
+  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.doesNotMatch(inspector,/help\.textContent=step\.note;card\.append\(help\)/);
+});
