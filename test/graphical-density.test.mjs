@@ -516,7 +516,7 @@ test('Object selector source control switches typed string mappings through revi
  assert.match(html,/\['variable','Variable reference'\]/);
  assert.match(html,/type:'selectorSource',path:parts\.slice\(0,-1\)/);
  assert.match(html,/revision:current\.revision,version:current\.version/);
- assert.match(html,/style==='object-fields'\)\{const chooser=sourceChoiceForObject\(item\)/);
+ assert.match(html,/const chooser=style==='object-fields'\?sourceChoiceForObject\(item\):null/);
  assert.match(html,/\.object-source-switch\{grid-column:2;display:grid/);
 });
 
