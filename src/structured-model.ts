@@ -170,6 +170,36 @@ function comparisonOperations(pack: MetadataPack | undefined, assessment: any, p
   const allowed = [...names].filter(name => !metadata.has(name));
   return allowed.includes(operation) ? allowed : [];
 }
+/** Return contextual authoring help from the exact pinned capability predicate. */
+function contextualFieldDescription(pack: MetadataPack | undefined, assessment: any, path: EditPath): string {
+  if(!pack||path[0]!=='assessment')return '';
+  const objectAt=path.lastIndexOf('object');
+  if(objectAt>=0&&objectAt+1<path.length){
+    let object:any={assessment};
+    for(const part of path.slice(0,objectAt+1))object=object?.[part as any];
+    const capability=object?.capability||(path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
+    const uri=typeof capability==='string'?(pack.manifest.capabilities as any)?.[capability]?.schema_uri:undefined;
+    if(uri){
+      const name=String(path[objectAt+1]).replaceAll('~','~0').replaceAll('/','~1');
+      const base=uri+'#/$defs/object/properties/'+name;
+      try{
+        const context={documentVersion:pack.pin.schemaVersion,schemaValid:true,isOverride:false,diagnostics:[]};
+        const hint=pack.describe(base,context);
+        if(hint.description)return hint.description;
+      }catch{}
+    }
+  }
+  const reqIndex=path.indexOf('require');
+  if(reqIndex>=0&&path[reqIndex+1]==='fields'&&path.length>reqIndex+2){
+    const cap=assessment?.tests?.[String(path[2])]?.capability;
+    try{
+      const catalog=new GuidedCatalog(pack);
+      const field=catalog.resultFields(cap).find(entry=>entry.name===String(path[reqIndex+2]));
+      if(field?.description)return field.description;
+    }catch{}
+  }
+  return '';
+}
 function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefined {
   if(path.at(-1)!=='variable')return undefined;
   const inTest=path[1]==='tests'&&path[3]==='object';
@@ -182,7 +212,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
     const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
     return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields: scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || '', choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, operatorChoices: comparisonOperations(pack,(value as any)?.assessment,field.path), suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: help?.description || contextualFieldDescription(pack,(value as any)?.assessment,field.path), choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, operatorChoices: comparisonOperations(pack,(value as any)?.assessment,field.path), suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
     }) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
