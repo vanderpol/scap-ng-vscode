@@ -111,6 +111,38 @@ function variableReferenceLink(f){
   details.append(content);return details
 }
 
+function sourceChoiceForObject(field){
+ const parts=field.path||[];
+ const variant=String(parts.at(-1)||'');
+ if(variant!=='equals'&&variant!=='variable')return null;
+ const inTest=parts[1]==='tests'&&parts[3]==='object'&&parts.length===6;
+ const inShared=parts[1]==='shared_objects'&&parts.length===5;
+ if(!inTest&&!inShared)return null;
+ const bar=document.createElement('div');bar.className='object-source-switch';
+ const choice=document.createElement('select');choice.setAttribute('aria-label','Value source');
+ for(const [id,label] of [['equals','Fixed value'],['variable','Variable reference']]){
+  const option=document.createElement('option');option.value=id;option.textContent=label;choice.append(option);
+ }
+ choice.value=variant;
+ const value=document.createElement('input');value.type='text';value.value=String(field.value??'');
+ value.setAttribute('aria-label','New selector value');
+ const confirm=document.createElement('button');confirm.type='button';confirm.textContent='Apply';
+ confirm.disabled=true;
+ const names=Object.keys(current?.variableDefinitions||{});
+ const candidates=document.createElement('datalist');candidates.id='object-source-'+Math.random().toString(36).slice(2);
+ for(const name of names){const option=document.createElement('option');option.value=name;candidates.append(option)}
+ function refresh(){
+  if(choice.value!==variant)value.value='';
+  value.placeholder=choice.value==='variable'?'Existing Variable ID':'Fixed value';
+  value.setAttribute('list',choice.value==='variable'?candidates.id:'');
+  confirm.disabled=!value.value.trim()||(choice.value===variant&&value.value===String(field.value));
+ }
+ choice.onchange=refresh;
+ value.oninput=()=>{confirm.disabled=!value.value.trim()||(choice.value===variant&&value.value===String(field.value))};
+ confirm.onclick=()=>vscode.postMessage({type:'selectorSource',path:parts.slice(0,-1),variant:choice.value,value:value.value,revision:current.revision,version:current.version});
+ bar.append(choice,value,confirm,candidates);
+ return bar
+}
 function compactGrid(fields,style){const grid=document.createElement('div');grid.className='property-grid'+(style?' '+style:'');for(const item of fields){const entry=document.createElement('div');entry.className='field-entry'+(fieldNeedsWide(item)?' wide':'');const lab=document.createElement('label');lab.textContent=friendlyLabel(item);lab.title=pathText(item.path);if(style==='object-fields'){const labels=document.createElement('div');labels.className='object-field-label';labels.append(lab);if(item.description){const desc=document.createElement('span');desc.className='object-field-description';desc.textContent=item.description;labels.append(desc)}entry.append(labels)}else entry.append(lab);entry.append(makeInput(item));const ref=variableReferenceLink(item);if(ref)entry.append(ref);grid.append(entry)}return grid}
 
 function variableDefinition(path){return path.length===3&&path[1]==='variables'?current?.variableDefinitions?.[path[2]]:undefined}
