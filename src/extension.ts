@@ -548,6 +548,32 @@ class AssessmentEditorProvider {
         const previews = await previewRegexSafe(message.patterns.filter((pattern: any) => typeof pattern === 'string'), message.input, typeof message.flags === 'string' ? message.flags : '', 100);
         panel.webview.postMessage({ type: 'regexPreviewResult', previews }); return;
       }
+      if (message.type === 'regexList') {
+        try {
+          const revision = sha256(document.getText());
+          if (message.revision !== revision ||
+              (message.version !== undefined && message.version !== document.version))
+            throw new Error('Document changed before regex edit; refresh and retry.');
+          const path = message.path;
+          if (!Array.isArray(path) || path[0] !== 'assessment' || path[1] !== 'tests' ||
+              path.at(-1) !== 'matches_regex' || !path.includes('require') || !path.includes('fields'))
+            throw new Error('Invalid Require regex-list path.');
+          const pack = this.getPack();
+          if (!pack) throw new Error('A verified pinned schema pack is required.');
+          const source = new SourceBuffer(document.getText());
+          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const before = pack.validate(schemaUri, source.json());
+          const edit = source.editRegexList(path, message.action, revision, message.value, message.index);
+          const after = pack.validate(schemaUri, edit.document.json());
+          const introduced = after.filter((error: string) => !before.includes(error));
+          if (introduced.length) throw new Error('Regex edit violates the pinned schema: ' + introduced.join('; '));
+          await applySourceWorkspaceEdit(api, document, edit);
+        } catch (error) {
+          panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+          send();
+        }
+        return;
+      }
       if (message.type === 'selectorSource') {
         try {
           const revision = sha256(document.getText());
