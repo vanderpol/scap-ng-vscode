@@ -2,6 +2,7 @@ import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
+import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -134,41 +135,36 @@ function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): stri
  * Object selectors use the actual capability schema, whereas Require fields
  * use the shared scalar predicate grammar. No per-capability operator lists.
  */
+/** Capability-scoped operations shared with the Red Hat YAML completion adapter.
+ * Never expand a single selector to the generic all-datatype vocabulary.
+ */
 export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment' || path.length < 5) return [];
-  const operation = String(path.at(-1));
-  const parentPath = path.slice(0, -1);
-  const objectIndex = parentPath.lastIndexOf('object');
-  const isObjectSelector = objectIndex >= 0 && objectIndex === parentPath.length - 2;
-  const isRequireField = parentPath.includes('require') &&
-    parentPath[parentPath.indexOf('require') + 1] === 'fields' &&
-    parentPath.length === parentPath.indexOf('require') + 3;
-  let locations: any[] = [];
-  if (isObjectSelector) {
-    let obj: any = { assessment };
-    for (const part of parentPath.slice(0, objectIndex + 1)) obj = obj?.[part as any];
-    const capability = obj?.capability || (parentPath[1]==='tests' ? assessment?.tests?.[String(parentPath[2])]?.capability : undefined);
-    const uri = typeof capability === 'string' ? (pack.manifest.capabilities as any)?.[capability]?.schema_uri : undefined;
-    if (!uri) return [];
-    const selector = String(parentPath[objectIndex + 1]).replaceAll('~','~0').replaceAll('/','~1');
-    locations = schemaNodes(pack, uri + '#/$defs/object/properties/' + selector);
-  } else if (isRequireField) {
-    const schemaUri = pack.manifest.resources.find((resource: any) =>
-      resource.kind === 'schema' && resource.uri.endsWith('/assessment-language.schema.json'))?.uri;
-    if (!schemaUri) return [];
-    locations = schemaNodes(pack, schemaUri + '#/$defs/scalar_field_predicate');
-  } else return [];
-  const names = new Set<string>();
-  for (const location of locations) {
-    for (const name of Object.keys(location.node.properties || {})) names.add(name);
-    // Alternative branches may require exactly one comparison operation.
-    for (const key of ['oneOf','anyOf']) for (const branch of location.node[key] || [])
-      for (const name of Object.keys(branch.properties || {})) names.add(name);
+  const operation=String(path.at(-1));
+  const parent=path.slice(0,-1);
+  const objectIndex=parent.lastIndexOf('object');
+  let capability: string | undefined, field: string | undefined;
+  let requireField=false;
+  if(objectIndex>=0 && objectIndex===parent.length-2){
+    let obj:any={assessment};
+    for(const part of parent.slice(0,objectIndex+1))obj=obj?.[part as any];
+    capability=obj?.capability || (parent[1]==='tests'?assessment?.tests?.[String(parent[2])]?.capability:undefined);
+    field=String(parent.at(-1));
+  }else{
+    const req=parent.indexOf('require');
+    if(req<0||parent[req+1]!=='fields'||parent.length!==req+3||parent[1]!=='tests')return [];
+    requireField=true;
+    capability=assessment?.tests?.[String(parent[2])]?.capability;
+    field=String(parent.at(-1));
   }
-  const metadata = new Set(['datatype','values_found','values_matching','value_match',
-    'redact_result','items_found','items_satisfying']);
-  const allowed = [...names].filter(name => !metadata.has(name));
-  return allowed.includes(operation) ? allowed : [];
+  if(typeof capability!=='string'||!field)return [];
+  try {
+    // Reuse the completion resolver: it intersects the capability-specific
+    // propertyNames contract with required oneOf alternatives.
+    const choices=selectorOperatorChoices(pack,capability,field,requireField)
+      .map(choice=>choice.value);
+    return choices.includes(operation)?choices:[];
+  }catch{return []}
 }
 /** Return contextual authoring help from the exact pinned capability predicate. */
 function contextualFieldDescription(pack: MetadataPack | undefined, assessment: any, path: EditPath): string {
