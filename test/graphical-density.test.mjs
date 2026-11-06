@@ -576,3 +576,14 @@ test('Require contextual help is not copied from arbitrary first scalar into gro
  assert.match(html,/function renderHelp\(focused\)/);
  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
 });
+
+test('Object Variable source is rendered once with the source selector and retained navigation link',()=>{
+ const html=graphicalHtml();
+ const start=html.indexOf('function compactGrid(fields,style)');
+ const end=html.indexOf('function variableDefinition(path)',start);
+ const grid=html.slice(start,end);
+ assert.match(grid,/const chooser=style==='object-fields'\?sourceChoiceForObject\(item\):null/);
+ assert.match(grid,/if\(chooser\)entry\.append\(chooser\);else entry\.append\(makeInput\(item\)\)/);
+ assert.doesNotMatch(grid,/entry\.append\(makeInput\(item\)\);if\(style==='object-fields'\)/);
+ assert.match(grid,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
+});
