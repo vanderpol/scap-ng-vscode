@@ -25,3 +25,8 @@ unresolved source choices and are not replaced automatically.
 The schema does not provide a generic “variable reference” wrapper outside these
 specific alternatives. The editor therefore does not invent one, and it does
 not expose Organizational Inputs as Object-selector sources.
+
+## Visual evidence
+
+- [Unified graphical-controls capture](evidence/graphical-unified-controls-20261106.png)
+- [Extension Host graphical surface](evidence/issue-44-revised-host-1920x1080.png)
