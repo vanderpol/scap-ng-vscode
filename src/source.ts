@@ -1,5 +1,5 @@
 /** Range edits for the future TextDocument host; no reserialization (#2/#7). */
-import { parseDocument, isScalar, isAlias, isMap, stringify } from 'yaml';
+import { parseDocument, isScalar, isAlias, isMap, isSeq, stringify } from 'yaml';
 import { sha256, type Json } from './metadata.js';
 
 export function sourceRevisionMatches(text: string, expectedHash: string, version?: number, expectedVersion?: number) {
@@ -51,6 +51,41 @@ export class SourceBuffer {
       throw new Error('Selector contains additional operations or anchors; use YAML to change its source');
     const [start, end] = node.range;
     const replacement = '{' + variant + ': ' + JSON.stringify(value) + '}';
+    const next = this.text.slice(0, start) + replacement + this.text.slice(end);
+    assertYaml(next);
+    return { document: new SourceBuffer(next), range: [start, end] as [number, number], replacement,
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
+  /** Edit an authored regex array with a single source-local splice. A sequence with
+   * comments, anchors or non-string Items is declined to prevent silent loss.
+   * The host must additionally validate the resulting document against the pinned schema.
+   */
+  editRegexList(path: (string | number)[], action: 'add' | 'remove', expectedHash: string, value?: string, index?: number) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    if (path.at(-1) !== 'matches_regex' || !path.includes('require') || !path.includes('fields'))
+      throw new Error('Only authored Require regex lists are supported.');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source.');
+    const sequence: any = doc.getIn(path, true);
+    if (!isSeq(sequence) || !Array.isArray(sequence.range) || sequence.anchor || sequence.tag ||
+        sequence.items.some((item: any) => !isScalar(item) || item.anchor || item.tag || typeof item.value !== 'string'))
+      throw new Error('Regex list contains unsupported YAML features; use native YAML.');
+    const [start, end] = sequence.range;
+    const sourceFragment = this.text.slice(start, end);
+    if (sourceFragment.includes('#') && /(?:^|[\\r\\n])[ \\t]*#/.test(sourceFragment))
+      throw new Error('Regex list contains comments; edit in native YAML to preserve them.');
+    const originals: string[] = sequence.items.map((item: any) => item.value);
+    if (action === 'add') {
+      if (typeof value !== 'string' || !value.trim()) throw new Error('Enter a non-empty regex pattern.');
+      originals.push(value);
+    } else if (action === 'remove') {
+      if (!Number.isInteger(index) || index! < 0 || index! >= originals.length)
+        throw new Error('Regex pattern index is invalid.');
+      if (originals.length <= 1) throw new Error('Cannot remove the final regex pattern.');
+      originals.splice(index!, 1);
+    } else throw new Error('Invalid regex-list action.');
+    const replacement = JSON.stringify(originals);
     const next = this.text.slice(0, start) + replacement + this.text.slice(end);
     assertYaml(next);
     return { document: new SourceBuffer(next), range: [start, end] as [number, number], replacement,
