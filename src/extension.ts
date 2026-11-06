@@ -114,7 +114,7 @@ function yamlServiceLabel(api: any) { const extension = api.extensions?.getExten
 function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!)); }
 
 
-import { modelFor, assessmentEditorModel } from './structured-model.js';
+import { modelFor, assessmentEditorModel, comparisonOperations } from './structured-model.js';
 
 function regexTesterHtml() {
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-regex-tester';"><style>
@@ -588,6 +588,10 @@ class AssessmentEditorProvider {
             throw new Error('Comparison path/operator was not authorized by the editor.');
           const source=new SourceBuffer(document.getText());
           const before: any=source.json();
+          const prior=valueAtPathForGraphical(before,path);
+          const existing=prior && typeof prior==='object'&&!Array.isArray(prior) ? Object.keys(prior) : [];
+          const legal=existing.length===1 ? comparisonOperations(this.getPack(),before?.assessment,[...path,existing[0]]) : [];
+          if(!legal.includes(op))throw new Error('The pinned schema does not permit this operator in the selected field.');
           if(op==='variable' &&
              (typeof message.value!=='string'||!Object.hasOwn(before?.assessment?.variables||{},message.value)))
             throw new Error('Select an existing Assessment Variable.');
