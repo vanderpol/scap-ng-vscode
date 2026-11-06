@@ -75,37 +75,18 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
  * inline Test Objects, Shared Objects, and nested Variable collection expressions.
  * The pinned capability schema is the only source of enum options.
  */
+/** Finite selector values must come from the same capability map as YAML completion. */
 function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
-  if (!pack || path[0] !== 'assessment' || path.at(-1) !== 'equals') return [];
-  const objectIndex = path.lastIndexOf('object');
-  if (objectIndex < 0 || objectIndex + 2 !== path.length - 1) return [];
-  const selector = String(path[objectIndex + 1]);
-  let source: any = { assessment };
-  for (const key of path.slice(0, objectIndex + 1)) source = source?.[key as any];
-  const capability = source?.capability;
-  if (typeof capability !== 'string') return [];
-  const uri = (pack.manifest.capabilities as any)?.[capability]?.schema_uri;
-  if (typeof uri !== 'string') return [];
-  const escape = (name: string) => name.replaceAll('~', '~0').replaceAll('/', '~1');
-  const propertyUri = uri + '#/$defs/object/properties/' + escape(selector);
-  const options = new Set<string>();
-  const collect = (node: any, depth = 0) => {
-    if (!node || typeof node !== 'object' || depth > 12) return;
-    if (Array.isArray(node.enum)) for (const value of node.enum) if (typeof value === 'string') options.add(value);
-    if (typeof node.const === 'string') options.add(node.const);
-    for (const branch of ['oneOf', 'allOf', 'anyOf']) {
-      if (Array.isArray(node[branch])) for (const child of node[branch]) collect(child, depth + 1);
-    }
-  };
-  for (const location of schemaNodes(pack, propertyUri)) {
-    const equals = location.node.properties?.equals;
-    if (equals) collect(equals);
-    if (equals && typeof equals.$ref === 'string') {
-      const uri = new URL(equals.$ref, location.uri).href;
-      for (const target of schemaNodes(pack, uri)) collect(target.node);
-    }
-  }
-  return [...options];
+  if(!pack||path[0]!=='assessment'||path.at(-1)!=='equals')return [];
+  const objectIndex=path.lastIndexOf('object');
+  if(objectIndex<0||objectIndex+2!==path.length-1)return [];
+  let obj:any={assessment};
+  for(const part of path.slice(0,objectIndex+1))obj=obj?.[part as any];
+  const capability=obj?.capability || (path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
+  const field=String(path[objectIndex+1]);
+  if(typeof capability!=='string')return [];
+  try{return selectorValueChoices(pack,capability,field,'equals',false).map(choice=>choice.value)}
+  catch{return []}
 }
 function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment') return [];
