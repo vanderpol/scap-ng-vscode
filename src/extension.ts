@@ -574,6 +574,38 @@ class AssessmentEditorProvider {
         }
         return;
       }
+      if (message.type === 'comparisonChange') {
+        try {
+          const revision=sha256(document.getText());
+          if(message.revision!==revision || (message.version!==undefined&&message.version!==document.version))
+            throw new Error('Document changed before comparison edit; reload and retry.');
+          const path=message.path, op=message.operation;
+          if(!Array.isArray(path)||path[0]!=='assessment'||typeof op!=='string'||
+             !Array.isArray(message.allowedOperations)||!message.allowedOperations.includes(op)||
+             !((path[1]==='tests'&&path.includes('object'))||
+               (path[1]==='tests'&&path.includes('require')&&path.includes('fields'))||
+               path[1]==='shared_objects'||(path[1]==='variables'&&path.includes('object'))))
+            throw new Error('Comparison path/operator was not authorized by the editor.');
+          const source=new SourceBuffer(document.getText());
+          const before: any=source.json();
+          if(op==='variable' &&
+             (typeof message.value!=='string'||!Object.hasOwn(before?.assessment?.variables||{},message.value)))
+            throw new Error('Select an existing Assessment Variable.');
+          const pack=this.getPack();
+          if(!pack)throw new Error('Pinned offline schema pack is required.');
+          const schemaUri='https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const earlier=pack.validate(schemaUri,before);
+          const edit=source.replaceComparison(path,op,message.value,revision);
+          const later=pack.validate(schemaUri,edit.document.json());
+          const introduced=later.filter((error:string)=>!earlier.includes(error));
+          if(introduced.length)throw new Error('Pinned schema rejects this comparison: '+introduced.join('; '));
+          await applySourceWorkspaceEdit(api,document,edit);
+        }catch(error){
+          panel.webview.postMessage({type:'error',message:error instanceof Error?error.message:String(error)});
+          send();
+        }
+        return;
+      }
       if (message.type === 'selectorSource') {
         try {
           const revision = sha256(document.getText());
