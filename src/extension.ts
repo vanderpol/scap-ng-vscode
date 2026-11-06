@@ -114,7 +114,7 @@ function yamlServiceLabel(api: any) { const extension = api.extensions?.getExten
 function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!)); }
 
 
-import { modelFor, assessmentEditorModel, comparisonOperations } from './structured-model.js';
+import { modelFor, assessmentEditorModel, comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from './structured-model.js';
 
 function regexTesterHtml() {
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-regex-tester';"><style>
@@ -588,18 +588,26 @@ class AssessmentEditorProvider {
             throw new Error('Comparison path/operator was not authorized by the editor.');
           const source=new SourceBuffer(document.getText());
           const before: any=source.json();
-          const prior=valueAtPathForGraphical(before,path);
-          const existing=prior && typeof prior==='object'&&!Array.isArray(prior) ? Object.keys(prior) : [];
-          const legal=existing.length===1 ? comparisonOperations(this.getPack(),before?.assessment,[...path,existing[0]]) : [];
-          if(!legal.includes(op))throw new Error('The pinned schema does not permit this operator in the selected field.');
-          if(op==='variable' &&
-             (typeof message.value!=='string'||!Object.hasOwn(before?.assessment?.variables||{},message.value)))
-            throw new Error('Select an existing Assessment Variable.');
           const pack=this.getPack();
           if(!pack)throw new Error('Pinned offline schema pack is required.');
+          const prior=valueAtPathForGraphical(before,path);
+          const existing=prior && typeof prior==='object'&&!Array.isArray(prior) ? Object.keys(prior) : [];
+          const operationPath=existing.length===1?[...path,existing[0]]:[];
+          const legal=operationPath.length ? comparisonOperations(pack,before?.assessment,operationPath,true) : [];
+          if(!legal.includes(op))throw new Error('The pinned schema does not permit this operator in the selected field.');
+          const valueSource=typeof message.source==='string'?message.source:'fixed';
+          const allowedSources=operationPath.length?comparisonValueSources(pack,before?.assessment,operationPath):[];
+          if(!allowedSources.includes(valueSource))throw new Error('The pinned schema does not permit this value source in the selected field.');
+          if((valueSource==='variable'||valueSource==='input') && typeof message.value!=='string')throw new Error('Select a named value source.');
+          if(valueSource==='variable'){
+            if(!Object.hasOwn(before?.assessment?.variables||{},message.value))throw new Error('Select an existing Assessment Variable.');
+            if(!comparisonVariableCompatible(pack,before?.assessment,operationPath,message.value))throw new Error('The selected Variable datatype is incompatible with this field.');
+          }
+          if(valueSource==='input' && !Object.hasOwn(before?.assessment?.inputs||{},message.value))throw new Error('Select an existing Organizational Input.');
+          const replacementValue=valueSource==='variable'||valueSource==='input'?{[valueSource]:message.value}:message.value;
           const schemaUri='https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
           const earlier=pack.validate(schemaUri,before);
-          const edit=source.replaceComparison(path,op,message.value,revision);
+          const edit=source.replaceComparison(path,op,replacementValue,revision);
           const later=pack.validate(schemaUri,edit.document.json());
           const introduced=later.filter((error:string)=>!earlier.includes(error));
           if(introduced.length)throw new Error('Pinned schema rejects this comparison: '+introduced.join('; '));
@@ -620,7 +628,8 @@ class AssessmentEditorProvider {
           const variant = message.variant;
           if (!Array.isArray(path) || path[0] !== 'assessment' ||
               !(path[1] === 'tests' && path[3] === 'object' ||
-                path[1] === 'shared_objects' && path.length >= 4) ||
+                path[1] === 'shared_objects' && path.length >= 4 ||
+                path[1] === 'variables' && path.lastIndexOf('object') >= 3) ||
               !['equals', 'variable'].includes(variant) ||
               typeof message.value !== 'string' || !message.value.length)
             throw new Error('Invalid Object selector source request');
@@ -635,6 +644,9 @@ class AssessmentEditorProvider {
             throw new Error('This Object selector cannot be switched safely; use native YAML.');
           const pack = this.getPack();
           if (!pack) throw new Error('A pinned offline schema pack is required.');
+          const originalOperation = String(Object.keys(original)[0]);
+          if (variant === 'variable' && !comparisonVariableCompatible(pack, authored?.assessment, [...path, originalOperation], message.value))
+            throw new Error('The selected Variable datatype is incompatible with this Object selector.');
           const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
           const before = pack.validate(schemaUri, source.json());
           const edit = source.replaceSelectorSource(path, variant, message.value, revision);

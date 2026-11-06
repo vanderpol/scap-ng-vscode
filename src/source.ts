@@ -106,8 +106,12 @@ export class SourceBuffer {
         node.items.length !== 1 || !isScalar(node.items[0]?.key) ||
         node.items[0]?.key?.anchor || node.items[0]?.key?.tag)
       throw new Error('Only simple one-operation mappings can be changed safely.');
+    const variableOrInput = !!(value && typeof value === 'object' && !Array.isArray(value) &&
+      Object.keys(value).length === 1 &&
+      ((Object.hasOwn(value, 'variable') && typeof (value as any).variable === 'string') ||
+       (Object.hasOwn(value, 'input') && typeof (value as any).input === 'string')));
     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean' &&
-        !(Array.isArray(value) && value.every(v => typeof v === 'string')))
+        !(Array.isArray(value) && value.every(v => typeof v === 'string')) && !variableOrInput)
       throw new Error('Unsupported comparison value; use native YAML.');
     const [start, end] = node.range;
     const content = this.text.slice(start, end);

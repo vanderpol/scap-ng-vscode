@@ -1,6 +1,7 @@
 import { stringify } from 'yaml';
 import { MetadataPack, type Json } from './metadata.js';
 import { schemaNodes } from './schema-resolver.js';
+import { selectorOperatorChoices } from './completion.js';
 
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedObjectField {
@@ -77,7 +78,16 @@ export class GuidedCatalog {
   fieldValuesMatching(): GuidedOption[] { return choices(this.pack, schemaBase + 'assessment-language.schema.json#/$defs/paired_requirement/properties/values_matching'); }
   reportedElements(): GuidedOption[] { return choices(this.pack, schemaBase + 'reported-elements.schema.json'); }
   logicalOperators(): GuidedOption[] {
-    return ['and', 'or', 'one', 'xor'].map(value => ({ value, label: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.label ?? value, description: vocabulary(this.pack).term_scopes?.[`assessment.evaluate.${value}`]?.description }));
+    const uri = schemaBase + 'expression.schema.json#/$defs/expression';
+    const terms = vocabulary(this.pack).term_scopes ?? {};
+    const values = new Set<string>();
+    for (const location of schemaNodes(this.pack, uri)) {
+      for (const value of location.node.required ?? []) {
+        const property = location.node.properties?.[value];
+        if (property?.type === 'array') values.add(value);
+      }
+    }
+    return [...values].map(value => ({ value, label: terms[`assessment.evaluate.${value}`]?.label ?? value, description: terms[`assessment.evaluate.${value}`]?.description }));
   }
   capabilityObjectSchema(capability: string) { return this.pack.manifest.capabilities[capability]?.schema_uri; }
   objectFields(capability: string): GuidedObjectField[] {
@@ -89,7 +99,7 @@ export class GuidedCatalog {
       const pointer = uri + '#/$defs/object/properties/' + name.replace(/~/g, '~0').replace(/\//g, '~1');
       const help = this.pack.describe(pointer, schemaContext(this.pack));
       const datatypes = datatypeValues(spec).length ? datatypeValues(spec) : schemaTypes(spec);
-      const operations = help.choices.filter((value: Json): value is string => typeof value === 'string').map(value => ({ value, label: value, description: help.description || undefined }));
+      const operations = selectorOperatorChoices(this.pack, capability, name, false).map(option => ({ value: option.value, label: option.label, description: option.description }));
       return { name, label: help.title || name, description: help.description, datatype: datatypes[0] ?? 'string', datatypes, operations, enumValues: selectorEnumValues(this.pack, pointer) };
     });
   }
@@ -115,12 +125,14 @@ export class GuidedCatalog {
         const property = branch.properties?.[name]; if (property?.description) return property.description;
         try { return this.pack.describe(`${uri}#/$defs/state_predicate/${Array.isArray(predicate.oneOf) ? 'oneOf' : 'anyOf'}/${index}/properties/${name}`, { documentVersion: this.pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }).description; } catch { return ''; }
       }).find(Boolean) || undefined;
-      return { name, label: name, description, datatype: datatypes[0] ?? 'string', datatypes, operations: this.operations() };
+      const operations = selectorOperatorChoices(this.pack, capability, name, true).map(option => ({ value: option.value, label: option.label, description: option.description }));
+      return { name, label: name, description, datatype: datatypes[0] ?? 'string', datatypes, operations };
     });
   }
   operations() {
-    const vocabularyOperations = vocabulary(this.pack).operations ?? {}; const predicate = this.pack.resource(schemaBase + 'assessment-language.schema.json').$defs?.scalar_field_predicate?.properties ?? {};
-    return Object.keys(predicate).filter(name => !['values_found', 'values_matching', 'datatype', 'value_match', 'redact_result'].includes(name)).map(value => ({ value, label: vocabularyOperations[value]?.label ?? value, description: vocabularyOperations[value]?.description }));
+    const vocabularyOperations = vocabulary(this.pack).operations ?? {};
+    const predicate = this.pack.resource(schemaBase + 'assessment-language.schema.json').$defs?.scalar_field_predicate?.properties ?? {};
+    return Object.keys(predicate).filter(name => Object.hasOwn(vocabularyOperations, name) || name === 'case_insensitive_not_equal').map(value => ({ value, label: vocabularyOperations[value]?.label ?? value, description: vocabularyOperations[value]?.description }));
   }
 }
 

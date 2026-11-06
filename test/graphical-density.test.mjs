@@ -208,7 +208,7 @@ test('Variable UI preserves source-edit controls and never presents runtime-deri
   assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\)/);
   assert.match(html,/No target system is queried by this editor/);
   assert.match(html,/no registry value was collected, regex executed, or resulting command run/);
-  assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.match(html,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields,gridStyleForFields\(fields\)\)\)/);
 });
 
 
@@ -456,7 +456,7 @@ test('Variable stages share heading/help row and all property forms align labels
   const inspector=html.slice(start,end);
   assert.ok(start>=0&&end>start);
   assert.match(inspector,/help\.textContent=step\.note;heading\.append\(help\)/);
-  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields\)\)/);
+  assert.match(inspector,/const fields=stepControls\(step\);if\(fields\.length\)card\.append\(compactGrid\(fields,gridStyleForFields\(fields\)\)\)/);
   assert.doesNotMatch(inspector,/help\.textContent=step\.note;card\.append\(help\)/);
 });
 
@@ -511,12 +511,12 @@ test('Object controls retain source-provided enumerations, rather than inventing
 test('Object selector source control switches typed string mappings through revision-safe host action',()=>{
  const html=graphicalHtml();
  assert.match(html,/function sourceChoiceForObject\(field\)/);
- assert.match(html,/if\(!inTest&&!inShared\|\|field\.kind!=='string'\)return null/);
+ assert.match(html,/if\(!inTest&&!inShared&&!inVariable\|\|field\.kind!=='string'\)return null/);
  assert.match(html,/\['equals','Fixed value'\]/);
  assert.match(html,/\['variable','Variable reference'\]/);
  assert.match(html,/type:'selectorSource',path:parts\.slice\(0,-1\)/);
  assert.match(html,/revision:current\.revision,version:current\.version/);
- assert.match(html,/style==='object-fields'\)\{const chooser=sourceChoiceForObject\(item\)/);
+ assert.match(html,/const chooser=style==='object-fields'\?sourceChoiceForObject\(item\):null/);
  assert.match(html,/\.object-source-switch\{grid-column:2;display:grid/);
 });
 
@@ -543,11 +543,13 @@ test('Require regex list has Add and Remove controls guarded by source revision'
 test('shared Object control combines schema operator, Variable source and value on one row',()=>{
  const html=graphicalHtml();
  assert.match(html,/function operationChoiceForField\(field\)/);
- assert.match(html,/mode\.value===original/);
- assert.match(html,/mode\.value==='variable'/);
+ assert.match(html,/currentOperation\(\)/);
+ assert.match(html,/currentSource\(\)/);
+ assert.match(html,/Fixed value/);
+ assert.match(html,/Variable reference/);
  assert.match(html,/Object\.keys\(current\?\.variableDefinitions\|\|\{\}\)/);
  assert.match(html,/type:'comparisonChange'/);
- assert.match(html,/operation:mode\.value,value:val,allowedOperations:options/);
+ assert.match(html,/operation:op,source:selected,value,allowedOperations:options/);
  assert.match(html,/const operators=\(style==='object-fields'\|\|style==='comparison-fields'\)\?operationChoiceForField\(item\):null/);
  assert.match(html,/if\(operators\)\{entry\.append\(operators\)\}/);
  assert.match(html,/\.operator-choice\{grid-column:2;display:grid/);
@@ -575,4 +577,15 @@ test('Require contextual help is not copied from arbitrary first scalar into gro
  assert.doesNotMatch(card,/field-schema-note/);
  assert.match(html,/function renderHelp\(focused\)/);
  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
+});
+
+test('Object Variable source is rendered once with the source selector and retained navigation link',()=>{
+ const html=graphicalHtml();
+ const start=html.indexOf('function compactGrid(fields,style)');
+ const end=html.indexOf('function variableDefinition(path)',start);
+ const grid=html.slice(start,end);
+ assert.match(grid,/const chooser=style==='object-fields'\?sourceChoiceForObject\(item\):null/);
+ assert.match(grid,/if\(chooser\)entry\.append\(chooser\);else entry\.append\(makeInput\(item\)\)/);
+ assert.doesNotMatch(grid,/entry\.append\(makeInput\(item\)\);if\(style==='object-fields'\)/);
+ assert.match(grid,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
 });

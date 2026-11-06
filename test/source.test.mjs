@@ -184,6 +184,17 @@ test('Object selector source can change Variable to fixed string and back withou
  assert.ok(variable.document.text.includes('# keep'));
  assert.throws(()=>source.replaceSelectorSource(path,'equals','cmd','stale'),/Stale/);
 });
+test('Require comparison fixed and Variable sources round-trip with atomic undo',()=>{
+ const raw='# keep\nassessment:\n  tests:\n    sample-test:\n      require:\n        fields: {type: {equals: dword}, value: {equals: 1}} # sibling\n';
+ const path=['assessment','tests','sample-test','require','fields','type'];
+ const source=new SourceBuffer(raw);
+ const variable=source.replaceComparison(path,'equals',{variable:'registry-type-variable'},sha256(raw));
+ assert.deepEqual(variable.document.json().assessment.tests['sample-test'].require.fields.type.equals,{variable:'registry-type-variable'});
+ assert.match(variable.document.text,/# keep/);assert.match(variable.document.text,/value: \{equals: 1\}/);assert.equal(variable.undo().text,raw);
+ const fixed=variable.document.replaceComparison(path,'equals','dword',sha256(variable.document.text));
+ assert.equal(fixed.document.json().assessment.tests['sample-test'].require.fields.type.equals,'dword');assert.equal(fixed.undo().text,variable.document.text);
+ assert.throws(()=>source.replaceComparison(path,'equals',{variable:'x',input:'y'},sha256(raw)),/Unsupported/);
+});
 test('Object source replacement refuses ambiguous mappings, anchors and empty literals',()=>{
  const path=['object','command'];
  for(const raw of ['object: {command: {variable: id, equals: x}}',

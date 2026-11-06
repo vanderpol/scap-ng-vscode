@@ -2,7 +2,7 @@ import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
-import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
+import { selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -68,6 +68,21 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
   return `Collect ${capability}${objectValues.length ? ` (${objectValues.join(', ')}` : ''}${objectValues.length ? ')' : ''}; pass conditions require ${itemText}${satisfyText}${fieldText}${condition}.${evaluate}${inputBranch}${variableChain} This is an authoring explanation, not a scanner result.`;
 }
 
+function objectSelectorContext(assessment: any, path: EditPath) {
+  if (path[0] !== 'assessment' || path.at(-1) !== 'equals' && path.at(-1) !== 'variable') return undefined;
+  const objectIndex = path.lastIndexOf('object');
+  if (objectIndex >= 0 && objectIndex + 2 === path.length - 1) {
+    let object: any = { assessment };
+    for (const part of path.slice(0, objectIndex + 1)) object = object?.[part as any];
+    const capability = object?.capability || (path[1] === 'tests' ? assessment?.tests?.[String(path[2])]?.capability : undefined);
+    return typeof capability === 'string' ? { capability, field: String(path[objectIndex + 1]) } : undefined;
+  }
+  if (path[1] === 'shared_objects' && path.length === 5) {
+    const object = assessment?.shared_objects?.[String(path[2])];
+    return typeof object?.capability === 'string' ? { capability: object.capability, field: String(path[3]) } : undefined;
+  }
+  return undefined;
+}
 /** Allowed scalar Object values from the pinned capability-specific schema.
  * Resolve the actual property and comparison branch, not arbitrary YAML paths.
  */
@@ -77,16 +92,11 @@ export function explainAssessment(value: Json, pack?: MetadataPack): string {
  */
 /** Finite selector values must come from the same capability map as YAML completion. */
 function objectScalarChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
-  if(!pack||path[0]!=='assessment'||path.at(-1)!=='equals')return [];
-  const objectIndex=path.lastIndexOf('object');
-  if(objectIndex<0||objectIndex+2!==path.length-1)return [];
-  let obj:any={assessment};
-  for(const part of path.slice(0,objectIndex+1))obj=obj?.[part as any];
-  const capability=obj?.capability || (path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
-  const field=String(path[objectIndex+1]);
-  if(typeof capability!=='string')return [];
-  try{return selectorValueChoices(pack,capability,field,'equals',false).map(choice=>choice.value)}
-  catch{return []}
+  if (!pack) return [];
+  const context = objectSelectorContext(assessment, path);
+  if (!context) return [];
+  try { return selectorValueChoices(pack, context.capability, context.field, 'equals', false).map(choice => choice.value); }
+  catch { return []; }
 }
 function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): string[] {
   if (!pack || path[0] !== 'assessment') return [];
@@ -119,74 +129,135 @@ function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): stri
 /** Capability-scoped operations shared with the Red Hat YAML completion adapter.
  * Never expand a single selector to the generic all-datatype vocabulary.
  */
-export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
-  if (!pack || path[0] !== 'assessment' || path.length < 5) return [];
-  const operation=String(path.at(-1));
-  const parent=path.slice(0,-1);
-  const objectIndex=parent.lastIndexOf('object');
-  let capability: string | undefined, field: string | undefined;
-  let requireField=false;
-  if(objectIndex>=0 && objectIndex===parent.length-2){
-    let obj:any={assessment};
-    for(const part of parent.slice(0,objectIndex+1))obj=obj?.[part as any];
-    capability=obj?.capability || (parent[1]==='tests'?assessment?.tests?.[String(parent[2])]?.capability:undefined);
-    field=String(parent.at(-1));
-  }else{
-    const req=parent.indexOf('require');
-    if(req<0||parent[req+1]!=='fields'||parent.length!==req+3||parent[1]!=='tests')return [];
-    requireField=true;
-    capability=assessment?.tests?.[String(parent[2])]?.capability;
-    field=String(parent.at(-1));
-  }
-  if(typeof capability!=='string'||!field)return [];
-  try {
-    // Reuse the completion resolver: it intersects the capability-specific
-    // propertyNames contract with required oneOf alternatives.
-    const choices=selectorOperatorChoices(pack,capability,field,requireField)
-      .map(choice=>choice.value);
-    return choices.includes(operation)?choices:[];
-  }catch{return []}
+function comparisonContext(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
+  if (!pack || path[0] !== 'assessment' || path.length < 5) return undefined;
+  const parent = path.slice(0, -1);
+  const objectPath = parent.concat('equals');
+  const objectContext = objectSelectorContext(assessment, objectPath);
+  if (objectContext && parent.at(-1) === objectContext.field) return { ...objectContext, requireField: false };
+  const requireIndex = parent.indexOf('require');
+  if (requireIndex < 0 || parent[requireIndex + 1] !== 'fields' || parent.length !== requireIndex + 3 || parent[1] !== 'tests') return undefined;
+  const capability = assessment?.tests?.[String(parent[2])]?.capability;
+  const field = String(parent.at(-1));
+  return typeof capability === 'string' ? { capability, field, requireField: true } : undefined;
 }
+
+function comparisonDescriptor(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
+  if (!pack) return undefined;
+  const tail = String(path.at(-1) ?? '');
+  const operationPath = tail === 'variable' || tail === 'input' ? path.slice(0, -1) : path;
+  const context = comparisonContext(pack, assessment, operationPath);
+  if (!context) return undefined;
+  return { ...context, operationPath, operation: String(operationPath.at(-1)), source: tail === 'variable' || tail === 'input' ? tail : 'fixed' };
+}
+
+function authoredComparisonDatatype(assessment: any, operationPath: EditPath): string | undefined {
+  const datatype = operationPath.slice(0, -1).concat('datatype');
+  let value: any = assessment;
+  for (const part of datatype.slice(1)) value = value?.[part as any];
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function comparisonValueSources(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  return selectorValueSourceChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField);
+}
+
+export function comparisonOperatorDescriptions(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): Record<string, string> {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return {};
+  try {
+    const choices = selectorOperatorChoices(pack, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath));
+    const result = Object.fromEntries(choices.map(choice => [choice.value, choice.description || choice.label || choice.value]));
+    if (includeIncompatible && descriptor.operation && !Object.hasOwn(result, descriptor.operation)) result[descriptor.operation] = 'Authored operator is not valid for the selected datatype.';
+    return result;
+  } catch { return {}; }
+}
+
+export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): string[] {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor) return [];
+  try {
+    const allowed = selectorOperatorChoices(pack!, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath)).map(choice => choice.value);
+    if (includeIncompatible && descriptor.operation && !allowed.includes(descriptor.operation)) return [...allowed, descriptor.operation];
+    return allowed.includes(descriptor.operation) ? allowed : [];
+  } catch { return []; }
+}
+
+function comparisonValueChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField).map(choice => choice.value); }
+  catch { return []; }
+}
+
+function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
+  const current = comparisonValueChoices(pack, assessment, path);
+  if (current.length) return current;
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  if (!descriptor || !pack) return [];
+  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, 'equals', descriptor.requireField).map(choice => choice.value); }
+  catch { return []; }
+}
+
+export function comparisonVariableCompatible(pack: MetadataPack | undefined, assessment: any, path: EditPath, variableId: string): boolean {
+  const descriptor = comparisonDescriptor(pack, assessment, path);
+  const variable = assessment?.variables?.[variableId];
+  if (!descriptor || !variable || typeof variable.datatype !== 'string') return false;
+  const datatypes = selectorFieldDatatypes(pack!, descriptor.capability, descriptor.field, descriptor.requireField);
+  return !datatypes.length || datatypes.includes(variable.datatype);
+}
+
 /** Return contextual authoring help from the exact pinned capability predicate. */
 function contextualFieldDescription(pack: MetadataPack | undefined, assessment: any, path: EditPath): string {
   if(!pack||path[0]!=='assessment')return '';
-  const objectAt=path.lastIndexOf('object');
-  if(objectAt>=0&&objectAt+1<path.length){
-    let object:any={assessment};
-    for(const part of path.slice(0,objectAt+1))object=object?.[part as any];
-    const capability=object?.capability||(path[1]==='tests'?assessment?.tests?.[String(path[2])]?.capability:undefined);
-    const uri=typeof capability==='string'?(pack.manifest.capabilities as any)?.[capability]?.schema_uri:undefined;
-    if(uri){
-      const name=String(path[objectAt+1]).replaceAll('~','~0').replaceAll('/','~1');
-      const base=uri+'#/$defs/object/properties/'+name;
-      try{
-        const context={documentVersion:pack.pin.schemaVersion,schemaValid:true,isOverride:false,diagnostics:[]};
-        const hint=pack.describe(base,context);
-        if(hint.description)return hint.description;
-      }catch{}
+  const selector = objectSelectorContext(assessment, path);
+  if (selector) {
+    const capability = selector.capability;
+    const capabilityPin = (pack.manifest.capabilities as any)?.[capability];
+    const fieldName = selector.field;
+    if (capabilityPin) {
+      try {
+        const mapping: any = pack.resource(capabilityPin.mapping_uri);
+        const semantic = mapping.native?.selector_case_semantics?.[fieldName];
+        if (semantic?.description) return 'Select the '+fieldName.replaceAll('_',' ')+' value for '+capability+'. '+semantic.description;
+      } catch {}
+      try {
+        const context = { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] };
+        const hint = pack.describe(capabilityPin.schema_uri+'#/$defs/object/properties/'+fieldName.replaceAll('~','~0').replaceAll('/','~1'), context);
+        if (hint.description) return hint.description;
+      } catch {}
     }
   }
   const reqIndex=path.indexOf('require');
   if(reqIndex>=0&&path[reqIndex+1]==='fields'&&path.length>reqIndex+2){
     const cap=assessment?.tests?.[String(path[2])]?.capability;
+    const name=String(path[reqIndex+2]);
     try{
       const catalog=new GuidedCatalog(pack);
-      const field=catalog.resultFields(cap).find(entry=>entry.name===String(path[reqIndex+2]));
-      if(field?.description)return field.description;
+      const field=catalog.resultFields(cap).find(entry=>entry.name===name);
+      if(field?.description)return 'Compare collected '+name.replaceAll('_',' ')+' values. '+field.description;
     }catch{}
+    return 'Compare collected '+name.replaceAll('_',' ')+' values using the canonical scalar comparison vocabulary.';
   }
   return '';
 }
 /** Never show authoring-implementation metadata as end-user field help. */
 function usefulFieldHelp(schemaDescription:string|undefined, assessment:any, path:EditPath, contextual:string):string {
-  const description=String(schemaDescription||contextual||'').trim();
+  const schemaText=String(schemaDescription||'').trim();
+  const contextualText=String(contextual||'').trim();
   // Metadata may describe a datatype constraint in implementation terminology.
   // Present the intended authoring guidance instead, without inventing semantics.
   if(path.includes('require') && path.includes('fields') && path.at(-1)==='datatype' &&
-     /redundant explicit datatype|self.describing comparison|omitted datatype remains valid/i.test(description))
+     /redundant explicit datatype|self.describing comparison|omitted datatype remains valid/i.test(schemaText))
     return 'Optional datatype declaration. If specified, it must agree with the comparison value type.';
   const generic=/explicit new.authoring selection|preserve source.effective values|selector operator;|visible overrides; no runtime fallback/i;
-  if(description&&!generic.test(description))return description;
+  const genericComparison=/Compare the observed value|Compare observed and expected|Native typed comparison equivalent|A redundant explicit datatype/i;
+  const requireField=path.includes('require')&&path.includes('fields')&&path.length>path.indexOf('fields')+1;
+  if(requireField&&(genericComparison.test(schemaText)||!schemaText)&&contextualText)return contextualText;
+  if(schemaText&&!generic.test(schemaText))return schemaText;
+  if(contextualText&&!generic.test(contextualText))return contextualText;
   const objectIndex=path.lastIndexOf('object');
   if(objectIndex>=0&&objectIndex<path.length-1){
     let object:any={assessment};
@@ -201,7 +272,7 @@ function usefulFieldHelp(schemaDescription:string|undefined, assessment:any, pat
     return 'Comparison applied to the collected '+String(path[req+2]).replaceAll('_',' ')+
       ' field. Only operators supported by this capability are available.';
   }
-  return generic.test(description)?'':description;
+  return generic.test(schemaText)?'':schemaText;
 }
 function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefined {
   if(path.at(-1)!=='variable')return undefined;
@@ -213,10 +284,46 @@ function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefi
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
     const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
-    return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields: scalarEntries(value).map(field => {
+    const fields = scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false; return { ...field, label: help?.title || pathLabel(field.path), description: usefulFieldHelp(help?.description,(value as any)?.assessment,field.path,contextualFieldDescription(pack,(value as any)?.assessment,field.path)), choices: assessmentVariableChoices((value as any)?.assessment,field.path) ?? (testChoiceOptions(pack,field.path).length ? testChoiceOptions(pack,field.path) : objectScalarChoices(pack,(value as any)?.assessment,field.path).length ? objectScalarChoices(pack,(value as any)?.assessment,field.path) : help?.choices || []), pickerOnly: assessmentVariableChoices((value as any)?.assessment,field.path)!==undefined, operatorChoices: comparisonOperations(pack,(value as any)?.assessment,field.path), fixedChoices: field.path.at(-1)==='equals'?objectScalarChoices(pack,(value as any)?.assessment,field.path):objectScalarChoices(pack,(value as any)?.assessment,[...field.path.slice(0,-1),'equals']), suggested: help?.suggested, hasSuggestion: help?.hasSuggestion ?? false, hidden, kind: field.value === null ? 'null' : typeof field.value };
-    }) };
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false;
+      const variableChoices = assessmentVariableChoices((value as any)?.assessment, field.path);
+      const testChoices = testChoiceOptions(pack, field.path);
+      const descriptor = comparisonDescriptor(pack, (value as any)?.assessment, field.path);
+      const comparisonChoices = comparisonValueChoices(pack, (value as any)?.assessment, field.path);
+      const scalarChoices = objectScalarChoices(pack, (value as any)?.assessment, field.path);
+      const sourceChoices = comparisonValueSources(pack, (value as any)?.assessment, field.path);
+      const expressionVariableChoices = sourceChoices.includes('variable') && descriptor ? Object.keys((value as any)?.assessment?.variables || {}).filter(id => comparisonVariableCompatible(pack, (value as any)?.assessment, descriptor.operationPath, id)) : [];
+      const expressionInputChoices = sourceChoices.includes('input') ? Object.keys((value as any)?.assessment?.inputs || {}) : [];
+      const choices = descriptor?.source === 'variable' ? expressionVariableChoices : descriptor?.source === 'input' ? expressionInputChoices : variableChoices ?? (testChoices.length ? testChoices : (comparisonChoices.length ? comparisonChoices : (scalarChoices.length ? scalarChoices : help?.choices || [])));
+      const legalOperators = descriptor ? comparisonOperations(pack, (value as any)?.assessment, descriptor.operationPath) : [];
+      const operatorChoices = descriptor ? comparisonOperations(pack, (value as any)?.assessment, descriptor.operationPath, true) : [];
+      const operatorDescriptions = descriptor ? comparisonOperatorDescriptions(pack, (value as any)?.assessment, descriptor.operationPath, true) : {};
+      const fixedChoices = descriptor ? comparisonFixedChoices(pack, (value as any)?.assessment, descriptor.operationPath) : [];
+      const valueSources = descriptor ? sourceChoices : [];
+      return {
+        ...field,
+        label: help?.title || pathLabel(field.path),
+        description: usefulFieldHelp(help?.description, (value as any)?.assessment, field.path, contextualFieldDescription(pack, (value as any)?.assessment, field.path)),
+        choices,
+        pickerOnly: variableChoices !== undefined,
+        operatorChoices,
+        operatorDescriptions,
+        comparisonOperation: descriptor?.operation,
+        comparisonPath: descriptor?.operationPath,
+        valueSource: descriptor?.source,
+        valueSources,
+        variableChoices: expressionVariableChoices,
+        inputChoices: expressionInputChoices,
+        operatorCompatible: descriptor && operatorChoices.length ? legalOperators.includes(descriptor.operation) : undefined,
+        fixedChoices: fixedChoices.length ? fixedChoices : (field.path.at(-1) === 'equals' ? scalarChoices : objectScalarChoices(pack, (value as any)?.assessment, [...field.path.slice(0, -1), 'equals'])),
+        suggested: help?.suggested,
+        hasSuggestion: help?.hasSuggestion ?? false,
+        hidden,
+        kind: field.value === null ? 'null' : typeof field.value
+      };
+    });
+    return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
@@ -226,10 +333,11 @@ function evaluationText(value: any): string {
   if (typeof value.test === 'string') return value.test;
   return Object.entries(value).map(([operator, branch]) => `${operator.toUpperCase()} (${evaluationText(branch)})`).join(' ');
 }
-function evaluationControl(value: any) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.if) return undefined;
-  const operation = Object.keys(value).find(key => ['and', 'or', 'one', 'xor'].includes(key));
-  return operation ? { path: ['assessment', 'evaluate'], operation, operations: ['and', 'or', 'one', 'xor'] } : undefined;
+function evaluationControl(value: any, pack?: MetadataPack) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.if || !pack) return undefined;
+  const operations = new GuidedCatalog(pack).logicalOperators().map(option => option.value);
+  const operation = Object.keys(value).find(key => operations.includes(key));
+  return operation ? { path: ['assessment', 'evaluate'], operation, operations } : undefined;
 }
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
@@ -269,5 +377,5 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
     if (!input || typeof input !== 'object') return [];
     return [{ name, label: `Input: ${name}`, description: input.description ?? 'Optional author-supplied value', controls: Object.keys(input).filter(key => ['datatype', 'required', 'description', 'cardinality'].includes(key)).map(key => ({ label: key.replaceAll('_', ' '), path: ['assessment', 'inputs', name, key], value: input[key], choices: fieldAt(base.fields, ['assessment', 'inputs', name, key])?.choices ?? [] })) }];
   });
-  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, evaluate: assessment.evaluate, evaluationControl: evaluationControl(assessment.evaluate), evaluationExplanation: assessment.evaluate ? `Authored evaluation tree: ${evaluationText(assessment.evaluate)}. This describes logical selection only; no Test has been executed.` : '', inputControls, tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
+  return { ...base, assessment: { id: assessment.id, title: assessment.assessment_title, mode: assessment.mode, evaluate: assessment.evaluate, evaluationControl: evaluationControl(assessment.evaluate, pack), evaluationExplanation: assessment.evaluate ? `Authored evaluation tree: ${evaluationText(assessment.evaluate)}. This describes logical selection only; no Test has been executed.` : '', inputControls, tests }, hiddenCount: base.fields.filter((field: any) => field.hidden).length };
 }

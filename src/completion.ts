@@ -304,12 +304,62 @@ function declaredSelectorOperators(pack: MetadataPack, uri: string, spec: any): 
 
 function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ value: string; spec: any }> {
   // Do not inherit the broad shared scalar operator vocabulary for a
-  // capability field. A field-specific native subset must be declared by the
-  // capability schema itself; otherwise an empty list is safer than offering
-  // syntactically possible but semantically unsupported operators.
+  // capability Object field. A field-specific native subset must be declared
+  // by the capability schema itself; otherwise an empty list is safer than
+  // offering syntactically possible but semantically unsupported operators.
   const names = declaredSelectorOperators(pack, uri, spec);
   const properties = schemaPropertyMap(pack, uri, spec);
   return names.map(value => ({ value, spec: properties[value] ?? {} }));
+}
+
+function canonicalScalarOperationNames(pack: MetadataPack): Set<string> {
+  try {
+    const vocabulary: any = pack.resource(pack.manifest.vocabulary_uri);
+    return new Set(Object.keys(vocabulary.operations ?? {}));
+  } catch { return new Set(); }
+}
+
+function operationDatatypeConstraints(pack: MetadataPack, uri: string, spec: any): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  const visit = (node: any) => {
+    if (!node || typeof node !== 'object') return;
+    for (const [operation, constraint] of Object.entries(node.dependentSchemas ?? {})) {
+      const datatypes = new Set<string>();
+      const walk = (value: any) => {
+        if (!value || typeof value !== 'object') return;
+        const constant = value.properties?.datatype?.const;
+        if (typeof constant === 'string') datatypes.add(constant);
+        for (const child of Object.values(value)) walk(child);
+      };
+      walk(constraint);
+      if (datatypes.size) result.set(operation, datatypes);
+    }
+  };
+  for (const node of schemaNodes(pack, uri, spec)) visit(node);
+  return result;
+}
+
+function requireOperators(pack: MetadataPack, uri: string, spec: any, datatype?: string, fieldDatatypes: string[] = []): Array<{ value: string; spec: any }> {
+  const properties = schemaPropertyMap(pack, uri, spec);
+  const ordered = new Set<string>();
+  // The shared scalar predicate's oneOf declaration is the canonical ordering
+  // for Require operators. It is deliberately separate from Object selector
+  // propertyNames: cardinalities and scalar comparisons are different scopes.
+  for (const node of schemaNodes(pack, uri, spec)) {
+    for (const value of node.required ?? []) if (typeof value === 'string' && properties[value]) ordered.add(value);
+  }
+  const generic = canonicalScalarOperationNames(pack);
+  const typed = operationDatatypeConstraints(pack, uri, spec);
+  return [...ordered]
+    .filter(value => {
+      const constraints = typed.get(value);
+      if (!constraints) return generic.has(value) || value === 'case_insensitive_not_equal';
+      // Typed operation spellings are offered only after the authored datatype
+      // selects the matching canonical domain. With no explicit datatype, do
+      // not flood the editor with binary/float/package/version operators.
+      return typeof datatype === 'string' && (!fieldDatatypes.length || fieldDatatypes.includes(datatype)) && constraints.has(datatype);
+    })
+    .map(value => ({ value, spec: properties[value] ?? {} }));
 }
 
 function enumValues(pack: MetadataPack, uri: string, root: any): string[] {
@@ -350,10 +400,22 @@ function selectorFieldSpec(pack: MetadataPack, capability: string, field: string
   for (const branch of branches) if (branch?.properties?.[field]) return { uri, spec: branch.properties[field] };
   return undefined;
 }
-export function selectorOperatorChoices(pack: MetadataPack, capability: string, field: string, requireField: boolean): CompletionChoice[] {
+export function selectorFieldDatatypes(pack: MetadataPack, capability: string, field: string, requireField: boolean): string[] {
+  const mappingUri = pack.manifest.capabilities[capability]?.mapping_uri;
+  if (!mappingUri) return [];
+  try {
+    const mapping: any = pack.resource(mappingUri);
+    const source = requireField ? mapping.native?.state_field_datatypes : mapping.native?.field_datatypes;
+    const values = source?.[field] ?? mapping.native?.field_datatypes?.[field];
+    return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
+  } catch { return []; }
+}
+export function selectorOperatorChoices(pack: MetadataPack, capability: string, field: string, requireField: boolean, datatype?: string): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];
-  return selectorOperators(pack, context.uri, context.spec).map(({ value, spec }) => propertyChoice(pack, context.uri, '', value, spec, `${value}: `));
+  const fieldDatatypes = requireField ? selectorFieldDatatypes(pack, capability, field, true) : [];
+  const operators = requireField ? requireOperators(pack, context.uri, context.spec, datatype, fieldDatatypes) : selectorOperators(pack, context.uri, context.spec);
+  return operators.map(({ value, spec }) => propertyChoice(pack, context.uri, '', value, spec, `${value}: `));
 }
 function mappingEnumValues(pack: MetadataPack, capability: string, field: string, requireField: boolean): string[] {
   const mappingUri = pack.manifest.capabilities[capability]?.mapping_uri;
@@ -361,6 +423,23 @@ function mappingEnumValues(pack: MetadataPack, capability: string, field: string
   const mapping: any = pack.resource(mappingUri);
   const values = requireField ? mapping.native?.state_value_enums?.[field] : mapping.native?.selector_value_enums?.[field];
   return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
+}
+export function selectorValueSourceChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): string[] {
+  const context = selectorFieldSpec(pack, capability, field, requireField);
+  if (!context) return [];
+  const properties = schemaPropertyMap(pack, context.uri, context.spec);
+  const root = properties[operator];
+  const sources = new Set<string>();
+  const visit = (node: any, seen = new Set<any>()) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node.type) ? node.type.some((type: string) => ['string', 'number', 'boolean', 'array'].includes(type)) : ['string', 'number', 'boolean', 'array'].includes(node.type)) sources.add('fixed');
+    for (const required of node.required ?? []) if (required === 'variable' || (requireField && required === 'input')) sources.add(required);
+    if (typeof node.$ref === 'string') { try { visit(pack.node(new URL(node.$ref, context.uri).href), seen); } catch {} }
+    for (const key of ['oneOf', 'anyOf', 'allOf']) for (const child of node[key] ?? []) visit(child, seen);
+  };
+  visit(root);
+  return [...sources].sort((left, right) => ({ fixed: 0, variable: 1, input: 2 }[left] ?? 9) - ({ fixed: 0, variable: 1, input: 2 }[right] ?? 9));
 }
 export function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);

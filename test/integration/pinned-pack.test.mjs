@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
-import { completionChoices, schemaDefaultValue } from '../../dist/completion.js';
+import { completionChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
+import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from '../../dist/structured-model.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -197,6 +198,83 @@ test('schema-driven model exposes canonical Registry enum help and revision',()=
  const field=model.fields.find(item=>JSON.stringify(item.path)===JSON.stringify(path));
  assert.ok(field); assert.equal(field.label,'Items found'); assert.deepEqual(field.choices,['none','exactly_one','one_or_more','zero_or_more']);
 });
+test('graphical operator controls resolve every Object/Require context from the pinned contract',()=>{
+ const objectExpected=['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex'];
+ assert.deepEqual(selectorOperatorChoices(pack,'windows.registry','hive',false).map(x=>x.value),['equals']);
+ assert.deepEqual(selectorOperatorChoices(pack,'linux.partition','mount_point',false).map(x=>x.value),objectExpected);
+ assert.deepEqual(selectorOperatorChoices(pack,'windows.registry','type',true).map(x=>x.value),[
+   'equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','greater_than',
+   'greater_than_or_equal','less_than','less_than_or_equal','matches_regex']);
+ assert.deepEqual(selectorOperatorChoices(pack,'independent.shellcommand','exit_status',true).map(x=>x.value),[
+   'equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','greater_than',
+   'greater_than_or_equal','less_than','less_than_or_equal','matches_regex']);
+ assert.deepEqual(selectorValueChoices(pack,'windows.registry','type','equals',true).map(x=>x.value),
+   pack.resource(pack.manifest.capabilities['windows.registry'].mapping_uri).native.state_value_enums.type);
+ const forbidden=/^(float|binary|version|ipv4|ipv6|rpm_evr|debian_evr|fileset_revision|ios_version)_/;
+ for(const capability of Object.keys(pack.manifest.capabilities)) {
+   for(const field of ['type','exit_status','mount_point','value']) {
+     const options=selectorOperatorChoices(pack,capability,field,true).map(x=>x.value);
+     assert.equal(options.some(value=>forbidden.test(value)),false,capability+'/'+field);
+   }
+ }
+ const variableSample=readFileSync(join(source,'examples/windows-server-2025-sysvol-permissions.assessment.yaml'),'utf8');
+ const variableModel=assessmentEditorModel({getText:()=>variableSample,version:3},pack);
+ const nested=variableModel.fields.find(field=>field.path.join('.')==='assessment.variables.icacls-and-path-to-sysvol-directory-variable.expression.concat.1.regex_capture.value.values.object.hive.equals');
+ assert.ok(nested); assert.deepEqual(nested.operatorChoices,['equals']); assert.equal(nested.operatorCompatible,true);
+ const shared={assessment:{id:'shared-assessment',version:1,assessment_title:'Shared',mode:'automated',class:'compliance',shared_objects:{'registry-object':{object_title:'Registry',capability:'windows.registry',hive:{equals:'local_machine'}}},tests:{'registry-test':{test_title:'Registry',capability:'windows.registry',object:{hive:{equals:'local_machine'}},require:{item_requirement:{items_found:'one_or_more',items_satisfying:'every'},fields:{type:{equals:'dword'}}}}}}};
+ const sharedRaw=new SourceBuffer(JSON.stringify(shared)).text; const sharedModel=assessmentEditorModel({getText:()=>sharedRaw,version:4},pack);
+ const sharedHive=sharedModel.fields.find(field=>field.path.join('.')==='assessment.shared_objects.registry-object.hive.equals');
+ assert.ok(sharedHive); assert.deepEqual(sharedHive.operatorChoices,['equals']);
+ const typeRequire=sharedModel.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.require.fields.type.equals');
+ assert.ok(typeRequire); assert.ok(typeRequire.operatorDescriptions.equals); assert.equal(typeRequire.operatorCompatible,true);
+ const invalid={assessment:{...shared.assessment,tests:{'registry-test':{...shared.assessment.tests['registry-test'],object:{mount_point:{float_equals:'/tmp',datatype:'float'},capability:'linux.partition'}}}}};
+ const invalidRaw=new SourceBuffer(JSON.stringify(invalid)).text; const invalidModel=assessmentEditorModel({getText:()=>invalidRaw,version:5},pack);
+ const incompatible=invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.mount_point.float_equals');
+ assert.ok(incompatible); assert.equal(incompatible.operatorCompatible,false); assert.ok(incompatible.operatorChoices.includes('float_equals'));
+ assert.deepEqual(comparisonOperations(pack,invalid.assessment,['assessment','tests','registry-test','object','mount_point','float_equals'],true),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex','float_equals']);
+});
+
+test('Object and Require Variable contracts stay schema-backed and datatype-compatible',()=>{
+ const raw=`assessment:
+  id: variable-contract-assessment
+  version: 1
+  assessment_title: Variable contract
+  mode: automated
+  class: compliance
+  variables:
+    registry-string-variable:
+      kind: local
+      datatype: string
+      expression: {literal: {datatype: string, value: local_machine}}
+    registry-integer-variable:
+      kind: local
+      datatype: integer
+      expression: {literal: {datatype: integer, value: 1}}
+  tests:
+    registry-test:
+      test_title: Registry test
+      capability: windows.registry
+      object:
+        hive: {equals: {variable: registry-string-variable}}
+        key: {equals: {variable: registry-string-variable}}
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        fields:
+          type: {equals: {variable: registry-string-variable}}
+          value: {equals: {variable: registry-integer-variable}}
+`;
+ const value=new SourceBuffer(raw).json();const assessment=value.assessment;
+ assert.deepEqual(comparisonValueSources(pack,assessment,['assessment','tests','registry-test','object','hive','equals']),['fixed','variable']);
+ assert.deepEqual(comparisonValueSources(pack,assessment,['assessment','tests','registry-test','require','fields','type','equals']),['fixed','variable','input']);
+ assert.equal(comparisonVariableCompatible(pack,assessment,['assessment','tests','registry-test','object','hive','equals'],'registry-string-variable'),true);
+ assert.equal(comparisonVariableCompatible(pack,assessment,['assessment','tests','registry-test','require','fields','type','equals'],'registry-integer-variable'),false);
+ const model=assessmentEditorModel({getText:()=>raw,version:1},pack);
+ const key=model.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.key.equals.variable');
+ const type=model.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.require.fields.type.equals.variable');
+ assert.deepEqual(key?.valueSources,['fixed','variable']);assert.deepEqual(type?.valueSources,['fixed','variable','input']);
+ assert.deepEqual(key?.variableChoices,['registry-string-variable']);assert.deepEqual(type?.variableChoices,['registry-string-variable']);
+});
+
 test('canonical Windows Registry Assessment rejects stale edits without changing source',()=>{
  const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
  const buffer=new SourceBuffer(raw); const path=['assessment','tests','verifies-prevent-enabling-screen-slide-show-is-set-enabled-test','require','fields','value','equals'];
