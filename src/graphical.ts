@@ -138,10 +138,10 @@ function operationChoiceForField(field){
    if(!values.length){const option=document.createElement('option');option.value='';option.textContent='No Variables declared';option.disabled=true;input.append(option)}
    for(const v of values){const option=document.createElement('option');option.value=v;option.textContent=v;input.append(option)}
    input.value=original==='variable'?String(field.value):refs[0]||'';
-  }else if(mode.value===original && Array.isArray(field.choices) && field.choices.length){
+  }else if(mode.value==='equals' && Array.isArray(field.fixedChoices) && field.fixedChoices.length){
    input=document.createElement('select');input.setAttribute('aria-label','Comparison value');
-   for(const v of field.choices){const option=document.createElement('option');option.value=String(v);option.textContent=String(v);input.append(option)}
-   input.value=String(field.value??'');
+   for(const v of field.fixedChoices){const option=document.createElement('option');option.value=String(v);option.textContent=String(v);input.append(option)}
+   if(mode.value===original)input.value=String(field.value??'');
   }else{
    input=document.createElement('input');input.type='text';
    input.setAttribute('aria-label','Comparison value');
