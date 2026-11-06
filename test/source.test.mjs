@@ -215,3 +215,29 @@ test('Require regex list declines removal of last pattern, comments, non-regex p
  assert.throws(()=>source.editRegexList(path,'add',sha256(raw),' '),/non-empty/);
  assert.throws(()=>source.editRegexList(['foo'],'add',sha256(raw),'valid'),/Only authored/);
 });
+
+test('shared comparison replacement preserves source bytes and changes operation/value atomically',()=>{
+ const raw='# preamble\nassessment:\n  tests:\n    a-test:\n      object: {mount_point: {matches_regex: "^/home$"}, another: {equals: "/data"}} # sibling\n';
+ const path=['assessment','tests','a-test','object','mount_point'];
+ const source=new SourceBuffer(raw);
+ const edited=source.replaceComparison(path,'equals','/home',sha256(raw));
+ assert.equal(edited.document.json().assessment.tests['a-test'].object.mount_point.equals,'/home');
+ assert.equal(edited.document.json().assessment.tests['a-test'].object.another.equals,'/data');
+ assert.ok(edited.document.text.includes('# sibling'));
+ assert.equal(edited.undo().text,raw);
+ const varied=edited.document.replaceComparison(path,'variable','mount-variable',sha256(edited.document.text));
+ assert.equal(varied.document.json().assessment.tests['a-test'].object.mount_point.variable,'mount-variable');
+ assert.throws(()=>source.replaceComparison(path,'equals','x','stale'),/Stale/);
+});
+test('shared comparison replacement supports regex arrays and refuses unsafe mappings',()=>{
+ const raw='require: {fields: {value: {equals: "x"}}}';
+ const path=['require','fields','value'];
+ const source=new SourceBuffer(raw);
+ const change=source.replaceComparison(path,'matches_regex',['^x$'],sha256(raw));
+ assert.deepEqual(change.document.json().require.fields.value.matches_regex,['^x$']);
+ for(const invalid of ['require: {fields: {value: {equals: x, not_equal: y}}}',
+   'require: {fields: {value: &a {equals: x}}}']){
+  assert.throws(()=>new SourceBuffer(invalid).replaceComparison(path,'equals','x',sha256(invalid)));
+ }
+ assert.throws(()=>source.replaceComparison(path,'bad-op!', 'x',sha256(raw)),/Invalid comparison/);
+});
