@@ -275,12 +275,12 @@ async function promptSharedSelector(api: any, catalog: GuidedCatalog,
   const ops = field.operations;
   if (!ops?.length) throw new Error('The pinned capability metadata has no supported selector operations for ' + field.name);
   const operation = ops.length === 1 ? ops[0] :
-    (await api.window.showQuickPick(ops.map(value => ({ label: value.label || value.value,
+    (await api.window.showQuickPick(ops.map((value: any) => ({ label: value.label || value.value,
       description: value.value, value })), { placeHolder: 'Choose how to select ' + field.name }))?.value;
   if (!operation) return undefined;
   let value: string | undefined;
   if (field.enumValues.length) {
-    const picked = await api.window.showQuickPick(field.enumValues.map(entry => ({
+    const picked = await api.window.showQuickPick(field.enumValues.map((entry: string) => ({
       label: entry, value: entry
     })), { placeHolder: 'Select a valid ' + field.name + ' value' });
     value = picked?.value;

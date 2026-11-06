@@ -73,12 +73,12 @@ test('Issue #44 desktop graphical surface is a real host webview contract', asyn
   assert.match(html, /Shift\+F10/);
   assert.match(html, /type:'structural'/);
   assert.match(html, /meaningful nodes only/);
-  assert.match(html, /Selectors and acquisition properties/);
-  assert.match(html, /Item requirements, field requirements and predicates/);
+  assert.match(html, /Object · inspected items/);
+  assert.match(html, /Require · pass conditions/);
   assert.match(html, /function editorFields/);
   assert.match(html, /draw\(tree\.root,root\)/, 'the DOM tree must render the constructed Assessment tree model');
   assert.match(html, /field-entry/, 'desktop forms must group label/control pairs into compact columns');
-  assert.match(html, /repeat\(3,minmax\(220px,1fr\)\)/, 'wide desktop layouts should use the available monitor width');
+  assert.match(html, /repeat\(2,minmax\(0,1fr\)\)/, 'desktop inspectors use a readable two-column layout');
   assert.match(html, /Array\.isArray\(node\.path\)/, 'partial/stale models must not strand the webview on the loading screen');
   assert.doesNotMatch(html, /Reveal this property in YAML/);
   assert.doesNotMatch(html, /Properties on this node/);

@@ -46,8 +46,8 @@ export class SourceBuffer {
     const node: any = doc.getIn(path, true);
     if (!isMap(node) || node.anchor || node.tag || !Array.isArray(node.range))
       throw new Error('Selector is not a safely replaceable YAML mapping');
-    if (node.items.length !== 1 || !['equals', 'variable'].includes(String(node.items[0]?.key?.value)) ||
-        isAlias(node.items[0]?.value) || node.items[0]?.value?.anchor || node.items[0]?.value?.tag)
+    if (node.items.length !== 1 || !['equals', 'variable'].includes(String((node.items[0] as any)?.key?.value)) ||
+        isAlias((node.items[0] as any)?.value) || (node.items[0] as any)?.value?.anchor || (node.items[0] as any)?.value?.tag)
       throw new Error('Selector contains additional operations or anchors; use YAML to change its source');
     const [start, end] = node.range;
     const replacement = '{' + variant + ': ' + JSON.stringify(value) + '}';

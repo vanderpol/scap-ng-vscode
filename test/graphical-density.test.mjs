@@ -501,7 +501,7 @@ test('Object controls retain source-provided enumerations, rather than inventing
   const html=graphicalHtml();
   const section=html.slice(html.indexOf('function makeInput(f)'),html.indexOf('function friendlyLabel(f)'));
   assert.match(section,/const choices=Array\.isArray\(f\.choices\)\?f\.choices:\[\]/);
-  assert.match(section,/if\(choices\.length\)\{input=document\.createElement\('select'\)/);
+  assert.match(section,/if\(choices\.length\|\|f\.pickerOnly\)\{input=document\.createElement\('select'\)/);
   assert.match(section,/choices\.forEach\(choice=>/);
   assert.match(section,/o\.selected=JSON\.stringify\(choice\)===JSON\.stringify\(f\.value\)/);
   assert.match(section,/revision:current\.revision,version:current\.version/);
