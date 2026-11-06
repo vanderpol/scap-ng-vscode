@@ -170,3 +170,26 @@ test('graphical structural flow-map removal preserves valid YAML', () => {
  const source = new SourceBuffer(raw); const edit = source.removePath(['assessment', 'tests', 'one-test'], sha256(raw));
  assert.deepEqual(edit.document.json(), {assessment: {id: 'demo-assessment', mode: 'automated', tests: {}}}); assert.equal(edit.undo().text, raw);
 });
+
+test('Object selector source can change Variable to fixed string and back without rewriting siblings',()=>{
+ const raw='# preserved\nassessment:\n  tests:\n    sample-test:\n      object: {command: {variable: build-command-variable}, pattern: {equals: ":"}} # keep\n';
+ const source=new SourceBuffer(raw), path=['assessment','tests','sample-test','object','command'];
+ const fixed=source.replaceSelectorSource(path,'equals','icacls C:\\Windows\\SYSVOL',sha256(raw));
+ assert.equal(fixed.document.json().assessment.tests['sample-test'].object.command.equals,'icacls C:\\Windows\\SYSVOL');
+ assert.ok(fixed.document.text.includes('pattern: {equals: ":"}'));
+ assert.ok(fixed.document.text.includes('# preserved'));
+ assert.equal(fixed.undo().text,raw);
+ const variable=fixed.document.replaceSelectorSource(path,'variable','build-command-variable',sha256(fixed.document.text));
+ assert.equal(variable.document.json().assessment.tests['sample-test'].object.command.variable,'build-command-variable');
+ assert.ok(variable.document.text.includes('# keep'));
+ assert.throws(()=>source.replaceSelectorSource(path,'equals','cmd','stale'),/Stale/);
+});
+test('Object source replacement refuses ambiguous mappings, anchors and empty literals',()=>{
+ const path=['object','command'];
+ for(const raw of ['object: {command: {variable: id, equals: x}}',
+                   'object: {command: {matches_regex: x}}',
+                   'object: {command: &special {variable: id}}'])
+  assert.throws(()=>new SourceBuffer(raw).replaceSelectorSource(path,'equals','cmd',sha256(raw)));
+ const raw='object: {command: {variable: id}}';
+ assert.throws(()=>new SourceBuffer(raw).replaceSelectorSource(path,'equals','',sha256(raw)),/non-empty/);
+});
