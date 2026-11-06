@@ -180,6 +180,11 @@ function contextualFieldDescription(pack: MetadataPack | undefined, assessment: 
 /** Never show authoring-implementation metadata as end-user field help. */
 function usefulFieldHelp(schemaDescription:string|undefined, assessment:any, path:EditPath, contextual:string):string {
   const description=String(schemaDescription||contextual||'').trim();
+  // Metadata may describe a datatype constraint in implementation terminology.
+  // Present the intended authoring guidance instead, without inventing semantics.
+  if(path.includes('require') && path.includes('fields') && path.at(-1)==='datatype' &&
+     /redundant explicit datatype|self.describing comparison|omitted datatype remains valid/i.test(description))
+    return 'Optional datatype declaration. If specified, it must agree with the comparison value type.';
   const generic=/explicit new.authoring selection|preserve source.effective values|selector operator;|visible overrides; no runtime fallback/i;
   if(description&&!generic.test(description))return description;
   const objectIndex=path.lastIndexOf('object');

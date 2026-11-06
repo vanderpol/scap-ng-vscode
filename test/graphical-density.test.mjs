@@ -568,3 +568,11 @@ test('Object and Require operator dropdowns share capability-specific selector r
  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
  assert.doesNotMatch(html,/desc\.textContent=item\.description/);
 });
+test('Require contextual help is not copied from arbitrary first scalar into group body',()=>{
+ const html=graphicalHtml();
+ const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
+ assert.doesNotMatch(card,/const contextual=visible\.find/);
+ assert.doesNotMatch(card,/field-schema-note/);
+ assert.match(html,/function renderHelp\(focused\)/);
+ assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
+});
