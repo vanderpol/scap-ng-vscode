@@ -193,3 +193,25 @@ test('Object source replacement refuses ambiguous mappings, anchors and empty li
  const raw='object: {command: {variable: id}}';
  assert.throws(()=>new SourceBuffer(raw).replaceSelectorSource(path,'equals','',sha256(raw)),/non-empty/);
 });
+
+test('Require regex list supports append and indexed removal with source-local edits',()=>{
+ const raw='# preserved\nassessment:\n  tests:\n    regex-test:\n      require:\n        fields:\n          stdout_line:\n            matches_regex: ["^one$", "^two$"] # untouched\n';
+ const path=['assessment','tests','regex-test','require','fields','stdout_line','matches_regex'];
+ const source=new SourceBuffer(raw);
+ const added=source.editRegexList(path,'add',sha256(raw),'^three$');
+ assert.deepEqual(added.document.json().assessment.tests['regex-test'].require.fields.stdout_line.matches_regex,['^one$','^two$','^three$']);
+ assert.ok(added.document.text.startsWith('# preserved'));
+ assert.ok(added.document.text.includes('# untouched'));
+ assert.equal(added.undo().text,raw);
+ const removed=added.document.editRegexList(path,'remove',sha256(added.document.text),undefined,1);
+ assert.deepEqual(removed.document.json().assessment.tests['regex-test'].require.fields.stdout_line.matches_regex,['^one$','^three$']);
+ assert.throws(()=>source.editRegexList(path,'add','stale','new'),/Stale/);
+});
+test('Require regex list declines removal of last pattern, comments, non-regex paths and empty additions',()=>{
+ const raw='assessment: {tests: {regex-test: {require: {fields: {stdout_line: {matches_regex: ["only"]}}}}}}';
+ const path=['assessment','tests','regex-test','require','fields','stdout_line','matches_regex'];
+ const source=new SourceBuffer(raw);
+ assert.throws(()=>source.editRegexList(path,'remove',sha256(raw),undefined,0),/final/);
+ assert.throws(()=>source.editRegexList(path,'add',sha256(raw),' '),/non-empty/);
+ assert.throws(()=>source.editRegexList(['foo'],'add',sha256(raw),'valid'),/Only authored/);
+});
