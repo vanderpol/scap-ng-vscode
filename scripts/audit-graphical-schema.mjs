@@ -41,11 +41,41 @@ for(const definition of ['scalar_field_predicate','record_field_predicate','obje
     schemaUri:`https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/${definition}`,
     mappingUri:undefined,help:'Canonical predicate definition; member datatype constraints are resolved by the enclosing capability schema.',missing:choices.length?'': 'operator metadata'});
 }
+// Variable declarations and nested expression branches are contracts in their
+// own right. Their branch names and documentation are read from the pinned
+// variable-expression schema; no expression vocabulary is duplicated here.
+const variableSchemaUri=pack.manifest.resources.find(resource=>resource.kind==='schema'&&resource.uri.endsWith('/variable-expression.schema.json'))?.uri;
+const expressionUri=variableSchemaUri?`${variableSchemaUri}#/$defs/expression`:undefined;
+if(expressionUri){
+  const expression=pack.node(expressionUri);
+  for(const [index,branch] of (expression.oneOf??[]).entries()){
+    const name=Array.isArray(branch.required)&&typeof branch.required[0]==='string'?branch.required[0]:`branch-${index}`;
+    const sources=[];
+    const visit=(node)=>{
+      if(!node||typeof node!=='object')return;
+      for(const required of node.required??[]){
+        if(required==='variable')sources.push('variable');
+        if(required==='literal')sources.push('fixed');
+        if(required==='input')sources.push('input');
+        if(required==='object')sources.push('object');
+      }
+      for(const key of ['properties','oneOf','anyOf','allOf']){
+        const children=key==='properties'?Object.values(node.properties??{}):(Array.isArray(node[key])?node[key]:[]);
+        for(const child of children)visit(child);
+      }
+    };
+    visit(branch);
+    rows.push({capability:'(canonical variable)',section:'Variables / nested expression',field:name,
+      operatorOptions:[],expressionBranch:name,enumOptions:[],operandSources:[...new Set(sources)],datatypes:[],operatorSources:{},operatorDocumentation:{},
+      cardinalityControls:[],schemaUri:`${expressionUri}/oneOf/${index}`,mappingUri:undefined,
+      help:branch.description||branch.title||'Schema-supported Variable expression branch.',missing:null});
+  }
+}
 const summary={schemaVersion:pin.schemaVersion,pinnedCommit:pin.sourceCommit,
-  capabilityCount:capabilities.length,fieldContracts:rows.length, genericPredicateContracts:3,
-  missingOperatorMetadata:rows.filter(r=>!r.operatorOptions.length).length,
+  capabilityCount:capabilities.length,fieldContracts:rows.length, genericPredicateContracts:3, variableExpressionContracts:rows.filter(row=>row.section==='Variables / nested expression').length,
+  missingOperatorMetadata:rows.filter(r=>(r.section==='Object'||r.section==='Require'||r.section==='Require / generic predicate')&&!r.operatorOptions.length).length,
   missingHelpText:rows.filter(r=>!r.help).length,
-  oversizedOperatorLists:rows.filter(r=>r.operatorOptions.length>20).length,
+  oversizedOperatorLists:rows.filter(r=>(r.section==='Object'||r.section==='Require'||r.section==='Require / generic predicate')&&r.operatorOptions.length>20).length,
   maxOperatorCount:Math.max(0,...rows.map(r=>r.operatorOptions.length)),
   note:'Uses the same capability-scoped operator resolver as GUI and YAML completion. Does not demonstrate host rendering or scanner equivalence.'};
 console.log(JSON.stringify({summary,missing:rows.filter(r=>r.missing),rows},null,2));

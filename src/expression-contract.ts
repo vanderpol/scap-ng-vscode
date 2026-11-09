@@ -136,6 +136,11 @@ function walk(value: any, path: (string | number)[], visit: (value: any, path: (
   if (Array.isArray(value)) value.forEach((child, index) => walk(child, [...path, index], visit));
   else if (objectValue(value)) Object.entries(value).forEach(([key, child]) => walk(child, [...path, key], visit));
 }
+function valueAt(root: any, path: (string | number)[]): any {
+  let current = root;
+  for (const part of path) current = current?.[part as any];
+  return current;
+}
 
 function variableSchema(pack: MetadataPack) {
   const uri = schemaResource(pack, '/variable-expression.schema.json');
@@ -239,7 +244,40 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
     if (!objectValue(value) || !Object.hasOwn(value, 'variable') || typeof value.variable !== 'string') return;
     const location = comparisonLocation(valuePath.slice(0, -1));
     const variable = variables[value.variable];
-    if (!location || !objectValue(variable) || typeof variable.datatype !== 'string') return;
+    if (!location) return;
+    const operation = String(valuePath.at(-1) ?? '');
+    // Declaration-expression references are validated in the declaration
+    // pass above. This second pass covers document-level Object/Require and
+    // other authored usages, so an undeclared Variable cannot disappear
+    // merely because it is referenced outside another Variable.
+    if (valuePath[1] !== 'variables' && !Object.hasOwn(variables, value.variable)) {
+      const referenceCode = variableIdPattern.test(value.variable) ? 'unresolved-variable-reference' : 'invalid-variable-reference-id';
+      diagnostics.push({
+        code: referenceCode, kind: 'reference', severity: referenceCode === 'unresolved-variable-reference' ? severity : 'error',
+        path: [...valuePath, 'variable'],
+        message: referenceCode === 'unresolved-variable-reference'
+          ? `Variable '${value.variable}' is not declared in this Assessment.`
+          : `Variable reference '${value.variable}' does not match the canonical naming pattern.`
+      });
+      return;
+    }
+    // Direct Variable-valued Object properties (for example shellcommand
+    // `command: {variable: ...}`) are not comparison predicates. Only a
+    // Variable nested below a canonical comparison operation requires the
+    // predicate's explicit value_match cardinality control.
+    const predicatePath = valuePath.slice(1, -1);
+    const predicate = valueAt(assessment, predicatePath);
+    const operand = objectValue(predicate) ? predicate[operation] : undefined;
+    const comparisonOperand = objectValue(operand) && Object.hasOwn(operand, 'variable');
+    if (comparisonOperand && variable && operation !== 'variable' && operation !== 'input' && !Object.hasOwn(predicate, 'value_match')) {
+      const declaration = declarations.find(item => item.id === value.variable);
+      diagnostics.push({
+        code: 'missing-value-match-for-variable', kind: 'cardinality', severity,
+        path: [...valuePath, 'variable'],
+        message: `Variable '${value.variable}' is used by comparison '${operation}' without the canonical value_match cardinality control; potential cardinality is ${declaration?.potentialCardinality ?? 'unknown'}.`
+      });
+    }
+    if (!objectValue(variable) || typeof variable.datatype !== 'string') return;
     const expected = selectorFieldDatatypes(pack, location.capability, location.field, location.requireField);
     if (expected.length && !expected.includes(variable.datatype)) diagnostics.push({
       code: 'incompatible-variable-datatype', kind: 'datatype', severity: 'error', path: [...valuePath, 'variable'],
@@ -267,5 +305,6 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
 export function variableAnalysisSummary(analysis: VariableAnalysis): string {
   const incomplete = analysis.declarations.filter(declaration => !declaration.declarationValid).length;
   const unresolved = analysis.diagnostics.filter(diagnostic => diagnostic.code === 'unresolved-variable-reference').length;
-  return `${analysis.declarations.length} Variable declaration(s); ${incomplete} incomplete; ${unresolved} unresolved reference(s); runtime evaluation not available.`;
+  const cardinality = analysis.diagnostics.filter(diagnostic => diagnostic.kind === 'cardinality').length;
+  return `${analysis.declarations.length} Variable declaration(s); ${incomplete} incomplete; ${unresolved} unresolved reference(s); ${cardinality} cardinality issue(s); runtime evaluation not available.`;
 }

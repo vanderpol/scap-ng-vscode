@@ -350,6 +350,13 @@ test('Delivery A contract adapter inventories operands and Variable validation w
  assert.equal(analysis.declarations.find(item=>item.id==='array-variable')?.potentialCardinality,'many');
  assert.ok(analysis.diagnostics.some(item=>item.code==='variable-cycle'));
  assert.ok(analysis.diagnostics.filter(item=>item.code==='incompatible-variable-datatype').length>=2);
+ assert.ok(analysis.diagnostics.some(item=>item.code==='missing-value-match-for-variable'&&item.kind==='cardinality'));
+ const missingUsage=analyzeVariables(pack,{tests:{'missing-test':{capability:'windows.registry',object:{hive:{equals:{variable:'missing-variable'}}}}}},false);
+ assert.ok(missingUsage.diagnostics.some(item=>item.code==='unresolved-variable-reference'&&item.path.join('.').endsWith('object.hive.equals.variable')));
+ const cardinalitySatisfied=structuredClone(assessment);
+ cardinalitySatisfied.tests['sample-test'].object.hive.value_match='every';
+ cardinalitySatisfied.tests['sample-test'].require.fields.type.value_match='every';
+ assert.equal(analyzeVariables(pack,cardinalitySatisfied,false).diagnostics.some(item=>item.code==='missing-value-match-for-variable'),false);
  assert.match(variableAnalysisSummary(analysis),/runtime evaluation not available/);
  const model=assessmentEditorModel({getText:()=>new SourceBuffer(JSON.stringify({assessment})).text,version:1},pack);
  assert.ok(model.variableAnalysis);assert.ok(model.variableDiagnostics.some(item=>item.code==='variable-cycle'));assert.match(model.variableAnalysisSummary,/runtime evaluation not available/);
