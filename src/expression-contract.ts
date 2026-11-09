@@ -1,5 +1,7 @@
 import { MetadataPack, type Json } from './metadata.js';
 import {
+  predicateOperatorChoices,
+  predicateValueSourceChoices,
   selectorFieldDatatypes,
   selectorOperatorChoices,
   selectorValueChoices,
@@ -8,6 +10,7 @@ import {
 } from './completion.js';
 
 export type ExpressionLocation = 'object' | 'require';
+export type PredicateDefinition = 'scalar_field_predicate' | 'record_field_predicate' | 'object_record_field_predicate';
 export type ExpressionSource = 'fixed' | 'variable' | 'input';
 export type VariableCardinality = 'zero_or_one' | 'one' | 'many' | 'unknown';
 export type VariableDiagnosticKind = 'declaration' | 'reference' | 'datatype' | 'cardinality' | 'runtime';
@@ -71,19 +74,25 @@ function enumAt(pack: MetadataPack, uri: string | undefined, path: string): stri
  * This is intentionally capability-agnostic: capability names are data from
  * the verified pack, never branches in this adapter.
  */
-export function expressionContract(pack: MetadataPack, capability: string, field: string, location: ExpressionLocation): ExpressionContract {
+export function expressionContract(pack: MetadataPack, capability: string, field: string, location: ExpressionLocation, predicateDefinition?: PredicateDefinition): ExpressionContract {
   const requireField = location === 'require';
-  const operators = selectorOperatorChoices(pack, capability, field, requireField);
+  const operators = predicateDefinition
+    ? predicateOperatorChoices(pack, predicateDefinition)
+    : selectorOperatorChoices(pack, capability, field, requireField);
   const operatorSources: Record<string, ExpressionSource[]> = {};
   const operatorDocumentation: Record<string, string> = {};
   const fixedChoicesByOperator: Record<string, string[]> = {};
   const operandSources = new Set<ExpressionSource>();
   for (const operator of operators) {
-    const sources = selectorValueSourceChoices(pack, capability, field, operator.value, requireField) as ExpressionSource[];
+    const sources = (predicateDefinition
+      ? predicateValueSourceChoices(pack, predicateDefinition, operator.value)
+      : selectorValueSourceChoices(pack, capability, field, operator.value, requireField)) as ExpressionSource[];
     operatorSources[operator.value] = sources;
     sources.forEach(source => operandSources.add(source));
     operatorDocumentation[operator.value] = operator.description || operator.label || operator.value;
-    fixedChoicesByOperator[operator.value] = selectorValueChoices(pack, capability, field, operator.value, requireField).map(choice => String(choice.value));
+    fixedChoicesByOperator[operator.value] = predicateDefinition
+      ? []
+      : selectorValueChoices(pack, capability, field, operator.value, requireField).map(choice => String(choice.value));
   }
   const pin = pack.manifest.capabilities[capability];
   return {
@@ -219,8 +228,8 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       return typeof object?.capability === 'string' ? { capability: object.capability, field: String(path[3]), requireField: false } : undefined;
     }
     const requireIndex = path.indexOf('require');
-    const fieldsIndex = path.indexOf('fields');
-    if (requireIndex >= 0 && fieldsIndex === requireIndex + 1 && (path.length === fieldsIndex + 2 || path.length === fieldsIndex + 3) && path[1] === 'tests') {
+    const fieldsIndex = path.lastIndexOf('fields');
+    if (requireIndex >= 0 && fieldsIndex > requireIndex && fieldsIndex + 1 < path.length && (path.length === fieldsIndex + 2 || path.length === fieldsIndex + 3) && path[1] === 'tests') {
       const capability = assessment?.tests?.[String(path[2])]?.capability;
       return typeof capability === 'string' ? { capability, field: String(path[fieldsIndex + 1]), requireField: true } : undefined;
     }

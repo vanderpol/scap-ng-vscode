@@ -2,8 +2,8 @@ import { parseDocument } from 'yaml';
 import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
-import { schemaNodes } from './schema-resolver.js';
-import { selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
+import { schemaNodes, schemaPropertiesAtPath } from './schema-resolver.js';
+import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
 
 type EditPath = (string | number)[];
@@ -131,6 +131,27 @@ function testChoiceOptions(pack: MetadataPack | undefined, path: EditPath): stri
 /** Capability-scoped operations shared with the Red Hat YAML completion adapter.
  * Never expand a single selector to the generic all-datatype vocabulary.
  */
+type PredicateDefinition = 'scalar_field_predicate' | 'record_field_predicate' | 'object_record_field_predicate';
+const logicalGroupKeys = new Set(['and', 'or', 'one', 'xor']);
+
+function nestedPredicateDefinition(pack: MetadataPack, capability: string, parent: EditPath, requireIndex: number): PredicateDefinition | undefined {
+  const schemaUri = pack.manifest.capabilities[capability]?.schema_uri;
+  if (!schemaUri) return undefined;
+  // Resolve the canonical state predicate at the authored field path. Record
+  // member names are dynamic schema properties, so the resolver intentionally
+  // walks `additionalProperties` rather than maintaining a field registry.
+  const relative = parent.slice(requireIndex + 1)
+    .filter((part): part is string => typeof part !== 'number' && !logicalGroupKeys.has(String(part)));
+  if (relative[0] === 'fields') relative.shift();
+  if (!relative.length) return undefined;
+  try {
+    const entries = schemaPropertiesAtPath(pack, `${schemaUri}#/$defs/state_predicate`, relative);
+    if (!['equals', 'not_equal', 'matches_regex'].some(operation => entries.has(operation))) return undefined;
+    const hasRecord = relative.includes('record');
+    return hasRecord ? 'record_field_predicate' : undefined;
+  } catch { return undefined; }
+}
+
 function comparisonContext(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
   if (!pack || path[0] !== 'assessment' || path.length < 5) return undefined;
   const parent = path.slice(0, -1);
@@ -138,10 +159,17 @@ function comparisonContext(pack: MetadataPack | undefined, assessment: any, path
   const objectContext = objectSelectorContext(assessment, objectPath);
   if (objectContext && parent.at(-1) === objectContext.field) return { ...objectContext, requireField: false };
   const requireIndex = parent.indexOf('require');
-  if (requireIndex < 0 || parent[requireIndex + 1] !== 'fields' || parent.length !== requireIndex + 3 || parent[1] !== 'tests') return undefined;
+  const fieldsIndex = parent.lastIndexOf('fields');
+  if (requireIndex < 0 || fieldsIndex <= requireIndex || fieldsIndex + 1 >= parent.length || parent[1] !== 'tests') return undefined;
   const capability = assessment?.tests?.[String(parent[2])]?.capability;
-  const field = String(parent.at(-1));
-  return typeof capability === 'string' ? { capability, field, requireField: true } : undefined;
+  const field = String(parent[fieldsIndex + 1]);
+  // Direct fields, logical-group fields, and record member fields all use the
+  // same scalar predicate contract at their nearest `fields` mapping. A
+  // record member is resolved from the canonical state schema, not guessed
+  // from the capability name or a GUI-only registry.
+  if (parent.length !== fieldsIndex + 2 && parent.length !== fieldsIndex + 3) return undefined;
+  const predicateDefinition = typeof capability === 'string' ? nestedPredicateDefinition(pack, capability, parent, requireIndex) : undefined;
+  return typeof capability === 'string' ? { capability, field, requireField: true, predicateDefinition } : undefined;
 }
 
 function comparisonDescriptor(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
@@ -163,7 +191,7 @@ function authoredComparisonDatatype(assessment: any, operationPath: EditPath): s
 export function comparisonValueSources(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
-  try { return expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object').operatorSources[descriptor.operation] ?? []; }
+  try { return expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object', descriptor.predicateDefinition).operatorSources[descriptor.operation] ?? []; }
   catch { return []; }
 }
 
@@ -171,7 +199,7 @@ export function comparisonOperatorDescriptions(pack: MetadataPack | undefined, a
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return {};
   try {
-    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object', descriptor.predicateDefinition);
     const result = { ...contract.operatorDocumentation };
     if (includeIncompatible && descriptor.operation && !Object.hasOwn(result, descriptor.operation)) result[descriptor.operation] = 'Authored operator is not valid for the selected datatype.';
     return result;
@@ -182,7 +210,7 @@ export function comparisonOperations(pack: MetadataPack | undefined, assessment:
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
   try {
-    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object', descriptor.predicateDefinition);
     const allowed = contract.operators.map(choice => choice.value);
     if (includeIncompatible && descriptor.operation && !allowed.includes(descriptor.operation)) return [...allowed, descriptor.operation];
     return allowed.includes(descriptor.operation) ? allowed : [];
@@ -193,7 +221,7 @@ function comparisonValueChoices(pack: MetadataPack | undefined, assessment: any,
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
   try {
-    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object', descriptor.predicateDefinition);
     return contract.fixedChoicesByOperator[descriptor.operation] ?? [];
   } catch { return []; }
 }
@@ -204,7 +232,7 @@ function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any,
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
   try {
-    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object', descriptor.predicateDefinition);
     return contract.fixedChoicesByOperator.equals ?? [];
   } catch { return []; }
 }
@@ -346,7 +374,8 @@ export function modelFor(document: any, pack?: MetadataPack) {
         kind: field.value === null ? 'null' : typeof field.value
       };
     });
-    return { ok: true, draft: parsed.draft, parseDiagnostics: parsed.diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
+    const variableDraft = pack && value?.assessment && typeof value.assessment === 'object' ? analyzeVariables(pack, value.assessment, true).diagnostics.some(item => item.code.startsWith('incomplete-')) : false;
+    return { ok: true, draft: parsed.draft || variableDraft, parseDiagnostics: parsed.diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
@@ -385,7 +414,7 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   // data derived from the same authoritative YAML document.
   base.variableDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) ? (assessment.variables ?? {}) : {};
   if (pack && assessment && typeof assessment === 'object' && !Array.isArray(assessment)) {
-    const variableAnalysis = analyzeVariables(pack, assessment, parsed.draft);
+    const variableAnalysis = analyzeVariables(pack, assessment, Boolean(base.draft));
     base.variableAnalysis = variableAnalysis;
     base.variableDiagnostics = variableAnalysis.diagnostics;
     base.variableAnalysisSummary = variableAnalysisSummary(variableAnalysis);

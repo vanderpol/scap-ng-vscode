@@ -424,23 +424,52 @@ function mappingEnumValues(pack: MetadataPack, capability: string, field: string
   const values = requireField ? mapping.native?.state_value_enums?.[field] : mapping.native?.selector_value_enums?.[field];
   return Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === 'string') : [];
 }
-export function selectorValueSourceChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): string[] {
-  const context = selectorFieldSpec(pack, capability, field, requireField);
-  if (!context) return [];
-  const properties = schemaPropertyMap(pack, context.uri, context.spec);
-  const root = properties[operator];
+function sourceChoicesForSchema(pack: MetadataPack, uri: string, root: any, operator: string, requireField: boolean): string[] {
   const sources = new Set<string>();
+  // A predicate definition is commonly an allOf/oneOf union. Do not collapse
+  // its property maps with Object.assign: doing so can discard the Variable or
+  // Input branches from an earlier canonical alternative. Visit every
+  // operation declaration and union branch instead.
+  const operationNodes = schemaNodes(pack, uri, root)
+    .map((node: any) => node?.properties?.[operator])
+    .filter((node: any): node is object => Boolean(node));
   const visit = (node: any, seen = new Set<any>()) => {
     if (!node || typeof node !== 'object' || seen.has(node)) return;
     seen.add(node);
-    if (Array.isArray(node.type) ? node.type.some((type: string) => ['string', 'number', 'boolean', 'array'].includes(type)) : ['string', 'number', 'boolean', 'array'].includes(node.type)) sources.add('fixed');
+    const types = Array.isArray(node.type) ? node.type : [node.type];
+    if (types.some((type: string) => ['string', 'number', 'boolean', 'array'].includes(type))) sources.add('fixed');
     for (const required of node.required ?? []) if (required === 'variable' || (requireField && required === 'input')) sources.add(required);
-    if (typeof node.$ref === 'string') { try { visit(pack.node(new URL(node.$ref, context.uri).href), seen); } catch {} }
+    if (typeof node.$ref === 'string') { try { visit(pack.node(new URL(node.$ref, uri).href), seen); } catch {} }
     for (const key of ['oneOf', 'anyOf', 'allOf']) for (const child of node[key] ?? []) visit(child, seen);
   };
-  visit(root);
+  for (const operation of operationNodes) visit(operation);
   return [...sources].sort((left, right) => ({ fixed: 0, variable: 1, input: 2 }[left] ?? 9) - ({ fixed: 0, variable: 1, input: 2 }[right] ?? 9));
 }
+
+export function predicateOperatorChoices(pack: MetadataPack, definition: 'scalar_field_predicate' | 'record_field_predicate' | 'object_record_field_predicate'): CompletionChoice[] {
+  const uri = `${schemaBase}assessment-language.schema.json#/$defs/${definition}`;
+  const properties = schemaPropertyMap(pack, uri, pack.node(uri));
+  const generic = canonicalScalarOperationNames(pack);
+  const typed = operationDatatypeConstraints(pack, uri, pack.node(uri));
+  return Object.entries(properties).filter(([name, spec]) => {
+    if (!(spec as any)?.oneOf) return false;
+    const constraints = typed.get(name);
+    return constraints ? false : generic.has(name) || name === 'case_insensitive_not_equal';
+  }).map(([value, spec]) => propertyChoice(pack, uri, '', value, spec, `${value}: `));
+}
+
+export function predicateValueSourceChoices(pack: MetadataPack, definition: 'scalar_field_predicate' | 'record_field_predicate' | 'object_record_field_predicate', operator: string): string[] {
+  const uri = `${schemaBase}assessment-language.schema.json#/$defs/${definition}`;
+  try { return sourceChoicesForSchema(pack, uri, pack.node(uri), operator, definition !== 'object_record_field_predicate'); }
+  catch { return []; }
+}
+
+export function selectorValueSourceChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): string[] {
+  const context = selectorFieldSpec(pack, capability, field, requireField);
+  if (!context) return [];
+  return sourceChoicesForSchema(pack, context.uri, context.spec, operator, requireField);
+}
+
 export function selectorValueChoices(pack: MetadataPack, capability: string, field: string, operator: string, requireField: boolean): CompletionChoice[] {
   const context = selectorFieldSpec(pack, capability, field, requireField);
   if (!context) return [];

@@ -296,23 +296,29 @@ function requireSection(title,description,controls){
   else section.classList.add('compact-constant'); // Summarize effective hidden defaults once; do not imply the requirements are missing.
   return section
 }
-function predicatePlan(requirement){
-  const predicates=requirement&&typeof requirement==='object'&&!Array.isArray(requirement)
-    &&requirement.fields&&typeof requirement.fields==='object'&&!Array.isArray(requirement.fields)
+function predicatePlan(requirement,basePath=[]){
+  if(!requirement||typeof requirement!=='object'||Array.isArray(requirement))return [];
+  const result=[];
+  const predicates=requirement.fields&&typeof requirement.fields==='object'&&!Array.isArray(requirement.fields)
     ?requirement.fields:{};
-  return Object.entries(predicates).map(([name,raw])=>{
+  for(const [name,raw] of Object.entries(predicates)){
     const predicate=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
     const operators=Object.keys(predicate).filter(k=>!['value_match','values_found','values_matching','datatype','redact_result'].includes(k));
     const patterns=Array.isArray(predicate.matches_regex)?predicate.matches_regex:[];
-    return {name,operators,patterns,expectedMatch:predicate.value_match,
+    result.push({name,basePath,operators,patterns,expectedMatch:predicate.value_match,
       absence:predicate.values_found==='none'&&operators.length===0,
-      visibleKeys:Object.keys(predicate)}
-  })
+      visibleKeys:Object.keys(predicate)});
+  }
+  for(const group of ['and','or','one','xor']){
+    const branches=Array.isArray(requirement[group])?requirement[group]:[];
+    branches.forEach((branch,index)=>result.push(...predicatePlan(branch,basePath.concat(group,index))));
+  }
+  return result;
 }
 function fieldCheckCard(path,plan){
-  const base=path.concat('fields',plan.name);const section=document.createElement('section');section.className='require-predicate';
+  const base=path.concat(plan.basePath||[],'fields',plan.name);const section=document.createElement('section');section.className='require-predicate';
   const heading=document.createElement('div');heading.className='require-predicate-heading';
-  const title=document.createElement('h3');title.textContent=plan.name;heading.append(title);
+  const title=document.createElement('h3');title.textContent=(plan.basePath&&plan.basePath.length?plan.basePath.map((part,index)=>typeof part==='number'?'['+part+']':(index&&typeof plan.basePath[index-1]==='number'?part:part)).join('.')+'.':'')+plan.name;heading.append(title);
   const note=document.createElement('p');note.className='hint';
   note.textContent=plan.absence?'No collected values are permitted for this field.':
     plan.patterns.length?'The collected text is compared with the listed regular expressions.':
@@ -377,7 +383,7 @@ function requireInspector(path){
     const title=document.createElement('h2');title.textContent='3. Field conditions';group.append(title);
     const guide=document.createElement('p');guide.className='hint';guide.textContent='These are the conditions applied to collected evidence fields.';group.append(guide);
     const fields=document.createElement('div');fields.className='require-fields';plans.forEach(p=>fields.append(fieldCheckCard(path,p)));group.append(fields);panel.append(group)}
-  const handled=new Set([...itemFields,...fieldFields,...all.filter(f=>plans.some(p=>hasPrefix(f.path,path.concat('fields',p.name))))].map(f=>key(f.path)));
+  const handled=new Set([...itemFields,...fieldFields,...all.filter(f=>plans.some(p=>hasPrefix(f.path,path.concat(p.basePath||[],'fields',p.name))))].map(f=>key(f.path)));
   const other=all.filter(f=>!handled.has(key(f.path)));
   if(other.length){const details=document.createElement('details');details.className='require-advanced';const summary=document.createElement('summary');summary.textContent='Advanced / other conditions ('+other.length+')';details.append(summary,compactGrid(other));panel.append(details)}
   if(!plans.length&&!itemFields.length&&!fieldFields.length)panel.append(groupedForm(path));

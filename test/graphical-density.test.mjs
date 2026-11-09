@@ -378,7 +378,7 @@ test('context menu labels represent authoring concepts, never generic YAML nodes
 test('Require default-only item policy stays explicit without a misleading empty-controls row', () => {
   const html=graphicalHtml();
   const begin=html.indexOf('function requireSection(title,description,controls)');
-  const end=html.indexOf('function predicatePlan(requirement)',begin);
+  const end=html.indexOf('function predicatePlan(requirement,basePath=[])',begin);
   const body=html.slice(begin,end);
   assert.ok(begin>=0 && end>begin);
   assert.match(body,/section\.classList\.add\('compact-constant'\)/);

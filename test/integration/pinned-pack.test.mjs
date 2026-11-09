@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
-import { completionChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
+import { completionChoices, predicateOperatorChoices, predicateValueSourceChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
 import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from '../../dist/structured-model.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from '../../dist/expression-contract.js';
 import { context } from '../helpers.mjs';
@@ -233,6 +233,57 @@ test('graphical operator controls resolve every Object/Require context from the 
  const incompatible=invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.mount_point.float_equals');
  assert.ok(incompatible); assert.equal(incompatible.operatorCompatible,false); assert.ok(incompatible.operatorChoices.includes('float_equals'));
  assert.deepEqual(comparisonOperations(pack,invalid.assessment,['assessment','tests','registry-test','object','mount_point','float_equals'],true),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex','float_equals']);
+});
+
+test('graphical model keeps incomplete draft YAML inspectable without normalization',()=>{
+ const raw=`assessment:
+  variables:
+    draft-variable:
+      kind: local
+      datatype: string
+      expression:
+`;
+ const model=modelFor({getText:()=>raw,version:1},pack);
+ assert.equal(model.ok,true);assert.equal(model.draft,true);assert.equal(model.fields.some(field=>field.path.join('.')==='assessment.variables.draft-variable.datatype'),true);
+ const malformed=`assessment:
+  tests:
+    draft-test:
+      capability: windows.registry
+      object: {hive: {equals: `;
+ const malformedModel=modelFor({getText:()=>malformed,version:2},pack);
+ assert.equal(malformedModel.ok,true);assert.equal(malformedModel.draft,true);assert.ok(malformedModel.parseDiagnostics.length>0);
+});
+
+test('canonical generic predicate contracts retain Variable/Input branches and separate Object record sources',()=>{
+ for(const definition of ['scalar_field_predicate','record_field_predicate']){
+  const operators=predicateOperatorChoices(pack,definition).map(choice=>choice.value);
+  assert.deepEqual(operators,['case_insensitive_equals','case_insensitive_not_equal','equals','greater_than','greater_than_or_equal','less_than','less_than_or_equal','matches_regex','not_equal']);
+  assert.deepEqual(predicateValueSourceChoices(pack,definition,'equals'),['fixed','variable','input']);
+ }
+ assert.deepEqual(predicateValueSourceChoices(pack,'object_record_field_predicate','equals'),['fixed','variable']);
+ assert.ok(!predicateValueSourceChoices(pack,'object_record_field_predicate','equals').includes('input'));
+});
+
+test('nested Require record predicates use canonical record contracts without mixing cardinality',()=>{
+ const assessment={tests:{sql:{capability:'independent.sql',require:{fields:{result:{record:{fields:{column:{equals:'name'}}}}}}}}};
+ const path=['assessment','tests','sql','require','fields','result','record','fields','column','equals'];
+ assert.deepEqual(comparisonOperations(pack,assessment,path),['case_insensitive_equals','case_insensitive_not_equal','equals','greater_than','greater_than_or_equal','less_than','less_than_or_equal','matches_regex','not_equal']);
+ assert.deepEqual(comparisonValueSources(pack,assessment,path),['fixed','variable','input']);
+ const model=assessmentEditorModel({getText:()=>`assessment:
+  tests:
+    sql:
+      capability: independent.sql
+      require:
+        fields:
+          result:
+            record:
+              fields:
+                column: {equals: name}
+`,version:1},pack);
+ const field=model.fields.find(item=>item.path.join('.')===path.slice(0,-1).join('.')+'.equals');
+ assert.ok(field?.valueSources.includes('variable'));
+ assert.ok(field?.valueSources.includes('input'));
+ assert.ok(!field?.operatorChoices.includes('binary_equals'));
 });
 
 test('Delivery A contract adapter inventories operands and Variable validation without runtime claims',()=>{
