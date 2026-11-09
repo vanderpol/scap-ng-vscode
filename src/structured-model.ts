@@ -152,6 +152,24 @@ function nestedPredicateDefinition(pack: MetadataPack, capability: string, paren
   } catch { return undefined; }
 }
 
+function canonicalRequireOperation(pack: MetadataPack, capability: string, path: EditPath, requireIndex: number): boolean {
+  const candidate = path.at(-1);
+  if (typeof candidate !== 'string' || !candidate) return false;
+  const schemaUri = pack.manifest.capabilities[capability]?.schema_uri;
+  if (!schemaUri) return false;
+  const relative = path.slice(requireIndex + 1, -1)
+    .filter((part): part is string => typeof part !== 'number' && !logicalGroupKeys.has(String(part)));
+  if (relative[0] === 'fields') relative.shift();
+  if (!relative.length) return false;
+  try {
+    const operation = schemaPropertiesAtPath(pack, `${schemaUri}#/$defs/state_predicate`, relative).get(candidate);
+    // Scalar comparison properties are oneOf unions (literal, Variable and
+    // Input branches). Cardinality controls and datatype declarations are
+    // $refs/primitive properties and must never enter the operator editor.
+    return Boolean(operation?.node && Array.isArray(operation.node.oneOf));
+  } catch { return false; }
+}
+
 function comparisonContext(pack: MetadataPack | undefined, assessment: any, path: EditPath) {
   if (!pack || path[0] !== 'assessment' || path.length < 5) return undefined;
   const parent = path.slice(0, -1);
@@ -167,8 +185,9 @@ function comparisonContext(pack: MetadataPack | undefined, assessment: any, path
   // same scalar predicate contract at their nearest `fields` mapping. A
   // record member is resolved from the canonical state schema, not guessed
   // from the capability name or a GUI-only registry.
-  if (parent.length !== fieldsIndex + 2 && parent.length !== fieldsIndex + 3) return undefined;
-  const predicateDefinition = typeof capability === 'string' ? nestedPredicateDefinition(pack, capability, parent, requireIndex) : undefined;
+  if (parent.length !== fieldsIndex + 2) return undefined;
+  if (typeof capability !== 'string' || !canonicalRequireOperation(pack, capability, path, requireIndex)) return undefined;
+  const predicateDefinition = nestedPredicateDefinition(pack, capability, parent, requireIndex);
   return typeof capability === 'string' ? { capability, field, requireField: true, predicateDefinition } : undefined;
 }
 

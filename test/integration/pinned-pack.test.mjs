@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -284,6 +284,46 @@ test('nested Require record predicates use canonical record contracts without mi
  assert.ok(field?.valueSources.includes('variable'));
  assert.ok(field?.valueSources.includes('input'));
  assert.ok(!field?.operatorChoices.includes('binary_equals'));
+});
+
+test('current sysvol sample separates scalar comparison, value matching, and existence cardinality',()=>{
+ const raw=readFileSync(join(currentSamples,'windows-server-2025-sysvol-permissions.assessment.yaml'),'utf8');
+ const value=new SourceBuffer(raw).json();
+ assert.deepEqual(pack.validate(base+'assessment.schema.json',value),[]);
+ const model=assessmentEditorModel({getText:()=>raw,version:1},pack);
+ const stdoutPrefix='assessment.tests.permissions-must-conform-to-minimum-requirements-test.require.fields.stdout_line';
+ const stderrPrefix='assessment.tests.permissions-must-conform-to-minimum-requirements-test.require.fields.stderr_line';
+ const regexFields=model.fields.filter(field=>field.path.join('.').startsWith(stdoutPrefix+'.matches_regex.'));
+ assert.equal(regexFields.length,9);
+ assert.ok(regexFields.every(field=>field.operatorCompatible===undefined), 'regex array items must not be scalar operators');
+ const valueMatch=model.fields.find(field=>field.path.join('.')===stdoutPrefix+'.value_match');
+ const valuesFound=model.fields.find(field=>field.path.join('.')===stderrPrefix+'.values_found');
+ assert.equal(valueMatch?.value,'one_or_more');
+ assert.deepEqual(valueMatch?.choices,['none','exactly_one','one_or_more','every']);
+ assert.equal(valueMatch?.operatorCompatible,undefined);
+ assert.equal(valuesFound?.value,'none');
+ assert.equal(valuesFound?.operatorCompatible,undefined);
+ assert.equal(model.fields.filter(field=>field.operatorCompatible===false).length,0);
+ // A schema-declared scalar operation outside the capability's allowed subset
+ // remains explicitly diagnosed rather than being hidden by this distinction.
+ const invalid={assessment:{...value.assessment,tests:{...value.assessment.tests,'invalid-test':{capability:'linux.partition',object:{mount_point:{float_equals:'/tmp',datatype:'float'}},require:{fields:{mount_point:{float_equals:'/tmp'}}}}}}};
+ const invalidModel=assessmentEditorModel({getText:()=>JSON.stringify(invalid),version:2},pack);
+ assert.equal(invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.invalid-test.object.mount_point.float_equals')?.operatorCompatible,false);
+ assert.equal(invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.invalid-test.require.fields.mount_point.float_equals')?.operatorCompatible,false);
+});
+
+test('all current-v04 sample Assessments have no false-invalid graphical operator warnings',()=>{
+ const reports=[];
+ for(const name of readdirSync(currentSamples).filter(item=>item.endsWith('.assessment.yaml'))){
+  const raw=readFileSync(join(currentSamples,name),'utf8');
+  const value=new SourceBuffer(raw).json();
+  assert.deepEqual(pack.validate(base+'assessment.schema.json',value),[],name);
+  const model=assessmentEditorModel({getText:()=>raw,version:1},pack);
+  const warnings=model.fields.filter(field=>field.operatorCompatible===false).map(field=>field.path.join('.'));
+  reports.push({name,warnings});
+ }
+ assert.ok(reports.length>0);
+ assert.deepEqual(reports.filter(report=>report.warnings.length),[],JSON.stringify(reports));
 });
 
 test('Delivery A contract adapter inventories operands and Variable validation without runtime claims',()=>{
