@@ -421,10 +421,10 @@ test('Require field name and small explanatory text share a responsive heading r
 test('Require policy and predicate editor labels align inline with their controls', () => {
   const html=graphicalHtml();
   // Layout-only: retain the current schema-derived controls and source editor.
-  assert.match(html,/\.require-section>\.property-grid \.field-entry,\.require-predicate>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(92px,37%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.require-section>\.property-grid \.field-entry,\.require-predicate>\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(82px,18%\) minmax\(0,1fr\)/);
   assert.match(html,/\.require-section>\.property-grid \.field-entry>label,\.require-predicate>\.property-grid \.field-entry>label\{display:block;padding:0/);
   assert.match(html,/@media\(max-width:760px\)\{\.require-section>\.property-grid/);
-  const section=html.slice(html.indexOf('function requireSection(title,description,controls)'),html.indexOf('function predicatePlan(requirement)'));
+  const section=html.slice(html.indexOf('function requireSection(title,description,controls)'),html.indexOf('function predicatePlan(requirement,basePath=[])'));
   assert.match(section,/if\(controls\.length\)section\.append\(compactGrid\(controls\)\)/);
   const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
   assert.match(card,/if\(meta\.length\)section\.append\(compactGrid\(meta,'comparison-fields'\)\)/);
@@ -454,8 +454,8 @@ test('Require section headings and explanations share a line including Field con
 
 test('Variable stages share heading/help row and all property forms align labels inline', () => {
   const html=graphicalHtml();
-  assert.match(html,/\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(96px,34%\) minmax\(0,1fr\)/);
-  assert.match(html,/\.property-grid \.field-entry\.wide\{grid-template-columns:minmax\(110px,24%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid \.field-entry\{display:grid;grid-template-columns:minmax\(82px,20%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid \.field-entry\.wide\{grid-template-columns:minmax\(92px,16%\) minmax\(0,1fr\)/);
   assert.match(html,/\.variable-step-heading\{display:flex;align-items:baseline;flex-wrap:wrap/);
   assert.match(html,/\.variable-step-heading>\.hint\{margin:0;flex:1 1 240px/);
   const start=html.indexOf('function variableInspector(path)');
@@ -499,6 +499,7 @@ test('Object inspectors give selectors full-width rows and contextual help on ho
   const html=graphicalHtml();
   assert.match(html,/\.property-grid\.object-fields\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{grid-column:1\/-1/);
+  assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{[^}]*grid-template-columns:minmax\(82px,14%\) minmax\(0,1fr\)/);
   assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
   assert.match(html,/style==='object-fields'/);
   assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
