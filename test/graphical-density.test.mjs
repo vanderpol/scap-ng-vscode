@@ -199,6 +199,13 @@ test('Variable stages show collection, capture and concatenation in dependency o
   assert.match(stages[2].note,/authored order/);
 });
 
+test('Variable diagnostics remain visible without claiming runtime evaluation',()=>{
+ const html=graphicalHtml();
+ assert.match(html,/current\?\.variableAnalysisSummary/);
+ assert.match(html,/Variable diagnostics/);
+ assert.match(html,/variableAnalysisSummary/);
+});
+
 test('Variable UI preserves source-edit controls and never presents runtime-derived output', () => {
   const html=graphicalHtml();
   assert.match(html,/function variableInspector\(path\)/);

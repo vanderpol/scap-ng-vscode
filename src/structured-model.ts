@@ -1,9 +1,10 @@
+import { parseDocument } from 'yaml';
 import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
 import { selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
-import { analyzeVariables, variableAnalysisSummary } from './expression-contract.js';
+import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -37,12 +38,12 @@ function schemaForPath(pack: MetadataPack, uri: string, path: EditPath): string 
   if (node.additionalProperties && typeof node.additionalProperties === 'object') return schemaForPath(pack, resolved.uri + (resolved.uri.includes('#') ? '' : '#') + '/additionalProperties', rest);
   return undefined;
 }
-function schemaHelp(pack: MetadataPack | undefined, root: string | undefined, path: EditPath) {
+function schemaHelp(pack: MetadataPack | undefined, root: string | undefined, path: EditPath, draft = false) {
   if (!pack || !root || !path.length) return undefined;
   try {
     const uri = schemaForPath(pack, root, path); if (!uri) return undefined;
-    const help = pack.describe(uri, { documentVersion: '0.4.0', schemaValid: true, isOverride: false, diagnostics: [] });
-    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults'); return { uri, title: help.title, description: help.description, annotation: help.annotation, suggested: help.suggested, hasSuggestion: help.hasSuggestion, choices: help.choices.filter((choice: Json) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
+    const help = pack.describe(uri, { documentVersion: '0.4.0', schemaValid: !draft, isOverride: false, diagnostics: [] });
+    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: !draft, isOverride: false, diagnostics: [] }, 'hide-defaults'); return { uri, title: help.title, description: help.description, annotation: help.annotation, suggested: help.suggested, hasSuggestion: help.hasSuggestion, choices: help.choices.filter((choice: Json) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
   } catch { return undefined; }
 }
 
@@ -162,15 +163,16 @@ function authoredComparisonDatatype(assessment: any, operationPath: EditPath): s
 export function comparisonValueSources(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
-  return selectorValueSourceChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField);
+  try { return expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object').operatorSources[descriptor.operation] ?? []; }
+  catch { return []; }
 }
 
 export function comparisonOperatorDescriptions(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): Record<string, string> {
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return {};
   try {
-    const choices = selectorOperatorChoices(pack, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath));
-    const result = Object.fromEntries(choices.map(choice => [choice.value, choice.description || choice.label || choice.value]));
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const result = { ...contract.operatorDocumentation };
     if (includeIncompatible && descriptor.operation && !Object.hasOwn(result, descriptor.operation)) result[descriptor.operation] = 'Authored operator is not valid for the selected datatype.';
     return result;
   } catch { return {}; }
@@ -178,9 +180,10 @@ export function comparisonOperatorDescriptions(pack: MetadataPack | undefined, a
 
 export function comparisonOperations(pack: MetadataPack | undefined, assessment: any, path: EditPath, includeIncompatible = false): string[] {
   const descriptor = comparisonDescriptor(pack, assessment, path);
-  if (!descriptor) return [];
+  if (!descriptor || !pack) return [];
   try {
-    const allowed = selectorOperatorChoices(pack!, descriptor.capability, descriptor.field, descriptor.requireField, authoredComparisonDatatype(assessment, descriptor.operationPath)).map(choice => choice.value);
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    const allowed = contract.operators.map(choice => choice.value);
     if (includeIncompatible && descriptor.operation && !allowed.includes(descriptor.operation)) return [...allowed, descriptor.operation];
     return allowed.includes(descriptor.operation) ? allowed : [];
   } catch { return []; }
@@ -189,8 +192,10 @@ export function comparisonOperations(pack: MetadataPack | undefined, assessment:
 function comparisonValueChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
-  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, descriptor.operation, descriptor.requireField).map(choice => choice.value); }
-  catch { return []; }
+  try {
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    return contract.fixedChoicesByOperator[descriptor.operation] ?? [];
+  } catch { return []; }
 }
 
 function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any, path: EditPath): string[] {
@@ -198,8 +203,10 @@ function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any,
   if (current.length) return current;
   const descriptor = comparisonDescriptor(pack, assessment, path);
   if (!descriptor || !pack) return [];
-  try { return selectorValueChoices(pack, descriptor.capability, descriptor.field, 'equals', descriptor.requireField).map(choice => choice.value); }
-  catch { return []; }
+  try {
+    const contract = expressionContract(pack, descriptor.capability, descriptor.field, descriptor.requireField ? 'require' : 'object');
+    return contract.fixedChoicesByOperator.equals ?? [];
+  } catch { return []; }
 }
 
 export function comparisonVariableCompatible(pack: MetadataPack | undefined, assessment: any, path: EditPath, variableId: string): boolean {
@@ -282,12 +289,27 @@ function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefi
   if(!inTest&&!inShared)return undefined;
   return Object.keys(assessment?.variables||{})
 }
+function parseAuthoringDocument(document: any): { value: any; draft: boolean; diagnostics: string[] } {
+  const text = document.getText();
+  try { return { value: new SourceBuffer(text).json(), draft: false, diagnostics: [] }; }
+  catch (error) {
+    try {
+      const parsed: any = parseDocument(text, { uniqueKeys: false, keepSourceTokens: true });
+      const value = parsed.toJS({ maxAliasCount: 50 });
+      const diagnostics: string[] = [...new Set<string>((parsed.errors ?? []).map((item: any) => item.message || String(item)))];
+      return { value: value ?? {}, draft: true, diagnostics: diagnostics.length ? diagnostics : [error instanceof Error ? error.message : String(error)] };
+    } catch (draftError) {
+      return { value: {}, draft: true, diagnostics: [draftError instanceof Error ? draftError.message : String(draftError)] };
+    }
+  }
+}
+
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
-    const value = new SourceBuffer(document.getText()).json(); const root = schemaRoot(pack);
+    const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack);
     const fields = scalarEntries(value).map(field => {
-      const help = schemaHelp(pack, root, field.path);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }, 'hide-defaults').hidden : false;
+      const help = schemaHelp(pack, root, field.path, parsed.draft);
+      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: !parsed.draft, isOverride: false, diagnostics: parsed.diagnostics }, 'hide-defaults').hidden : false;
       const variableChoices = assessmentVariableChoices((value as any)?.assessment, field.path);
       const testChoices = testChoiceOptions(pack, field.path);
       const descriptor = comparisonDescriptor(pack, (value as any)?.assessment, field.path);
@@ -324,7 +346,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
         kind: field.value === null ? 'null' : typeof field.value
       };
     });
-    return { ok: true, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
+    return { ok: true, draft: parsed.draft, parseDiagnostics: parsed.diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
@@ -354,15 +376,16 @@ function predicateControl(fields: any[], mappingPath: (string | number)[], name:
   return { name, label, mappingPath, operation, value: rawValue, valuePath, choices: scalar?.choices ?? [], description: scalar?.description ?? '', operations: [], regexPatterns: operation === 'matches_regex' ? (Array.isArray(rawValue) ? rawValue.map(String) : [String(rawValue)]) : [], unsupported: !scalar && !Array.isArray(rawValue) };
 }
 export function assessmentEditorModel(document: any, pack?: MetadataPack) {
+  const parsed = parseAuthoringDocument(document);
   const base: any = modelFor(document, pack); if (!base.ok) return base;
-  base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256; base.diagnostics = [];
-  const value: any = new SourceBuffer(document.getText()).json(); const assessment = value.assessment;
+  base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256; base.diagnostics = parsed.diagnostics;
+  const value: any = parsed.value; const assessment = value.assessment;
   // The graphical Variables inspector needs the authored expression structure,
   // not only the flattened scalar control list. This is read-only presentation
   // data derived from the same authoritative YAML document.
   base.variableDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) ? (assessment.variables ?? {}) : {};
   if (pack && assessment && typeof assessment === 'object' && !Array.isArray(assessment)) {
-    const variableAnalysis = analyzeVariables(pack, assessment, true);
+    const variableAnalysis = analyzeVariables(pack, assessment, parsed.draft);
     base.variableAnalysis = variableAnalysis;
     base.variableDiagnostics = variableAnalysis.diagnostics;
     base.variableAnalysisSummary = variableAnalysisSummary(variableAnalysis);

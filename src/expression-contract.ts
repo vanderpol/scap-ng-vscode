@@ -181,6 +181,10 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       valid = false;
       diagnostics.push({ code: 'invalid-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: `Variable datatype '${declarationObject.datatype}' is not allowed by the pinned schema.` });
     }
+    if (!objectValue(declarationObject.expression)) {
+      valid = false;
+      diagnostics.push({ code: 'incomplete-variable-expression', kind: 'declaration', severity: draft ? 'info' : 'error', path: [...path, 'expression'], message: 'Variable expression is incomplete; choose a schema-supported expression branch.' });
+    }
     const declarationReferences: string[] = [];
     walk(declarationObject.expression, [...path, 'expression'], (value, valuePath) => {
       if (!objectValue(value) || !Object.hasOwn(value, 'variable')) return;
