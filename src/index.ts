@@ -6,3 +6,4 @@ export * from './playground.js';
 export * from './completion.js';
 export * from './regex-tester.js';
 export * from './sample-object.js';
+export * from './expression-contract.js';

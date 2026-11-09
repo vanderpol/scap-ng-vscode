@@ -3,6 +3,7 @@ import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaNodes } from './schema-resolver.js';
 import { selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
+import { analyzeVariables, variableAnalysisSummary } from './expression-contract.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -360,6 +361,12 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   // not only the flattened scalar control list. This is read-only presentation
   // data derived from the same authoritative YAML document.
   base.variableDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) ? (assessment.variables ?? {}) : {};
+  if (pack && assessment && typeof assessment === 'object' && !Array.isArray(assessment)) {
+    const variableAnalysis = analyzeVariables(pack, assessment, true);
+    base.variableAnalysis = variableAnalysis;
+    base.variableDiagnostics = variableAnalysis.diagnostics;
+    base.variableAnalysisSummary = variableAnalysisSummary(variableAnalysis);
+  }
   // Preserve the authored Require hierarchy for explanation of population, predicates
   // and ordered regex arrays. Edits still target original source scalar paths.
   base.requireDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) && assessment.tests && typeof assessment.tests === 'object' ? Object.fromEntries(Object.entries(assessment.tests).map(([testId, test]: [string, any]) => [testId, test?.require ?? {}])) : {};

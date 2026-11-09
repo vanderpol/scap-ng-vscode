@@ -8,6 +8,7 @@ import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
 import { completionChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
 import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from '../../dist/structured-model.js';
+import { analyzeVariables, expressionContract, variableAnalysisSummary } from '../../dist/expression-contract.js';
 import { context } from '../helpers.mjs';
 
 // Explicit paths: no downloads, upstream assets or copied content in this repo.
@@ -232,6 +233,39 @@ test('graphical operator controls resolve every Object/Require context from the 
  const incompatible=invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.registry-test.object.mount_point.float_equals');
  assert.ok(incompatible); assert.equal(incompatible.operatorCompatible,false); assert.ok(incompatible.operatorChoices.includes('float_equals'));
  assert.deepEqual(comparisonOperations(pack,invalid.assessment,['assessment','tests','registry-test','object','mount_point','float_equals'],true),['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex','float_equals']);
+});
+
+test('Delivery A contract adapter inventories operands and Variable validation without runtime claims',()=>{
+ const object=expressionContract(pack,'windows.registry','hive','object');
+ assert.deepEqual(object.operators.map(option=>option.value),['equals']);
+ assert.deepEqual(object.operandSources,['fixed','variable']);
+ assert.equal(object.operatorSources.equals.includes('input'),false);
+ assert.deepEqual(object.datatypes,['string']);
+ assert.deepEqual(object.cardinalityControls,['value_match']);
+ const require=expressionContract(pack,'windows.registry','type','require');
+ assert.ok(require.operandSources.includes('fixed'));assert.ok(require.operandSources.includes('variable'));assert.ok(require.operandSources.includes('input'));
+ assert.ok(require.operatorDocumentation.equals);assert.deepEqual(require.datatypes,['string']);
+ const assessment={variables:{
+   'literal-variable':{kind:'constant',datatype:'string',expression:{literal:'x'}},
+   'array-variable':{kind:'constant',datatype:'string',expression:{literal:['x','y']}},
+   'cycle-a-variable':{kind:'local',datatype:'string',expression:{variable:'cycle-b-variable'}},
+   'cycle-b-variable':{kind:'local',datatype:'string',expression:{variable:'cycle-a-variable'}},
+   'wrong-variable':{kind:'local',datatype:'integer',expression:{literal:1}}
+  },tests:{
+   'sample-test':{capability:'windows.registry',object:{hive:{equals:{variable:'wrong-variable'}}},require:{fields:{type:{equals:{variable:'wrong-variable'}}}}}
+  }};
+ const analysis=analyzeVariables(pack,assessment,true);
+ assert.equal(analysis.runtimeEvaluation,'not_available');
+ assert.equal(analysis.declarations.find(item=>item.id==='array-variable')?.potentialCardinality,'many');
+ assert.ok(analysis.diagnostics.some(item=>item.code==='variable-cycle'));
+ assert.ok(analysis.diagnostics.filter(item=>item.code==='incompatible-variable-datatype').length>=2);
+ assert.match(variableAnalysisSummary(analysis),/runtime evaluation not available/);
+ const model=assessmentEditorModel({getText:()=>new SourceBuffer(JSON.stringify({assessment})).text,version:1},pack);
+ assert.ok(model.variableAnalysis);assert.ok(model.variableDiagnostics.some(item=>item.code==='variable-cycle'));assert.match(model.variableAnalysisSummary,/runtime evaluation not available/);
+ const draft=analyzeVariables(pack,{variables:{'draft-variable':{kind:'local'}}},true);
+ assert.equal(draft.diagnostics.find(item=>item.code==='incomplete-variable-declaration')?.severity,'info');
+ const completed=analyzeVariables(pack,{variables:{'draft-variable':{kind:'local'}}},false);
+ assert.equal(completed.diagnostics.find(item=>item.code==='incomplete-variable-declaration')?.severity,'error');
 });
 
 test('Object and Require Variable contracts stay schema-backed and datatype-compatible',()=>{
