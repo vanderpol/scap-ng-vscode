@@ -151,6 +151,20 @@
         "scapNg.schemaPackPath": {
           "type": "string",
           "description": "Absolute path to a verified offline SCAP-NG editor metadata pack. The pinned schema-profile.json is always checked."
+        },
+        "scapNg.assessmentEditor": {
+          "type": "string",
+          "enum": [
+            "yaml",
+            "graphical"
+          ],
+          "enumDescriptions": [
+            "Open Assessment YAML files in the native VS Code YAML editor.",
+            "Open Assessment YAML files in the SCAP-NG Graphical editor."
+          ],
+          "default": "yaml",
+          "scope": "window",
+          "description": "Default editor for SCAP-NG Assessment YAML files. Use Open With\u2026 for a one-time choice."
         }
       }
     },

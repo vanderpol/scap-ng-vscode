@@ -18,6 +18,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.searchIndex'));
   assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.searchIndex' && menu.when === 'view == scapNg-assessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.createGuidedAssessment'));
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enum, ['yaml', 'graphical']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentAuthoringPrototype'));
@@ -52,6 +54,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);
   assert.match(authoringSidebarSource, /saveSchemaPackPath/);
+  assert.match(authoringSidebarSource, /id=\"openGuided\"/);
+  assert.match(authoringSidebarSource, /type:'openGuided'/);
+  assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
+  assert.match(authoringSidebarSource, /type:'saveOptions'/);
   assert.match(authoringSidebarSource, /revealPath/);
   assert.match(authoringSidebarSource, /Reveal in YAML/);
   assert.doesNotMatch(authoringSidebarSource, /openSettings|workbench\.action\.openSettings/);

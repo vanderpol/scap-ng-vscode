@@ -15,6 +15,7 @@ import { schemaCapabilityObjectProperties } from './schema-resolver.js';
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
+import { isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -111,6 +112,18 @@ function readBuildInfo(root: string): BuildInfo {
 }
 function buildLabel(info: BuildInfo) { return `${info.buildId} · ${info.builtAt}`; }
 function yamlServiceLabel(api: any) { const extension = api.extensions?.getExtension?.('redhat.vscode-yaml'); return extension ? `Red Hat YAML ${extension.packageJSON?.version ?? 'installed'}` : 'Red Hat YAML not detected'; }
+
+/** Keep the default Assessment editor in sync without touching unrelated user associations. */
+async function synchronizeAssessmentEditorPreference(api: any): Promise<void> {
+  const scapConfiguration = api.workspace.getConfiguration('scapNg');
+  const configured = scapConfiguration?.get?.('assessmentEditor', 'yaml');
+  const mode = isAssessmentEditorMode(configured) ? configured : 'yaml';
+  const workbenchConfiguration = api.workspace.getConfiguration();
+  const current = workbenchConfiguration?.get?.('workbench.editorAssociations', {});
+  const next = withAssessmentEditorAssociation(current, mode);
+  if (sameEditorAssociations(current, next) || typeof workbenchConfiguration?.update !== 'function') return;
+  await workbenchConfiguration.update('workbench.editorAssociations', next, api.ConfigurationTarget?.Global ?? 1);
+}
 function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!)); }
 
 
@@ -1287,6 +1300,8 @@ export function activate(context: vscode.ExtensionContext) {
     return pack;
   };
   loadPack((vscode.window as any).activeTextEditor?.document.uri.fsPath);
+  const syncEditorPreference = () => void synchronizeAssessmentEditorPreference(api).catch(() => { /* a read-only settings host may decline this optional convenience */ });
+  syncEditorPreference();
   const index = new WorkspaceIndex();
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
@@ -1312,8 +1327,11 @@ export function activate(context: vscode.ExtensionContext) {
     packWarningShown = false;
     loadPack((api.window as any).activeTextEditor?.document?.uri?.fsPath);
   };
-  const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, resetPack);
+  const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, () => { resetPack(); syncEditorPreference(); });
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('scapNg-authoringSidebar', authoringSidebar));
+  if (api.workspace.onDidChangeConfiguration) context.subscriptions.push(api.workspace.onDidChangeConfiguration((event: any) => {
+    if (event?.affectsConfiguration?.('scapNg.assessmentEditor')) syncEditorPreference();
+  }));
   const revealAuthoring = async () => {
     try { await api.commands.executeCommand('workbench.view.extension.scapNg-authoring'); return true; }
     catch { return false; }
