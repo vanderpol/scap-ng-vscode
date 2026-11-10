@@ -61,3 +61,20 @@ test('assisted labeled Windows registry input infers hive, path, value name, typ
   assert.equal(test.require.fields.type.equals, 'dword');
   assert.equal(test.require.fields.value.equals, 1);
 });
+
+test('assisted common command and policy patterns stay native and schema-valid', () => {
+  const cases = [
+    ['unix.sysctl', 'Restrict kernel pointers', 'Run: $ sudo sysctl kernel.kptr_restrict kernel.kptr_restrict = 1'],
+    ['linux.rpminfo', 'Package must not be installed', 'Verify with: $ dnf list --installed vsftpd Error: No matching Packages to list'],
+    ['linux.systemdunitproperty', 'Service must be active', 'Verify with: $ systemctl is-active systemd-journald active'],
+    ['windows.passwordpolicy', 'Password history must be 24', 'If Enforce password history is less than 24 passwords remembered, this is a finding.'],
+    ['independent.textfilecontent', 'Configuration must be enabled', 'Verify with: $ grep localpkg_gpgcheck /etc/dnf/dnf.conf localpkg_gpgcheck=1 If localpkg_gpgcheck is not set to 1 or True, this is a finding.'],
+    ['independent.shellcommand', 'Directory memberships must be reviewed', 'Open PowerShell and enter "Get-ADGroupMember -Identity EnterpriseAdmins".']
+  ];
+  for (const [capability, title, checkText] of cases) {
+    const result = createAssistedAssessment(pack, { title, checkText });
+    assert.equal(result.generatedMode, 'automated', capability);
+    assert.equal(result.diagnostics.length, 0, capability);
+    assert.ok(Object.values(result.document.assessment.tests).some(test => test.capability === capability), capability);
+  }
+});
