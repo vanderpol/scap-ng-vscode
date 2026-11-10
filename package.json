@@ -52,6 +52,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:scapNg.openAssessmentStudio",
     "onCommand:scapNg.openAssessmentAuthoringPrototype",
     "onCommand:scapNg.openAuthoringSidebar",
