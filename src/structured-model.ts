@@ -42,8 +42,9 @@ function schemaHelp(pack: MetadataPack | undefined, root: string | undefined, pa
   if (!pack || !root || !path.length) return undefined;
   try {
     const uri = schemaForPath(pack, root, path); if (!uri) return undefined;
+    const parentUri = path.length > 1 ? schemaForPath(pack, root, path.slice(0, -1)) : undefined;
     const help = pack.describe(uri, { documentVersion: '0.4.0', schemaValid: !draft, isOverride: false, diagnostics: [] });
-    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: !draft, isOverride: false, diagnostics: [] }, 'hide-defaults'); return { uri, title: help.title, description: help.description, annotation: help.annotation, suggested: help.suggested, hasSuggestion: help.hasSuggestion, choices: help.choices.filter((choice: Json) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
+    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: !draft, isOverride: false, diagnostics: [], parentSchemaUri: parentUri }, 'hide-defaults'); return { uri, parentUri, title: help.title, description: help.description, annotation: help.annotation, suggested: control.suggested, hasSuggestion: control.hasSuggestion, choices: help.choices.filter((choice: Json) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
   } catch { return undefined; }
 }
 
@@ -356,7 +357,9 @@ export function modelFor(document: any, pack?: MetadataPack) {
     const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack);
     const fields = scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path, parsed.draft);
-      const hidden = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: !parsed.draft, isOverride: false, diagnostics: parsed.diagnostics }, 'hide-defaults').hidden : false;
+      const parentValue = field.path.length > 1 ? field.path.slice(0, -1).reduce((parent: any, part: string | number) => parent?.[part as any], value) : undefined;
+      const control = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: !parsed.draft, isOverride: false, diagnostics: parsed.diagnostics, parentValue, parentSchemaUri: help.parentUri }, 'hide-defaults') : undefined;
+      const hidden = control?.hidden ?? false;
       const variableChoices = assessmentVariableChoices((value as any)?.assessment, field.path);
       const testChoices = testChoiceOptions(pack, field.path);
       const descriptor = comparisonDescriptor(pack, (value as any)?.assessment, field.path);
@@ -387,8 +390,11 @@ export function modelFor(document: any, pack?: MetadataPack) {
         inputChoices: expressionInputChoices,
         operatorCompatible: descriptor && operatorChoices.length ? legalOperators.includes(descriptor.operation) : undefined,
         fixedChoices: fixedChoices.length ? fixedChoices : (field.path.at(-1) === 'equals' ? scalarChoices : objectScalarChoices(pack, (value as any)?.assessment, [...field.path.slice(0, -1), 'equals'])),
-        suggested: help?.suggested,
-        hasSuggestion: help?.hasSuggestion ?? false,
+        // Use the value-aware control metadata so object-level defaults (for
+        // example the complete field_requirement pair) are exposed on each
+        // scalar child without inventing a second default registry.
+        suggested: control?.suggested ?? help?.suggested,
+        hasSuggestion: control?.hasSuggestion ?? help?.hasSuggestion ?? false,
         hidden,
         kind: field.value === null ? 'null' : typeof field.value
       };
@@ -446,8 +452,8 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const catalog = pack ? new GuidedCatalog(pack) : undefined; const tests = Object.entries(assessment.tests).map(([id, test]: [string, any]) => {
     const path = ['assessment', 'tests', id]; const titlePath = [...path, 'test_title']; const titleField = fieldAt(base.fields, titlePath); const controls: any[] = [];
     for (const [name, predicate] of Object.entries(test.object ?? {})) if (predicate && typeof predicate === 'object' && !Array.isArray(predicate)) controls.push({ kind: 'object', ...predicateControl(base.fields, [...path, 'object', name], name, predicate, objectFieldLabel(test.capability, name, catalog?.objectFields(test.capability).find(field => field.name === name)?.label ?? name.replaceAll('_', ' '))), definition: catalog?.objectFields(test.capability).find(field => field.name === name) });
-    const requirement = test.require ?? {}; const itemControls = Object.entries(requirement.item_requirement ?? {}).map(([name, current]) => ({ name, label: name === 'items_found' ? 'Items found' : 'Items satisfying', path: [...path, 'require', 'item_requirement', name], value: current, choices: fieldAt(base.fields, [...path, 'require', 'item_requirement', name])?.choices ?? [] }));
-    const fieldRequirement = Object.entries(requirement.field_requirement ?? {}).map(([name, current]) => ({ name, label: name === 'values_found' ? 'Field values found' : 'Field values matching', path: [...path, 'require', 'field_requirement', name], value: current, choices: fieldAt(base.fields, [...path, 'require', 'field_requirement', name])?.choices ?? [] }));
+    const requirement = test.require ?? {}; const itemControls = Object.entries(requirement.item_requirement ?? {}).map(([name, current]) => { const control = fieldAt(base.fields, [...path, 'require', 'item_requirement', name]); return { name, label: name === 'items_found' ? 'Items found' : 'Items satisfying', path: [...path, 'require', 'item_requirement', name], value: current, choices: control?.choices ?? [], suggested: control?.suggested, hasSuggestion: control?.hasSuggestion ?? false, hidden: control?.hidden ?? false }; });
+    const fieldRequirement = Object.entries(requirement.field_requirement ?? {}).map(([name, current]) => { const control = fieldAt(base.fields, [...path, 'require', 'field_requirement', name]); return { name, label: name === 'values_found' ? 'Field values found' : 'Field values matching', path: [...path, 'require', 'field_requirement', name], value: current, choices: control?.choices ?? [], suggested: control?.suggested, hasSuggestion: control?.hasSuggestion ?? false, hidden: control?.hidden ?? false }; });
     const fieldControls = Object.entries(requirement.fields ?? {}).map(([name, predicate]) => ({ kind: 'field', ...predicateControl(base.fields, [...path, 'require', 'fields', name], name, predicate, name.replaceAll('_', ' ')), operations: catalog?.operations() ?? [] }));
     return { id, path, title: test.test_title ?? id, titlePath, titleField, capability: test.capability, capabilityLabel: catalog ? catalog.capabilities().find(option => option.value === test.capability)?.label ?? test.capability : test.capability, objectControls: controls, itemControls, fieldRequirement, fieldControls, explanation: explainAssessment({ assessment: { ...assessment, tests: { [id]: test } } }, pack), unsupported: Object.keys(test).filter(key => !['test_title', 'capability', 'object', 'require', 'reported_elements'].includes(key)) };
   });

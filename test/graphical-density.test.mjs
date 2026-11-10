@@ -23,6 +23,33 @@ test('defaults are explained locally rather than by an opaque global toolbar cou
   assert.match(html, /No schema defaults are hidden in this section/);
 });
 
+test('left tree defaults every authored branch to expanded', () => {
+  const html = graphicalHtml();
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, 'Webview script must exist');
+  const start = script.indexOf('function expandTree(node)');
+  const end = script.indexOf('function renderTree()', start);
+  assert.ok(start >= 0 && end > start, 'tree expansion helper must exist');
+  const opened = new Set();
+  const tree = { path: ['assessment'], children: [
+    { path: ['assessment', 'evaluate'], children: [] },
+    { path: ['assessment', 'tests', 'one'], children: [
+      { path: ['assessment', 'tests', 'one', 'require'], children: [] }
+    ] }
+  ] };
+  const result = new Function('expanded', 'key', 'tree', script.slice(start, end) + ';expandTree(tree);return expanded')(
+    opened, path => path.join('/'), tree,
+  );
+  assert.deepEqual([...result].sort(), [
+    'assessment',
+    'assessment/evaluate',
+    'assessment/tests/one',
+    'assessment/tests/one/require',
+  ]);
+  assert.match(script, /expandedDocument='';function render\(model\)/);
+  assert.match(script, /expanded\.clear\(\);expandTree\(tree\.root\)/);
+});
+
 test('center inspector is construct-focused and default help is on field focus', () => {
   const html = graphicalHtml();
   assert.match(html, /if\(path\.length===1\)return sectionFields\(path\)/, 'Assessment metadata does not show nested Test values');

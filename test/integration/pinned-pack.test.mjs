@@ -436,6 +436,14 @@ test('Graphical controls preserve canonical requirement values and sibling paths
  const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
  const model=assessmentEditorModel({getText:()=>raw,version:9},pack); const testModel=model.assessment.tests[0];
  assert.deepEqual(testModel.fieldRequirement.map(field=>[field.name,field.value]),[['values_found','one_or_more'],['values_matching','every']]);
+ assert.deepEqual(testModel.fieldRequirement.map(field=>[field.name,field.value,field.hidden,field.hasSuggestion,field.suggested]),[
+  ['values_found','one_or_more',true,true,'one_or_more'],
+  ['values_matching','every',true,true,'every']
+ ]);
+ assert.deepEqual(testModel.fieldRequirement.map(field=>[field.name,field.value,model.fields.find(candidate=>candidate.path.join('.')===field.path.join('.'))?.hidden]),[['values_found','one_or_more',true],['values_matching','every',true]]);
+ const overridden=raw.replace('values_matching: every','values_matching: one_or_more');
+ const overriddenModel=assessmentEditorModel({getText:()=>overridden,version:9},pack);
+ assert.deepEqual(overriddenModel.fields.filter(field=>field.path.join('.').includes('.require.field_requirement.')).map(field=>field.hidden),[false,false]);
  assert.deepEqual(testModel.itemControls.map(field=>[field.name,field.value]),[['items_found','one_or_more'],['items_satisfying','every']]);
  const id=testModel.id; const foundPath=['assessment','tests',id,'require','field_requirement','values_found'];
  const matchingPath=['assessment','tests',id,'require','field_requirement','values_matching']; const buffer=new SourceBuffer(raw);

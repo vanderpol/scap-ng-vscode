@@ -15,6 +15,8 @@ export interface Context {
   diagnostics: readonly string[];
   mode?: 'source' | 'structured' | 'guided';
   parentValue?: Json;
+  /** Schema URI for the containing object when a child inherits its object default. */
+  parentSchemaUri?: string;
 }
 export type ViewMode = 'show-all' | 'hide-defaults' | 'aggressive-preview';
 export const sha256 = (raw: string | Buffer) => createHash('sha256').update(raw).digest('hex');
@@ -154,20 +156,55 @@ export class MetadataPack {
   control(uri: string, serializedValue: Json | undefined, context: Context, mode: ViewMode) {
     const help = this.describe(uri, context); const meta = help.annotation;
     let value: Json | undefined = serializedValue;
+    let suggested = help.suggested;
+    let hasSuggestion = help.hasSuggestion;
+    let hidingAnnotation = meta;
+    let wholeParentIsDefault = false;
+    let inheritedParentDefault = false;
     if (meta.representation === 'key') {
       const choices = this.keyChoices(uri, meta.default_key);
       const present = object(serializedValue) ? choices.filter(k => Object.hasOwn(serializedValue, k)) : [];
       value = present.length === 1 ? present[0] : undefined;
+    } else if (!hasSuggestion && object(context.parentValue)) {
+      // Some schema-backed controls (notably field_requirement) declare one
+      // complete object default on the property, while their child scalar
+      // members have no individual defaults. Inherit that suggestion only for
+      // the containing authored object, so the paired control is hidden as a
+      // unit and an explicit sibling override keeps both members visible.
+      const parent = this.parentObjectDefault(uri, context);
+      if (parent && Object.hasOwn(parent.suggested, this.propertyName(uri))) {
+        const name = this.propertyName(uri);
+        suggested = parent.suggested[name];
+        hasSuggestion = true;
+        hidingAnnotation = parent.annotation;
+        inheritedParentDefault = true;
+        wholeParentIsDefault = canonical(context.parentValue) === canonical(parent.suggested);
+      }
     }
     const applicable = !meta.condition_schema || (context.parentValue !== undefined && !this.validate(meta.condition_schema, context.parentValue).length);
     const safe = context.schemaValid === true && context.isOverride === false && Array.isArray(context.diagnostics) && context.diagnostics.length === 0 && applicable;
-    const isDefault = help.hasSuggestion && value !== undefined && canonical(value) === canonical(help.suggested);
-    const eligible = meta.hide_when_default === true || (mode === 'aggressive-preview' && meta.aggressive_preview === true);
+    const isDefault = wholeParentIsDefault || (!inheritedParentDefault && hasSuggestion && value !== undefined && canonical(value) === canonical(suggested));
+    const eligible = hidingAnnotation.hide_when_default === true || (mode === 'aggressive-preview' && hidingAnnotation.aggressive_preview === true);
     const hidden = mode !== 'show-all' && safe && isDefault && eligible;
-    return frozen({ ...help, serializedValue, controlValue: value, hidden, applicable,
-      hiddenScope: meta.hide_scope ?? 'value_control_only',
+    return frozen({ ...help, suggested, hasSuggestion, serializedValue, controlValue: value, hidden, applicable,
+      hiddenScope: hidingAnnotation.hide_scope ?? 'value_control_only',
       reason: hidden ? 'Explicit serialized default; reveal is available' : 'Visible value, exception, absent value or diagnostic',
       assessmentExecution: 'unavailable' });
+  }
+  private propertyName(uri: string): string {
+    const marker = '/properties/'; const index = uri.lastIndexOf(marker);
+    if (index < 0) return '';
+    return uri.slice(index + marker.length).replace(/~1/g, '/').replace(/~0/g, '~');
+  }
+  private parentObjectDefault(uri: string, context: Context): { suggested: Record<string, Json>; annotation: Schema } | undefined {
+    const marker = '/properties/'; const index = uri.lastIndexOf(marker);
+    if (index < 0) return undefined;
+    const parentUri = context.parentSchemaUri ?? uri.slice(0, index);
+    try {
+      const parent = this.describe(parentUri, context);
+      if (parent.annotation.representation !== 'value' || !parent.hasSuggestion || !object(parent.suggested)) return undefined;
+      return { suggested: parent.suggested as Record<string, Json>, annotation: parent.annotation };
+    } catch { return undefined; }
   }
   summarize(controls: readonly ReturnType<MetadataPack['control']>[]) {
     const groups: Record<string, number> = {};
