@@ -136,3 +136,25 @@ Recognized native families include Windows Registry, AuditPol subcategories, Win
 The remaining 1,763 fallbacks are deliberately retained as manual procedures where no supported deterministic selector was safely inferred. The largest residual groups are Solaris/macOS configuration checks, Active Directory and organizational/documentation checks, complex audit/configuration logic, IIS/Apache administration, and multi-step checks. This is a coverage qualification and prioritization artifact, not a claim that every remaining Rule is impossible to automate.
 
 Residual fallback signal counts (overlapping, so they do not sum to 1,763) are: configuration/settings 981, governance/documentation 616, web server administration 219, Active Directory 162, multi-step procedures 156, audit/logging 133, macOS 343, and Solaris 23. These signals are triage hints only; they do not override the manual safety gate.
+
+## Stable editor workspace pointer
+
+The available converted corpus is exposed through the ignored stable path:
+
+```text
+.external/scap-ng-editor-corpus/current
+```
+
+It points to the pinned Stage-A automated subset and can be opened directly for Assessment Studio browsing:
+
+```sh
+code --new-window .external/scap-ng-editor-corpus/current
+```
+
+From this checkout, an Extension Development Host can be launched with:
+
+```sh
+code --new-window --extensionDevelopmentPath="$PWD" "$PWD/.external/scap-ng-editor-corpus/current"
+```
+
+This pointer is deliberately outside the extension source/VSIX. It currently exposes 65 benchmark directories and 4,524 converted automated Assessments; it does not promote the corpus to a complete or applicability-qualified authoring library.
