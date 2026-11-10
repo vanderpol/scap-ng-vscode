@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { MetadataPack, GuidedCatalog, createGuidedAssessment } from '../../dist/index.js';
+import { MetadataPack, GuidedCatalog, createGuidedAssessment, generatedTestTitle } from '../../dist/index.js';
 const pin = JSON.parse(readFileSync(new URL('../../schema-profile.json', import.meta.url)));
 const pack = new MetadataPack(process.env.SCAP_NG_METADATA_PACK ?? '.external/editor-pack', pin);
 
@@ -40,4 +40,21 @@ test('guided manual and automated Windows Registry drafts validate against pinne
   ] });
   assert.deepEqual(Object.keys(incomplete.document.assessment.tests['incomplete-registry-test'].object), ['hive']);
   assert.doesNotMatch(incomplete.yaml, /replace me/i);
+});
+
+test('guided authoring generates a native test_title when the optional summary is blank', () => {
+  const title = generatedTestTitle(pack, {
+    capability: 'windows.registry',
+    object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Policies' } },
+    fields: { type: { equals: 'dword' } }
+  });
+  assert.match(title, /^Check .*Windows Registry/);
+  assert.match(title, /hive equals local_machine/);
+  assert.match(title, /type equals dword/);
+  const generatedDraft = { capability: 'windows.registry', object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Policies' }, name: { equals: 'PolicyValue' } }, fields: { type: { equals: 'dword' } } };
+  const generated = createGuidedAssessment(pack, { platform: 'windows', id: 'generated-summary-assessment', title: 'Generated summary', mode: 'automated', className: 'compliance', tests: [
+    { id: 'generated-summary-test', title: '  ', ...generatedDraft }
+  ] });
+  assert.equal(generated.diagnostics.length, 0);
+  assert.equal(generated.document.assessment.tests['generated-summary-test'].test_title, generatedTestTitle(pack, generatedDraft));
 });

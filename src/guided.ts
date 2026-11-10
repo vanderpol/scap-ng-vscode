@@ -37,6 +37,36 @@ function choices(pack: MetadataPack, uri: string): GuidedOption[] {
   } catch { return []; }
 }
 function vocabulary(pack: MetadataPack): any { return pack.resource(pack.manifest.vocabulary_uri); }
+function summaryValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (Array.isArray(value)) return value.map(summaryValue).filter(Boolean).join(', ');
+  if (object(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 1) return `${entries[0][0].replaceAll('_', ' ')} ${summaryValue(entries[0][1])}`.trim();
+    return entries.map(([name, operand]) => `${name.replaceAll('_', ' ')} ${summaryValue(operand)}`.trim()).join(', ');
+  }
+  return String(value);
+}
+/**
+ * Generate only human-facing authored metadata. This never represents an
+ * evaluation result; it is persisted in native test_title so the Test keeps
+ * a useful summary when the author leaves the optional title blank.
+ */
+export function generatedTestTitle(pack: MetadataPack, draft: Pick<GuidedTestDraft, 'capability' | 'object' | 'fields' | 'presenceOnly'>): string {
+  const labels = vocabulary(pack).capabilities ?? {};
+  const capability = labels[draft.capability]?.label ?? draft.capability;
+  const selectors = Object.entries(draft.object ?? {}).map(([name, predicate]) => {
+    const value = summaryValue(predicate);
+    return value ? `${name.replaceAll('_', ' ')} ${value}` : name.replaceAll('_', ' ');
+  });
+  const conditions = Object.entries(draft.fields ?? {}).map(([name, predicate]) => {
+    const value = summaryValue(predicate);
+    return value ? `${name.replaceAll('_', ' ')} ${value}` : name.replaceAll('_', ' ');
+  });
+  const selectorText = selectors.length ? ` for ${selectors.join(', ')}` : '';
+  const conditionText = draft.presenceOnly ? ' (presence check)' : conditions.length ? `; requires ${conditions.join(' and ')}` : '';
+  return `Check ${capability}${selectorText}${conditionText}`;
+}
 function datatypeValues(node: any): string[] { const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const [key, child] of Object.entries(value)) if (key === 'datatype') visit(child); else if (child && typeof child === 'object') visit(child); }; visit(node); return [...values]; }
 function enumValues(node: any): string[] {
   const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const child of Object.values(value)) visit(child); }; visit(node); return [...values];
@@ -162,7 +192,8 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
         require.field_requirement = schemaDefaultOrObjectDefaults(pack, fieldRequirementUri);
         if (test.fields && Object.keys(test.fields).length) require.fields = test.fields;
       }
-      tests[test.id] = { test_title: test.title, capability: test.capability, reported_elements: 'all', object: test.object, require };
+      const testTitle = test.title?.trim() || generatedTestTitle(pack, test);
+      tests[test.id] = { test_title: testTitle, capability: test.capability, reported_elements: 'all', object: test.object, require };
     }
     assessment.tests = tests;
     const ids = draft.tests.map(test => ({ test: test.id }) as Json);
