@@ -42,12 +42,25 @@ function files(root) {
 function streamRoots(root) {
   const direct = join(root, 'benchmark.yaml');
   if (existsSync(direct)) return [{ name: basename(root), root }];
+
+  // Published corpus archives conventionally wrap streams in `documents/`.
+  // Accept either that archive root or the already-extracted documents root,
+  // while still discovering only directories with an authoring direct slice.
+  const searchRoot = existsSync(join(root, 'documents')) ? join(root, 'documents') : root;
   const discovered = [];
-  for (const name of readdirSync(root)) {
-    const stream = join(root, name);
-    const directSlice = join(stream, 'authoring', 'direct-slice');
-    if (statSync(stream).isDirectory() && existsSync(directSlice)) discovered.push({ name, root: directSlice });
+  function visit(parent) {
+    for (const name of readdirSync(parent)) {
+      const stream = join(parent, name);
+      if (!statSync(stream).isDirectory()) continue;
+      const directSlice = join(stream, 'authoring', 'direct-slice');
+      if (existsSync(directSlice)) {
+        discovered.push({ name: relative(searchRoot, stream) || basename(stream), root: directSlice });
+        continue;
+      }
+      visit(stream);
+    }
   }
+  visit(searchRoot);
   return discovered;
 }
 function kindOf(value) {
@@ -97,5 +110,12 @@ if (bad.length || graphDiagnostics.length) {
     mkdirSync(dirname(output), { recursive: true });
     writeFileSync(output, entry.text);
   }
-  writeFileSync(join(destination, 'MATERIALIZATION-MANIFEST.json'), JSON.stringify(report, null, 2) + '\n');
+  // Keep the materialized workspace limited to authoring YAML. Reports are
+  // deliberately written beside it (or to the caller-selected path), never
+  // into the directory that VS Code will index.
+  const reportPath = resolve(process.env.SCAP_NG_MATERIALIZATION_REPORT ?? `${destination}.materialization-report.json`);
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
+  console.error(`Materialized ${entries.length} YAML authoring files into ${destination}`);
+  console.error(`Validation report: ${reportPath}`);
 }

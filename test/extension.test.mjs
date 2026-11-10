@@ -50,6 +50,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /authoringSidebar\.autoReveal|maybeRevealAuthoring/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"helpContext\"|model\.editor\.fileName|model\.editor\.path\|\|/);
   assert.match(authoringSidebarSource, /id=\"optionsBody\"/);
+  assert.match(authoringSidebarSource, /yaml-only/);
+  assert.match(authoringSidebarSource, /mode-graphical/);
+  assert.match(authoringSidebarSource, /viewType === 'scapNg.assessment'/);
   assert.match(authoringSidebarSource, /data-tab=\"diagnostics\"|id=\"diagnostics\"/);
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);

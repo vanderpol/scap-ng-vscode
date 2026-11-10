@@ -58,6 +58,10 @@ test('center inspector is construct-focused and default help is on field focus',
   assert.doesNotMatch(html, /wrap\.append\(help\)/, 'Long descriptions should not fill each property row');
   assert.match(html, /Technical YAML path/);
   assert.match(html, /function friendlyLabel\(f\)/);
+  assert.match(html, /function contextualRegex\(focused\)/);
+  assert.match(html, /type:'regexPreview'/);
+  assert.match(html, /Open full tester/);
+  assert.match(html, /Bounded PCRE2-safe preview/);
 });
 
 test('help panel collapses and contextual actions preserve their node path', () => {

@@ -1,6 +1,8 @@
 # P1A: Offline Regex Tester
 
-The **SCAP-NG: Test Regex** command is available in the Command Palette, the native YAML editor title/context menus, the Authoring sidebar’s **Regex** tab, and the Graphical editor’s **Open offline Regex Tester** button. From native YAML, put the caret inside a schema-shaped `matches_regex` scalar (including list entries) or `regex_capture.pattern`, then invoke the command. From Graphical/sidebar mode, the tester opens the first schema-recognized expression when no native caret is available.
+The **SCAP-NG: Test Regex** command is available in the Command Palette, the native YAML editor title/context menus, and the Authoring sidebar’s **Regex** tab while a native YAML editor is active. From native YAML, put the caret inside a schema-shaped `matches_regex` scalar (including list entries) or `regex_capture.pattern`, then invoke the command.
+
+The Graphical editor keeps its own **Contextual help** pane: focus a regex field to get an inline bounded preview with sample text and an **Open full tester** action. The sidebar’s Schema Help and Regex tabs are intentionally hidden while the Graphical editor is active, avoiding controls that depend on a native YAML caret. Options and Diagnostics remain available.
 
 The tester reads the unsaved `TextDocument` through YAML CST ranges. It decodes single/double quoted, plain, flow, and block scalar values without reserializing the document. Samples stay in the tester and are never written to YAML. Multiple samples can be marked expected positive or negative. Results include match/nonmatch, the matched span, captures, named captures, errors, truncation and cancellation status.
 

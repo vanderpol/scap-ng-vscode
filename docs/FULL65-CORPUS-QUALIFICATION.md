@@ -154,4 +154,4 @@ node scripts/materialize-authoring-workspace.mjs \
   .external/scap-ng-editor-corpus/current-authoring
 ```
 
-The materializer copies only YAML authoring files, validates them against the editor's pinned schema and checks the workspace reference graph. It writes nothing if any file is invalid.
+The materializer copies only YAML authoring files, validates them against the editor's pinned schema and checks the workspace reference graph. It writes nothing if any file is invalid. Its report is written beside `current-authoring`, so the destination remains YAML-only.
