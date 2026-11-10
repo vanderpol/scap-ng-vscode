@@ -143,3 +143,15 @@ test('assisted shell fallback preserves explicit complex command collection with
   assert.match(result.yaml, /command collection only/);
   assert.deepEqual(result.document.assessment.tests['audit-rules-must-be-configured-test'].require, { item_requirement: { items_found: 'one_or_more' } });
 });
+
+test('assisted draft preserves a selected shared applicability dependency', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Domain registry policy',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: ExamplePolicy\nValue Type: REG_DWORD\nValue: 0',
+    applicability: { alias: 'domain-joined', assessmentId: 'windows-domain-joined-applicability-assessment', expectedVersion: 1 }
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.deepEqual(result.document.assessment.applicability, { assessment: 'domain-joined' });
+  assert.deepEqual(result.document.assessment.dependencies['domain-joined'], { assessment: 'windows-domain-joined-applicability-assessment', expected_version: 1, purpose: 'applicability' });
+  assert.deepEqual(result.diagnostics, []);
+});

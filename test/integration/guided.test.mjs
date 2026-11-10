@@ -58,3 +58,14 @@ test('guided authoring generates a native test_title when the optional summary i
   assert.equal(generated.diagnostics.length, 0);
   assert.equal(generated.document.assessment.tests['generated-summary-test'].test_title, generatedTestTitle(pack, generatedDraft));
 });
+
+test('guided Assessment can attach a schema-valid shared applicability Assessment', () => {
+  const generated = createGuidedAssessment(pack, {
+    platform: 'windows', id: 'domain-registry-assessment', title: 'Domain registry policy', mode: 'automated', className: 'compliance',
+    applicability: { alias: 'domain-joined', assessmentId: 'windows-domain-joined-applicability-assessment', expectedVersion: 1 },
+    tests: [{ id: 'domain-registry-test', title: 'Registry policy', capability: 'windows.registry', object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Example' }, name: { equals: 'Setting' } }, fields: { value: { equals: 0 } } }]
+  });
+  assert.deepEqual(generated.document.assessment.dependencies['domain-joined'], { assessment: 'windows-domain-joined-applicability-assessment', expected_version: 1, purpose: 'applicability' });
+  assert.deepEqual(generated.document.assessment.applicability, { assessment: 'domain-joined' });
+  assert.deepEqual(generated.diagnostics, []);
+});

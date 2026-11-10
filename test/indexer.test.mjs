@@ -44,3 +44,23 @@ test('batch indexing remains bounded for a 10,000-document workspace', () => {
   assert.equal(index.byKind('assessment').length, 10_000);
   assert.equal(index.search('Assessment 9999')[0].id, 'assessment-9999');
 });
+
+test('indexes applicability catalogs and exposes only uniquely resolved Assessment options', () => {
+  const index = new WorkspaceIndex();
+  index.update('catalog.yaml', `applicability:\n  id: windows-conditions\n  conditions:\n    domain-joined:\n      assessment: windows-domain-joined-applicability-assessment\n`);
+  index.update('domain.assessment.yaml', `assessment:\n  id: windows-domain-joined-applicability-assessment\n  version: 1\n  assessment_title: Windows domain member\n  mode: automated\n`);
+  const options = index.applicabilityOptions();
+  assert.equal(options.length, 1);
+  assert.equal(options[0].condition, 'domain-joined');
+  assert.equal(options[0].available, true);
+  assert.equal(options[0].expectedVersion, 1);
+  assert.equal(index.diagnostics().length, 0);
+});
+
+test('tracks applicability Assessment dependencies and reports missing targets', () => {
+  const index = new WorkspaceIndex();
+  index.update('main.assessment.yaml', `assessment:\n  id: main\n  version: 1\n  assessment_title: Main\n  mode: automated\n  dependencies:\n    domain-joined:\n      assessment: missing-applicability\n      expected_version: 1\n      purpose: applicability\n  applicability:\n    assessment: domain-joined\n`);
+  assert.equal(index.applicabilityOptions()[0].available, false);
+  assert.equal(index.diagnostics()[0].code, 'unresolved-assessment');
+  assert.equal(index.diagnostics()[0].path, '/assessment/dependencies/domain-joined/assessment');
+});

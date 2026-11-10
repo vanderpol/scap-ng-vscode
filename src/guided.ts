@@ -15,7 +15,8 @@ export interface GuidedObjectField {
 }
 export interface GuidedObjectRequirement { fields: string[]; description?: string; }
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; }
-export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; }
+export interface GuidedApplicabilitySelection { alias: string; assessmentId: string; expectedVersion: string | number; }
+export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; applicability?: GuidedApplicabilitySelection; }
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
@@ -171,6 +172,12 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   if (!draft.title.trim()) throw new Error('Assessment title is required');
   if (!draft.platform) throw new Error('Choose a target platform authoring context');
   const assessment: Record<string, Json> = { id: draft.id, version: 1, assessment_title: draft.title, mode: draft.mode, class: draft.className };
+  if (draft.applicability) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.applicability.alias)) throw new Error('Applicability alias must use lowercase kebab-case.');
+    if (!draft.applicability.assessmentId.trim()) throw new Error('Applicability Assessment ID is required.');
+    assessment.dependencies = { [draft.applicability.alias]: { assessment: draft.applicability.assessmentId, expected_version: draft.applicability.expectedVersion, purpose: 'applicability' } };
+    assessment.applicability = { assessment: draft.applicability.alias };
+  }
   if (draft.mode === 'manual') {
     if (!draft.procedure?.trim()) throw new Error('Manual procedure is required');
     if (!draft.response || !object(draft.response)) throw new Error('Manual response contract is required');

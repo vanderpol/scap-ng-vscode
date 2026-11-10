@@ -147,3 +147,17 @@ Do not add the domain-membership Test to the registry Test's `and` expression. A
 5. Only then expand to generic domain membership, server roles, application-installed conditions, and other STIG applicability patterns.
 
 Required tests include schema validation, unresolved dependency diagnostics, exact dependency alias serialization, `not_applicable` versus failed compliance semantics, and no-op behavior when no applicability text is present.
+
+## Editor work completed while the 65-benchmark conversion is pending
+
+The editor now has corpus-independent groundwork for this workflow:
+
+- The workspace index recognizes top-level `applicability.yaml` catalogs.
+- Catalog conditions resolve to Assessment IDs and are exposed as dropdown options only when exactly one compatible Assessment is found.
+- Assessments with `dependencies.*.purpose: applicability` are also discoverable while a catalog is being assembled.
+- Applicability dependencies participate in unresolved, wrong-kind, duplicate and version diagnostics.
+- Guided Assessment creation can serialize a selected condition as the schema-native `dependencies` plus `applicability` pair.
+- Assisted drafts can carry the same selected applicability condition when one is chosen.
+- No generated bulk corpus or conversion output is required for these features.
+
+The dropdown intentionally does not infer applicability from a directory name alone. A future content workspace can use a convention such as `assessments/applicability/`, but the catalog/reference graph remains authoritative. This prevents a normal compliance Assessment from being silently treated as an applicability Assessment.
