@@ -193,7 +193,7 @@ function sourceChoiceForObject(field){
  bar.append(choice,valueSlot,confirm);refresh();
  return bar
 }
-function compactGrid(fields,style){const grid=document.createElement('div');grid.className='property-grid'+(style?' '+style:'');for(const item of fields){const entry=document.createElement('div');entry.className='field-entry'+(fieldNeedsWide(item)?' wide':'');const lab=document.createElement('label');lab.textContent=friendlyLabel(item);lab.title=item.description||pathText(item.path);entry.append(lab);const operators=(style==='object-fields'||style==='comparison-fields')?operationChoiceForField(item):null;if(operators){entry.append(operators)}else{const chooser=style==='object-fields'?sourceChoiceForObject(item):null;if(chooser)entry.append(chooser);else entry.append(makeInput(item))}const ref=variableReferenceLink(item);if(ref)entry.append(ref);grid.append(entry)}return grid}
+function compactGrid(fields,style){const grid=document.createElement('div');grid.className='property-grid'+(style?' '+style:'');for(const item of fields){const entry=document.createElement('div');entry.className='field-entry'+(fieldNeedsWide(item)?' wide':'');const lab=document.createElement('label');lab.textContent=friendlyLabel(item);lab.title=item.description||pathText(item.path);lab.tabIndex=0;lab.onclick=()=>renderHelp(item);lab.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();renderHelp(item)}};entry.append(lab);const operators=(style==='object-fields'||style==='comparison-fields')?operationChoiceForField(item):null;if(operators){entry.append(operators)}else{const chooser=style==='object-fields'?sourceChoiceForObject(item):null;if(chooser)entry.append(chooser);else entry.append(makeInput(item))}const ref=variableReferenceLink(item);if(ref)entry.append(ref);grid.append(entry)}return grid}
 
 function variableDefinition(path){return path.length===3&&path[1]==='variables'?current?.variableDefinitions?.[path[2]]:undefined}
 function expressionBrief(expr){
@@ -291,7 +291,7 @@ function cardinalityWords(value){
 }
 function requireSection(title,description,controls){
   const section=document.createElement('section');section.className='require-section';
-  const heading=document.createElement('h2');heading.textContent=title;section.append(heading);
+  const heading=document.createElement('h2');heading.textContent=title;if(controls[0]){heading.tabIndex=0;heading.title='Show contextual help for '+friendlyLabel(controls[0]);heading.onclick=()=>renderHelp(controls[0]);heading.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();renderHelp(controls[0])}}}section.append(heading);
   const help=document.createElement('p');help.className='hint';help.textContent=description;section.append(help);
   if(controls.length)section.append(compactGrid(controls));
   else section.classList.add('compact-constant'); // Summarize effective hidden defaults once; do not imply the requirements are missing.
@@ -328,6 +328,7 @@ function fieldCheckCard(path,plan){
   heading.append(note);section.append(heading);
   if(plan.absence){const badge=document.createElement('span');badge.className='require-badge';badge.textContent='Values found: none';section.append(badge)}
   const visible=editorFields(path).filter(f=>hasPrefix(f.path,base));
+  const headingField=visible[0];if(headingField){heading.tabIndex=0;heading.title='Show contextual help for '+friendlyLabel(headingField);heading.onclick=()=>renderHelp(headingField);heading.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();renderHelp(headingField)}}}
   // Field-level schema help belongs in Contextual Help and on control hover.
   // Never attach the first scalar's description to the entire Require group.
   const meta=visible.filter(f=>f.path.length===base.length+1&&f.path.at(-1)!=='matches_regex');

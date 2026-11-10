@@ -58,6 +58,9 @@ test('center inspector is construct-focused and default help is on field focus',
   assert.doesNotMatch(html, /wrap\.append\(help\)/, 'Long descriptions should not fill each property row');
   assert.match(html, /Technical YAML path/);
   assert.match(html, /function friendlyLabel\(f\)/);
+  assert.match(html, /lab\.onclick=\(\)=>renderHelp\(item\)/);
+  assert.match(html, /heading\.onclick=\(\)=>renderHelp\(controls\[0\]\)/);
+  assert.match(html, /headingField=visible\[0\]/);
   assert.match(html, /function contextualRegex\(focused\)/);
   assert.match(html, /type:'regexPreview'/);
   assert.match(html, /Open full tester/);
