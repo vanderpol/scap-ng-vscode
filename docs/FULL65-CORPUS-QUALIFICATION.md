@@ -137,32 +137,21 @@ The remaining 1,763 fallbacks are deliberately retained as manual procedures whe
 
 Residual fallback signal counts (overlapping, so they do not sum to 1,763) are: configuration/settings 981, governance/documentation 616, web server administration 219, Active Directory 162, multi-step procedures 156, audit/logging 133, macOS 343, and Solaris 23. These signals are triage hints only; they do not override the manual safety gate.
 
-## Stable editor workspace pointer
+## Clean editor workspace destination
 
-The available converted corpus is exposed through the ignored stable path:
-
-```text
-.external/scap-ng-editor-corpus/current
-```
-
-It points to the pinned Stage-A automated subset and can be opened directly for Assessment Studio browsing:
-
-```sh
-code --new-window .external/scap-ng-editor-corpus/current
-```
-
-From this checkout, an Extension Development Host can be launched with:
-
-```sh
-code --new-window --extensionDevelopmentPath="$PWD" "$PWD/.external/scap-ng-editor-corpus/current"
-```
-
-This pointer is deliberately outside the extension source/VSIX. It currently exposes 65 benchmark directories and 4,524 converted automated Assessments; it does not promote the corpus to a complete or applicability-qualified authoring library.
-
-The authoring-only view is available at:
+The prior Stage-A receipt/authoring views are retained under ignored `.external/scap-ng-editor-corpus/legacy/` and are not current editor fixtures. The clean destination is:
 
 ```text
 .external/scap-ng-editor-corpus/current-authoring
 ```
 
-Unlike the receipt-bearing corpus view, this folder exposes the YAML/JSON under each stream's `authoring/direct-slice/` directly for content-authoring and Assessment Studio work. Open it with `code --new-window .external/scap-ng-editor-corpus/current-authoring`. It is an external copied view (79 MB), remains ignored, and currently contains 56 streams with 4,524 Assessment YAML files and 4,524 Rule YAML files; no missing streams were fabricated.
+It is intentionally empty until a fresh conversion containing the shared applicability Assessments is available. Import it with the fail-closed materializer:
+
+```sh
+npm run build
+node scripts/materialize-authoring-workspace.mjs \
+  /path/to/fresh-conversion-root \
+  .external/scap-ng-editor-corpus/current-authoring
+```
+
+The materializer copies only YAML authoring files, validates them against the editor's pinned schema and checks the workspace reference graph. It writes nothing if any file is invalid.
