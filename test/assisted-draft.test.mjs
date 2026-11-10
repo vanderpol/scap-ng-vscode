@@ -78,3 +78,68 @@ test('assisted common command and policy patterns stay native and schema-valid',
     assert.ok(Object.values(result.document.assessment.tests).some(test => test.capability === capability), capability);
   }
 });
+
+test('assisted Unix presence checks remain native and schema-valid', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The Unix passwd file must be present.',
+    checkText: 'Verify that the file /etc/passwd is present on the system.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'unix.file');
+  assert.equal(test.require.item_requirement.items_found, 'one_or_more');
+});
+
+test('package-manager checks take precedence over generic Unix path matching', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Package signing keys must be installed.',
+    checkText: 'Run rpm -q gpg-pubkey --qf "%{NAME}-%{VERSION}-%{RELEASE}" and verify the package is installed.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'linux.rpminfo');
+  assert.equal(test.object.package_name.equals, 'gpg-pubkey');
+});
+
+test('registry presence-only checks serialize a valid Item requirement', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The browser policy registry value must be present.',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: ExamplePolicy\nThe value must be present.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.registry');
+  assert.deepEqual(test.require, { item_requirement: { items_found: 'one_or_more' } });
+});
+
+test('assisted command families use native capabilities when the pinned contract supports them', () => {
+  const cases = [
+    ['linux.systemdunitproperty', 'Service inactive', 'Run systemctl is-active kdump.service\ninactive If the service is active, this is a finding.'],
+    ['windows.service', 'Windows service state', 'Run sc query W32Time.\n STATE : 4 RUNNING'],
+    ['windows.file', 'Windows file exists', 'Run icacls C:\\Windows\\System32\\foo.exe and verify file permissions.'],
+    ['linux.partition', 'Mount option', 'mount | grep /dev/shm\ntmpfs on /dev/shm type tmpfs (rw,nodev,nosuid)\nThe mount must use the nodev option.'],
+    ['linux.kernelmodule', 'Kernel module', 'lsmod | grep usb-storage\nThe module must not be loaded.'],
+    ['linux.selinuxboolean', 'SELinux boolean', 'getsebool allow_execmem --> off'],
+    ['linux.sestatus', 'SELinux mode', 'getenforce\nEnforcing']
+  ];
+  for (const [capability, title, checkText] of cases) {
+    const result = createAssistedAssessment(pack, { title, checkText });
+    assert.equal(result.generatedMode, 'automated', capability);
+    assert.equal(result.diagnostics.length, 0, capability);
+    assert.ok(Object.values(result.document.assessment.tests).some(test => test.capability === capability), capability);
+  }
+});
+
+test('assisted shell fallback preserves explicit complex command collection without claiming predicates', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Audit rules must be configured',
+    checkText: 'Verify with: $ sudo auditctl -l | grep /etc/sudoers -w /etc/sudoers -p wa'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.document.assessment.tests['audit-rules-must-be-configured-test'].capability, 'independent.shellcommand');
+  assert.match(result.yaml, /command collection only/);
+  assert.deepEqual(result.document.assessment.tests['audit-rules-must-be-configured-test'].require, { item_requirement: { items_found: 'one_or_more' } });
+});
