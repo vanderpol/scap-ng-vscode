@@ -60,6 +60,14 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /type:'saveOptions'/);
   assert.match(authoringSidebarSource, /revealPath/);
   assert.match(authoringSidebarSource, /Reveal in YAML/);
+  const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
+  assert.match(extensionSource, /Authoring workflow/);
+  assert.match(extensionSource, /assistedDraft/);
+  assert.match(extensionSource, /createAssistedAssessment/);
+  assert.match(extensionSource, /id=\"workflow\"/);
+  assert.match(extensionSource, /id=\"assistedTitle\"/);
+  assert.match(extensionSource, /id=\"assistedCheckText\"/);
+  assert.match(extensionSource, /Generate annotated draft/);
   assert.doesNotMatch(authoringSidebarSource, /openSettings|workbench\.action\.openSettings/);
 });
 
