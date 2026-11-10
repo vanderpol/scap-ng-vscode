@@ -90,6 +90,7 @@ test('Issue #44 desktop graphical surface is a real host webview contract', asyn
   assert.match(html, /Contextual help/);
   assert.match(html, /data-left-tab="assessment"/);
   assert.match(html, /data-left-tab="help"/);
+  assert.match(html, /<main id="center" class="center"/);
   assert.match(html, /function showLeftTab\(name\)/);
   assert.match(html, /id="openGuided"/);
   assert.match(html, /type:'openGuided'/);
