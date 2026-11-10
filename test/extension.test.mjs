@@ -88,13 +88,13 @@ test('Issue #44 desktop graphical surface is a real host webview contract', asyn
   assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\)/);
   assert.match(html, /Assessment tree/);
   assert.match(html, /Contextual help/);
-  assert.match(html, /data-left-tab="assessment"/);
-  assert.match(html, /data-left-tab="help"/);
+  assert.match(html, /class="tree-pane left-panel"/);
+  assert.match(html, /class="help-pane left-panel"/);
+  assert.match(html, /flex:3 1 0/);
+  assert.match(html, /flex:2 1 0/);
   assert.match(html, /<main id="center" class="center"/);
-  assert.match(html, /function showLeftTab\(name\)/);
   assert.match(html, /id="openGuided"/);
   assert.match(html, /type:'openGuided'/);
-  assert.match(html, /selected node/);
   assert.match(html, /Shift\+F10/);
   assert.match(html, /type:'structural'/);
   assert.match(html, /meaningful nodes only/);

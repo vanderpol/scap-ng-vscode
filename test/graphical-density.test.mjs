@@ -54,7 +54,7 @@ test('center inspector is construct-focused and default help is on field focus',
   const html = graphicalHtml();
   assert.match(html, /if\(path\.length===1\)return sectionFields\(path\)/, 'Assessment metadata does not show nested Test values');
   assert.match(html, /function groupedForm\(path\)/);
-  assert.match(html, /input\.onfocus=\(\)=>renderHelp\(f,true\)/);
+  assert.match(html, /input\.onfocus=\(\)=>renderHelp\(f\)/);
   assert.doesNotMatch(html, /wrap\.append\(help\)/, 'Long descriptions should not fill each property row');
   assert.match(html, /Technical YAML path/);
   assert.match(html, /function friendlyLabel\(f\)/);
@@ -68,9 +68,10 @@ test('Assessment and contextual help share a left pane without a third grid colu
   const html = graphicalHtml();
   assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\)/);
   assert.match(html, /class="left-pane"/);
-  assert.match(html, /data-left-tab="assessment"/);
-  assert.match(html, /data-left-tab="help"/);
-  assert.match(html, /function showLeftTab\(name\)/);
+  assert.match(html, /class="tree-pane left-panel"/);
+  assert.match(html, /class="help-pane left-panel"/);
+  assert.match(html, /flex:3 1 0/);
+  assert.match(html, /flex:2 1 0/);
   assert.match(html, /function setHelpOpen\(open\)/);
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
   assert.match(html, /action:item\.action,path:testPathForSelection\(target\)\|\|target/);
@@ -618,7 +619,7 @@ test('Require contextual help is not copied from arbitrary first scalar into gro
  const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
  assert.doesNotMatch(card,/const contextual=visible\.find/);
  assert.doesNotMatch(card,/field-schema-note/);
- assert.match(html,/function renderHelp\(focused,reveal=false\)/);
+ assert.match(html,/function renderHelp\(focused\)/);
  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
 });
 
