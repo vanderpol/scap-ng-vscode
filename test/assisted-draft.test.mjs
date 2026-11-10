@@ -45,3 +45,19 @@ test('assisted AuditPol rule prefers the native Windows audit capability over ma
   assert.equal(tests[0].require.fields.authorization_policy_change.equals, 'AUDIT_SUCCESS');
   assert.equal(tests[1].require.fields.authorization_policy_change.equals, 'AUDIT_SUCCESS_FAILURE');
 });
+
+test('assisted labeled Windows registry input infers hive, path, value name, type, and value', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The system must enforce the network selection policy.',
+    checkText: `If the following registry value does not exist or is not configured as specified, this is a finding:\n\nRegistry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\\n\nValue Name: DontDisplayNetworkSelectionUI\n\nValue Type: REG_DWORD\nValue: 1`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.registry');
+  assert.equal(test.object.hive.equals, 'local_machine');
+  assert.equal(test.object.key.equals, 'SOFTWARE\\Policies\\Microsoft\\Windows\\System');
+  assert.equal(test.object.name.equals, 'DontDisplayNetworkSelectionUI');
+  assert.equal(test.require.fields.type.equals, 'dword');
+  assert.equal(test.require.fields.value.equals, 1);
+});

@@ -71,16 +71,32 @@ function auditEventCandidate(text: string): Candidate | undefined {
     ]
   };
 }
+function labeledRegistryValue(text: string, label: string): string | undefined {
+  const match = text.match(new RegExp(`(?:^|\\n)\\s*${label}\\s*:\\s*([^\\n]*)`, 'i'));
+  return match?.[1]?.trim().replace(/[.,;:]+$/, '').trim();
+}
+function registryScalar(value: string): Json {
+  const raw = unquote(value.trim());
+  if (/^0x[0-9a-f]+$/i.test(raw)) return Number.parseInt(raw, 16);
+  if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
+  if (/^(true|false)$/i.test(raw)) return raw.toLowerCase() === 'true';
+  return raw;
+}
 function registryCandidate(text: string): Candidate | undefined {
   const upper = text.toUpperCase();
   if (!/(REGISTRY|REGEDIT|HKEY_|HKLM|HKCU|HKU|HKCC)/.test(upper)) return undefined;
+  const labeledHive = labeledRegistryValue(text, 'Registry Hive');
+  const labeledPath = labeledRegistryValue(text, 'Registry Path');
+  const labeledName = labeledRegistryValue(text, 'Value Name');
+  const labeledType = labeledRegistryValue(text, 'Value Type');
+  const labeledValue = labeledRegistryValue(text, 'Value');
   const pathMatch = text.match(/\b((?:HKEY_LOCAL_MACHINE|HKEY_CURRENT_USER|HKEY_USERS|HKEY_CURRENT_CONFIG|HKLM|HKCU|HKU|HKCC)\\[^\s\n"']+)/i);
-  const path = pathMatch?.[1]?.replace(/[),.;:]+$/, '');
-  const parts = path?.split('\\') ?? [];
-  const selectedHive = parts.length ? hive(parts.shift() ?? '') : undefined;
+  const path = labeledPath || pathMatch?.[1]?.replace(/[),.;:]+$/, '');
+  const parts = path?.replace(/^\\+|\\+$/g, '').split('\\') ?? [];
+  const selectedHive = hive(labeledHive ?? (pathMatch?.[1]?.split('\\')[0] ?? ''));
   const key = parts.join('\\');
   const nameMatch = text.match(/(?:value|setting|entry|name)\s+(?:named\s+|called\s+)?["'`]?([A-Za-z0-9_. -]+)["'`]?/i);
-  const name = nameMatch?.[1]?.trim().replace(/[.,;:]+$/, '');
+  const name = labeledName || nameMatch?.[1]?.trim().replace(/[.,;:]+$/, '');
   if (!selectedHive || !key || !name) return undefined;
   const object: Record<string, Json> = {
     hive: { equals: selectedHive },
@@ -88,16 +104,23 @@ function registryCandidate(text: string): Candidate | undefined {
     name: { equals: name }
   };
   const fields: Record<string, Json> = {};
-  const valueMatch = text.match(/(?:set|configured|defined|must be|equals?)\b[^.\n]{0,240}?(?:to|as|at|of)\s+[\"'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)[\"'`]?/i) ?? text.match(/(?:must be|equals?)\s+[\"'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)[\"'`]?/i);
-  if (valueMatch) {
-    const raw = unquote(valueMatch[1]);
-    const numeric = /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : undefined;
-    fields.value = { equals: numeric ?? raw };
-    if (numeric !== undefined) fields.type = { equals: Number.isInteger(numeric) ? 'dword' : 'string' };
+  const valueMatch = text.match(/(?:set|configured|defined|must be|equals?)\b[^.\n]{0,240}?(?:to|as|at|of)\s+["'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)["'`]?/i) ?? text.match(/(?:must be|equals?)\s+["'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)["'`]?/i);
+  const expected = labeledValue || valueMatch?.[1];
+  if (expected !== undefined) {
+    const parsed = registryScalar(expected);
+    fields.value = { equals: parsed };
+    const type = labeledType?.toUpperCase();
+    if (type === 'REG_DWORD' || type === 'REG_DWORD_LITTLE_ENDIAN') fields.type = { equals: 'dword' };
+    else if (type === 'REG_QWORD' || type === 'REG_QWORD_LITTLE_ENDIAN') fields.type = { equals: 'qword' };
+    else if (type === 'REG_MULTI_SZ') fields.type = { equals: 'multi_string' };
+    else if (type === 'REG_EXPAND_SZ') fields.type = { equals: 'expand_string' };
+    else if (type === 'REG_SZ') fields.type = { equals: 'string' };
+    else if (typeof parsed === 'number') fields.type = { equals: Number.isInteger(parsed) ? 'dword' : 'string' };
   }
-  return { capability: 'windows.registry', object, fields: Object.keys(fields).length ? fields : undefined, confidence: fields.value ? 'high' : 'medium', assumptions: [
+  const labeled = Boolean(labeledHive && labeledPath && labeledName);
+  return { capability: 'windows.registry', object, fields: Object.keys(fields).length ? fields : undefined, confidence: fields.value && labeled ? 'high' : fields.value ? 'medium' : 'medium', assumptions: [
     'Inferred a Windows registry Object from the registry hive, key, and value name in the pasted text.',
-    ...(fields.value ? ['Inferred the expected registry value from a value-setting phrase.'] : ['No unambiguous expected registry value was found; the generated Test is presence-only.'])
+    ...(fields.value ? ['Inferred the expected registry value and datatype from the labeled registry fields.'] : ['No unambiguous expected registry value was found; the generated Test is presence-only.'])
   ] };
 }
 function userRightCandidate(text: string): Candidate | undefined {
