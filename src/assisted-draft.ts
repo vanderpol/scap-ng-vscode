@@ -23,6 +23,8 @@ interface Candidate {
   capability: string;
   object: Record<string, Json>;
   fields?: Record<string, Json>;
+  testCandidates?: Array<{ title: string; fields: Record<string, Json> }>;
+  evaluate?: 'and' | 'or' | 'one' | 'xor';
   assumptions: string[];
   confidence: AssistedConfidence;
 }
@@ -48,6 +50,26 @@ function hive(value: string): string | undefined {
   if (normalized === 'HKU' || normalized === 'HKEYUSERS') return 'users';
   if (normalized === 'HKCC' || normalized === 'HKEYCURRENTCONFIG') return 'current_config';
   return undefined;
+}
+function auditEventCandidate(text: string): Candidate | undefined {
+  if (!/(?:auditpol|audit policy|auditing|audit subcategor)/i.test(text)) return undefined;
+  const status = /success\s+and\s+failure|success(?:es)?|failure(?:s)?/i.exec(text)?.[0]?.toLowerCase();
+  if (!status) return undefined;
+  const fieldMatch = text.match(/([A-Za-z][A-Za-z0-9 /_-]+?)\s+(?:success(?:es)?|failures?|success\s+and\s+failure)\b/i);
+  if (!fieldMatch) return undefined;
+  const field = fieldMatch[1].trim().replace(/[-»>\s]+$/, '').split(/[-»>]/).pop()?.trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_]/g, '').toLowerCase();
+  if (!field || field === 'audit' || field === 'policy') return undefined;
+  const values = /failure/i.test(status) && !/success/i.test(status)
+    ? ['AUDIT_FAILURE', 'AUDIT_SUCCESS_FAILURE']
+    : ['AUDIT_SUCCESS', 'AUDIT_SUCCESS_FAILURE'];
+  return {
+    capability: 'windows.auditeventpolicysubcategories', object: {}, evaluate: 'or',
+    testCandidates: values.map(value => ({ title: `Audit ${field.replaceAll('_', ' ')} — ${value === 'AUDIT_SUCCESS' ? 'Success' : value === 'AUDIT_FAILURE' ? 'Failure' : 'Success and Failure'}`, fields: { [field]: { equals: value } } })),
+    confidence: 'high', assumptions: [
+      `Inferred the Windows AuditPol subcategory field '${field}' from the policy category text.`,
+      'Generated alternatives for the required audit outcome and Success-and-Failure coverage.'
+    ]
+  };
 }
 function registryCandidate(text: string): Candidate | undefined {
   const upper = text.toUpperCase();
@@ -107,7 +129,7 @@ function packageCandidate(text: string): Candidate | undefined {
 }
 function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate | undefined {
   const text = input.checkText;
-  return registryCandidate(text) ?? userRightCandidate(text) ?? unixFileCandidate(text) ?? packageCandidate(text);
+  return auditEventCandidate(text) ?? registryCandidate(text) ?? userRightCandidate(text) ?? unixFileCandidate(text) ?? packageCandidate(text);
 }
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
   const title = cleanText(input.title);
@@ -138,23 +160,25 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   }
   const catalog = new GuidedCatalog(pack);
   const required = catalog.objectRequirements(candidate.capability);
-  const complete = required.some(branch => branch.fields.every(field => Object.hasOwn(candidate.object, field)));
+  const complete = Object.keys(candidate.object).length === 0 || required.some(branch => branch.fields.every(field => Object.hasOwn(candidate.object, field)));
   if (!complete) {
     return manualDraft(pack, { title, checkText }, 'low', candidate.assumptions, ['The inferred Object does not satisfy a complete schema-required selector branch.']);
   }
+  const testCandidates = candidate.testCandidates ?? [{ title, fields: candidate.fields ?? {} }];
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), tests: [{
-      id: slug(title, 'test'), title, capability: candidate.capability,
-      object: candidate.object, fields: candidate.fields, presenceOnly: !candidate.fields
-    }]
+    mode: 'automated', className: firstClass(pack), evaluate: candidate.evaluate,
+    tests: testCandidates.map((test, index) => ({
+      id: candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'), title: test.title, capability: candidate.capability,
+      object: candidate.object, fields: test.fields, presenceOnly: false
+    }))
   });
   if (generated.diagnostics.length) {
     return manualDraft(pack, { title, checkText }, 'low', candidate.assumptions, [
       `The best automated guess failed pinned schema validation: ${generated.diagnostics.join('; ')}`
     ]);
   }
-  const unresolved = candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.'];
+  const unresolved = candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.'];
   const notes = annotation({ title, checkText }, candidate.confidence, candidate.assumptions, unresolved);
   return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions: candidate.assumptions, unresolved, generatedMode: 'automated' };
 }
