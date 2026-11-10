@@ -85,9 +85,12 @@ test('Assessment Authoring is an explicit isolated source-backed prototype', () 
 test('Issue #44 desktop graphical surface is a real host webview contract', async () => {
   const { graphicalHtml } = await import('../dist/graphical.js');
   const html = graphicalHtml();
-  assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\) minmax\(220px,285px\)/);
+  assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\)/);
   assert.match(html, /Assessment tree/);
   assert.match(html, /Contextual help/);
+  assert.match(html, /data-left-tab="assessment"/);
+  assert.match(html, /data-left-tab="help"/);
+  assert.match(html, /function showLeftTab\(name\)/);
   assert.match(html, /id="openGuided"/);
   assert.match(html, /type:'openGuided'/);
   assert.match(html, /selected node/);

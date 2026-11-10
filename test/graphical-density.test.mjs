@@ -54,7 +54,7 @@ test('center inspector is construct-focused and default help is on field focus',
   const html = graphicalHtml();
   assert.match(html, /if\(path\.length===1\)return sectionFields\(path\)/, 'Assessment metadata does not show nested Test values');
   assert.match(html, /function groupedForm\(path\)/);
-  assert.match(html, /input\.onfocus=\(\)=>renderHelp\(f\)/);
+  assert.match(html, /input\.onfocus=\(\)=>renderHelp\(f,true\)/);
   assert.doesNotMatch(html, /wrap\.append\(help\)/, 'Long descriptions should not fill each property row');
   assert.match(html, /Technical YAML path/);
   assert.match(html, /function friendlyLabel\(f\)/);
@@ -64,10 +64,14 @@ test('center inspector is construct-focused and default help is on field focus',
   assert.match(html, /Bounded PCRE2-safe preview/);
 });
 
-test('help panel collapses and contextual actions preserve their node path', () => {
+test('Assessment and contextual help share a left pane without a third grid column', () => {
   const html = graphicalHtml();
-  assert.match(html, /workspace\.help-collapsed/);
-  assert.match(html, /classList\.toggle\('help-collapsed',!helpOpen\)/);
+  assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\)/);
+  assert.match(html, /class="left-pane"/);
+  assert.match(html, /data-left-tab="assessment"/);
+  assert.match(html, /data-left-tab="help"/);
+  assert.match(html, /function showLeftTab\(name\)/);
+  assert.match(html, /function setHelpOpen\(open\)/);
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
   assert.match(html, /action:item\.action,path:testPathForSelection\(target\)\|\|target/);
 });
@@ -614,7 +618,7 @@ test('Require contextual help is not copied from arbitrary first scalar into gro
  const card=html.slice(html.indexOf('function fieldCheckCard(path,plan)'),html.indexOf('function requireInspector(path)'));
  assert.doesNotMatch(card,/const contextual=visible\.find/);
  assert.doesNotMatch(card,/field-schema-note/);
- assert.match(html,/function renderHelp\(focused\)/);
+ assert.match(html,/function renderHelp\(focused,reveal=false\)/);
  assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
 });
 
