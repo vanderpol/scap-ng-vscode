@@ -158,3 +158,11 @@ code --new-window --extensionDevelopmentPath="$PWD" "$PWD/.external/scap-ng-edit
 ```
 
 This pointer is deliberately outside the extension source/VSIX. It currently exposes 65 benchmark directories and 4,524 converted automated Assessments; it does not promote the corpus to a complete or applicability-qualified authoring library.
+
+The authoring-only view is available at:
+
+```text
+.external/scap-ng-editor-corpus/current-authoring
+```
+
+Unlike the receipt-bearing corpus view, this folder exposes the YAML/JSON under each stream's `authoring/direct-slice/` directly for content-authoring and Assessment Studio work. Open it with `code --new-window .external/scap-ng-editor-corpus/current-authoring`. It is an external copied view (79 MB), remains ignored, and currently contains 56 streams with 4,524 Assessment YAML files and 4,524 Rule YAML files; no missing streams were fabricated.
