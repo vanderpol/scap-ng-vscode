@@ -337,6 +337,19 @@ function assessmentVariableChoices(assessment:any,path:EditPath):string[]|undefi
   if(!inTest&&!inShared)return undefined;
   return Object.keys(assessment?.variables||{})
 }
+function schemaPointerPath(pointer: string): EditPath {
+  if (!pointer) return [];
+  return pointer.split('/').slice(1).map(part => {
+    const decoded = part.replace(/~1/g, '/').replace(/~0/g, '~');
+    return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+  });
+}
+function schemaDiagnostic(error: any) {
+  const instancePath = String(error.instancePath ?? '');
+  const message = `${instancePath || '/'}: ${error.message ?? 'schema validation error'}`;
+  return { path: schemaPointerPath(instancePath), instancePath, schemaPath: String(error.schemaPath ?? ''), keyword: String(error.keyword ?? ''), message };
+}
+
 function parseAuthoringDocument(document: any): { value: any; draft: boolean; diagnostics: string[] } {
   const text = document.getText();
   try { return { value: new SourceBuffer(text).json(), draft: false, diagnostics: [] }; }
@@ -358,8 +371,8 @@ export function modelFor(document: any, pack?: MetadataPack) {
     // A parseable document can still violate the pinned schema. Keep those
     // diagnostics separate from YAML parse errors and make the value-aware
     // default policy conservative: invalid authored values must stay visible.
-    const schemaDiagnostics = pack && root && !parsed.draft ? pack.validate(root, value as Json) : [];
-    const diagnostics = [...parsed.diagnostics, ...schemaDiagnostics];
+    const schemaDiagnostics = pack && root && !parsed.draft ? pack.validateDetailed(root, value as Json).map(schemaDiagnostic) : [];
+    const diagnostics = [...parsed.diagnostics, ...schemaDiagnostics.map((error: any) => error.message)];
     const schemaValid = !parsed.draft && schemaDiagnostics.length === 0;
     const fields = scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path, parsed.draft);

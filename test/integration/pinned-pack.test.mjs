@@ -448,6 +448,7 @@ test('Graphical controls preserve canonical requirement values and sibling paths
  const invalidModel=assessmentEditorModel({getText:()=>invalid,version:9},pack);
  assert.equal(invalidModel.schemaValid,false);
  assert.ok(invalidModel.schemaDiagnostics.length>0);
+ assert.ok(invalidModel.schemaDiagnostics.some(error=>error.path.join('.').includes('field_requirement.values_matching')));
  assert.deepEqual(invalidModel.fields.filter(field=>field.path.join('.').includes('.require.field_requirement.')).map(field=>field.hidden),[false,false]);
  assert.deepEqual(testModel.itemControls.map(field=>[field.name,field.value]),[['items_found','one_or_more'],['items_satisfying','every']]);
  const id=testModel.id; const foundPath=['assessment','tests',id,'require','field_requirement','values_found'];
