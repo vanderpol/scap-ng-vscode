@@ -86,7 +86,7 @@ function userRightCandidate(text: string): Candidate | undefined {
 function unixFileCandidate(text: string): Candidate | undefined {
   const path = text.match(/(?:^|\s)(\/(?:etc|var|usr|opt|home|bin|sbin|boot|tmp|root)\/[A-Za-z0-9_./-]+)/)?.[1];
   if (!path || !/(?:file|directory|folder|permission|mode|owner|group|path)/i.test(text)) return undefined;
-  return { capability: 'unix.file', object: { full_path: { equals: path } }, confidence: 'medium', assumptions: ['Inferred a Unix file Object from an absolute path and file/permission language.', 'The expected file state still needs author review.'] };
+  return { capability: 'unix.file', object: { full_path: { equals: path }, filesystem: 'all' }, confidence: 'medium', assumptions: ['Inferred a Unix file Object from an absolute path and file/permission language.', 'The expected file state still needs author review.'] };
 }
 function annotation(input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
   const lines = [
