@@ -444,6 +444,11 @@ test('Graphical controls preserve canonical requirement values and sibling paths
  const overridden=raw.replace('values_matching: every','values_matching: one_or_more');
  const overriddenModel=assessmentEditorModel({getText:()=>overridden,version:9},pack);
  assert.deepEqual(overriddenModel.fields.filter(field=>field.path.join('.').includes('.require.field_requirement.')).map(field=>field.hidden),[false,false]);
+ const invalid=raw.replace('values_matching: every','values_matching: invalid-token');
+ const invalidModel=assessmentEditorModel({getText:()=>invalid,version:9},pack);
+ assert.equal(invalidModel.schemaValid,false);
+ assert.ok(invalidModel.schemaDiagnostics.length>0);
+ assert.deepEqual(invalidModel.fields.filter(field=>field.path.join('.').includes('.require.field_requirement.')).map(field=>field.hidden),[false,false]);
  assert.deepEqual(testModel.itemControls.map(field=>[field.name,field.value]),[['items_found','one_or_more'],['items_satisfying','every']]);
  const id=testModel.id; const foundPath=['assessment','tests',id,'require','field_requirement','values_found'];
  const matchingPath=['assessment','tests',id,'require','field_requirement','values_matching']; const buffer=new SourceBuffer(raw);

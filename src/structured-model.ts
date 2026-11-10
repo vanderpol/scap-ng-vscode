@@ -355,10 +355,16 @@ function parseAuthoringDocument(document: any): { value: any; draft: boolean; di
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
     const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack);
+    // A parseable document can still violate the pinned schema. Keep those
+    // diagnostics separate from YAML parse errors and make the value-aware
+    // default policy conservative: invalid authored values must stay visible.
+    const schemaDiagnostics = pack && root && !parsed.draft ? pack.validate(root, value as Json) : [];
+    const diagnostics = [...parsed.diagnostics, ...schemaDiagnostics];
+    const schemaValid = !parsed.draft && schemaDiagnostics.length === 0;
     const fields = scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path, parsed.draft);
       const parentValue = field.path.length > 1 ? field.path.slice(0, -1).reduce((parent: any, part: string | number) => parent?.[part as any], value) : undefined;
-      const control = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid: !parsed.draft, isOverride: false, diagnostics: parsed.diagnostics, parentValue, parentSchemaUri: help.parentUri }, 'hide-defaults') : undefined;
+      const control = help && pack ? pack.control(help.uri, field.value, { documentVersion: pack.pin.schemaVersion, schemaValid, isOverride: false, diagnostics, parentValue, parentSchemaUri: help.parentUri }, 'hide-defaults') : undefined;
       const hidden = control?.hidden ?? false;
       const variableChoices = assessmentVariableChoices((value as any)?.assessment, field.path);
       const testChoices = testChoiceOptions(pack, field.path);
@@ -400,7 +406,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
       };
     });
     const variableDraft = pack && value?.assessment && typeof value.assessment === 'object' ? analyzeVariables(pack, value.assessment, true).diagnostics.some(item => item.code.startsWith('incomplete-')) : false;
-    return { ok: true, draft: parsed.draft || variableDraft, parseDiagnostics: parsed.diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
+    return { ok: true, draft: parsed.draft || variableDraft, schemaValid, parseDiagnostics: parsed.diagnostics, schemaDiagnostics, diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
@@ -432,7 +438,7 @@ function predicateControl(fields: any[], mappingPath: (string | number)[], name:
 export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const parsed = parseAuthoringDocument(document);
   const base: any = modelFor(document, pack); if (!base.ok) return base;
-  base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256; base.diagnostics = parsed.diagnostics;
+  base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256;
   const value: any = parsed.value; const assessment = value.assessment;
   // The graphical Variables inspector needs the authored expression structure,
   // not only the flattened scalar control list. This is read-only presentation
