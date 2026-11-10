@@ -71,6 +71,8 @@ test('Issue #44 desktop graphical surface is a real host webview contract', asyn
   assert.match(html, /grid-template-columns:minmax\(225px,280px\) minmax\(420px,1fr\) minmax\(220px,285px\)/);
   assert.match(html, /Assessment tree/);
   assert.match(html, /Contextual help/);
+  assert.match(html, /id="openGuided"/);
+  assert.match(html, /type:'openGuided'/);
   assert.match(html, /selected node/);
   assert.match(html, /Shift\+F10/);
   assert.match(html, /type:'structural'/);
