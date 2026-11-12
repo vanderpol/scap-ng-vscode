@@ -1587,6 +1587,17 @@ function parseDiagnosticMessage(message: string): string {
   }
   return message;
 }
+function schemaErrorRange(document: vscode.TextDocument, instancePath: string) {
+  try {
+    const range = new SourceBuffer(document.getText()).scalarRange(pointerPath(instancePath));
+    const start = (document as any).positionAt(range[0]);
+    const end = (document as any).positionAt(Math.max(range[0] + 1, range[1]));
+    return new vscode.Range(start.line, start.character, end.line, end.character);
+  } catch {
+    return new vscode.Range(0, 0, 0, 1);
+  }
+}
+
 function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection, pack?: MetadataPack) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
@@ -1609,7 +1620,7 @@ function validateDocument(document: vscode.TextDocument, profile: Pin, diagnosti
       if (schemaUri && value && typeof value === 'object' && !Array.isArray(value)) {
         for (const error of pack.validateDetailed(schemaUri, value as any)) {
           const path = error.instancePath || '/';
-          output.push(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 1), `${path}: ${error.message ?? 'schema validation error'}`, vscode.DiagnosticSeverity.Error));
+          output.push(new vscode.Diagnostic(schemaErrorRange(document, path), `${path}: ${error.message ?? 'schema validation error'}`, vscode.DiagnosticSeverity.Error));
         }
       }
     }
