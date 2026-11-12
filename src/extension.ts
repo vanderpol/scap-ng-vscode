@@ -755,13 +755,14 @@ class AssessmentEditorProvider {
   constructor(private readonly getPack: () => MetadataPack | undefined) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
     const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = graphicalHtml();
+    let editorMode = configuredAssessmentEditor(api, document);
     // Split mode keeps the graphical inspector and the actual VS Code YAML
     // editor visible together. Both views still bind to this one TextDocument.
-    if (configuredAssessmentEditor(api, document) === 'split') void openNativeYamlBeside(api, document);
+    if (editorMode === 'split') void openNativeYamlBeside(api, document);
     const send = () => {
       try {
         const model = assessmentEditorModel(document, this.getPack());
-        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode: configuredAssessmentEditor(api, document) } });
+        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode } });
       } catch (error) {
         // A malformed/exotic YAML document must never strand the custom editor
         // on its loading placeholder. Keep the native YAML editor available
@@ -784,6 +785,7 @@ class AssessmentEditorProvider {
       if (message.type === 'editorMode') {
         const mode = message.mode === 'yaml' || message.mode === 'split' || message.mode === 'graphical' ? message.mode : undefined;
         if (!mode) return;
+        editorMode = mode;
         if (mode === 'yaml') {
           await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
         } else if (mode === 'split') {

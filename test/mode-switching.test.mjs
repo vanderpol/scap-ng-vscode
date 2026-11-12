@@ -17,7 +17,7 @@ test('mode switching keeps YAML and Split on the native TextDocument path', () =
 });
 
 test('Split resolves the existing custom editor beside the same native YAML document', () => {
-  assert.match(extensionSource, /configuredAssessmentEditor\(api, document\) === 'split'/);
+  assert.match(extensionSource, /editorMode === 'split'/);
   assert.match(extensionSource, /openNativeYamlBeside\(api, document\)/);
   assert.match(extensionSource, /input\?\.viewType === assessmentCustomEditorId/);
   assert.match(extensionSource, /openTextDocument\(custom\.input\.uri\)/);
@@ -39,6 +39,8 @@ test('Graphical mode exposes top-level Graphical/YAML/Split tabs instead of bott
   assert.match(graphicalSource, /data-editor-mode="split"/);
   assert.match(graphicalSource, /type:'editorMode',mode/);
   assert.match(extensionSource, /message\.type === 'editorMode'/);
+  assert.match(extensionSource, /let editorMode = configuredAssessmentEditor\(api, document\)/);
+  assert.match(extensionSource, /editorMode = mode/);
   assert.match(extensionSource, /openNativeYamlBeside\(api, document\)/);
   assert.doesNotMatch(graphicalSource, /textContent='Switch to YAML editor'/);
   assert.doesNotMatch(graphicalSource, /textContent=linkedPath\?'Reveal Test definition in YAML':'Reveal in YAML'/);
