@@ -39,6 +39,77 @@ test('plain enum/string edits retain plain style when safe',()=>{
  assert.equal(edit.replacement,'new-value');
  assert.equal(edit.document.text,'status: new-value\n');
 });
+test('native Variable expression replacement preserves YAML and promotes constants to local',()=>{
+ const raw=`assessment:
+  variables:
+    source-variable:
+      kind: constant
+      datatype: string
+      expression:
+        literal: hello
+`;
+ const source=new SourceBuffer(raw);
+ const edit=source.replaceExpression(['assessment','variables','source-variable','expression'],{regex_capture:{pattern:'(.*)',value:{literal:''}}},sha256(raw),['assessment','variables','source-variable']);
+ const value=edit.document.json().assessment.variables['source-variable'];
+ assert.equal(value.kind,'local'); assert.equal(value.expression.regex_capture.pattern,'(.*)');
+ assert.match(edit.document.text,/      kind: local/); assert.equal(edit.undo().text,raw);
+});
+
+test('block sequence append separates the inserted mapping from the following sibling',()=>{
+ const raw=`assessment:
+  variables:
+    source-variable:
+      expression:
+        concat:
+        - literal: first
+        - literal: second
+  tests:
+    check-test: {}
+`;
+ const source=new SourceBuffer(raw);
+ const path=['assessment','variables','source-variable','expression','concat'];
+ const edit=source.insertArrayItem(path,{literal:''},sha256(raw));
+ const value=edit.document.json().assessment.variables['source-variable'].expression.concat;
+ assert.deepEqual(value,[{literal:'first'},{literal:'second'},{literal:''}]);
+ assert.deepEqual(edit.document.json().assessment.tests['check-test'],{});
+ assert.match(edit.document.text,/\n  tests:\n/);
+ assert.equal(edit.undo().text,raw);
+});
+
+test('Evaluate additions preserve source references while wrapping an existing Test',()=>{
+ const raw=`assessment:
+  tests:
+    first-test: {capability: independent.shellcommand, object: {shell: cmd}, require: {item_requirement: {items_found: one_or_more, items_satisfying: every}}}
+    second-test: {capability: independent.shellcommand, object: {shell: cmd}, require: {item_requirement: {items_found: one_or_more, items_satisfying: every}}}
+  evaluate:
+    test: first-test
+`;
+ const source=new SourceBuffer(raw);
+ const edit=source.replacePathValue(['assessment','evaluate'],{or:[{test:'first-test'},{test:'second-test'}]},sha256(raw));
+ assert.deepEqual(edit.document.json().assessment.evaluate,{or:[{test:'first-test'},{test:'second-test'}]});
+ assert.equal(edit.document.json().assessment.tests['first-test'].capability,'independent.shellcommand');
+ assert.equal(edit.document.json().assessment.tests['second-test'].capability,'independent.shellcommand');
+ assert.equal(edit.undo().text,raw);
+});
+
+test('Require logical condition replacement keeps following Test members on separate YAML lines',()=>{
+ const raw=`assessment:
+  tests:
+    check-test:
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        field_requirement: {values_found: one_or_more, values_matching: every}
+        fields: {stdout_line: {equals: ok}}
+      reported_elements: all
+`;
+ const source=new SourceBuffer(raw);
+ const next={item_requirement:{items_found:'one_or_more',items_satisfying:'every'},field_requirement:{values_found:'one_or_more',values_matching:'every'},and:[{fields:{stdout_line:{equals:'ok'}}},{fields:{stderr_line:{values_found:'none'}}}]};
+ const edit=source.replacePathValue(['assessment','tests','check-test','require'],next,sha256(raw));
+ assert.deepEqual(edit.document.json().assessment.tests['check-test'].require.and[1].fields.stderr_line,{values_found:'none'});
+ assert.equal(edit.document.json().assessment.tests['check-test'].reported_elements,'all');
+ assert.match(edit.document.text,/\n      reported_elements: all\n/);
+});
+
 test('safe mapping-key edit changes only the selected operation and supports undo',()=>{
  const raw='require:\n  fields: {value: {equals: 1}}\n'; const source=new SourceBuffer(raw);
  const edit=source.editMappingKey(['require','fields','value'],'equals','not_equal',sha256(raw));
@@ -151,6 +222,18 @@ test('P1B keeps malformed, unresolved and unsupported selector states explicit',
  assert.ok(result.inputDiagnostics.length);
  const result2 = await evaluateObjectSamples(object, 'unknown.capability', JSON.stringify({id:'i',capability:'unknown.capability',status:'exists',fields:{value:{datatype:'string',value:'x'},other:{datatype:'string',value:'y'}},provenance:{}}));
  assert.equal(result2.items[0].selectors[0].status, 'indeterminate'); assert.equal(result2.items[0].selectors[1].status, 'indeterminate');
+});
+
+test('schema-qualified mapping additions preserve block and flow YAML styles',()=>{
+ const block='require:\n  item_requirement: {items_found: one_or_more}\n  sibling: value\n';
+ const blockEdit=new SourceBuffer(block).insertMapEntries(['require'],[['field_requirement',{values_found:'one_or_more',values_matching:'every'}],['fields',{value:{equals:1}}]],sha256(block));
+ assert.deepEqual(blockEdit.document.json().require.fields,{value:{equals:1}});
+ assert.match(blockEdit.document.text,/\n  sibling: value\n/); assert.equal(blockEdit.undo().text,block);
+ const single=new SourceBuffer(block).insertMapEntry(['require'],'fields',{value:{equals:1}},sha256(block));
+ assert.deepEqual(single.document.json().require.fields,{value:{equals:1}}); assert.match(single.document.text,/\n  sibling: value\n/);
+ const flow='require: {item_requirement: {items_found: one_or_more}}\n';
+ const flowEdit=new SourceBuffer(flow).insertMapEntries(['require'],[['field_requirement',{values_found:'one_or_more',values_matching:'every'}],['fields',{value:{equals:1}}]],sha256(flow));
+ assert.deepEqual(flowEdit.document.json().require.fields,{value:{equals:1}}); assert.equal(flowEdit.undo().text,flow);
 });
 
 test('graphical structural map edits append, duplicate and remove with native undo source', () => {

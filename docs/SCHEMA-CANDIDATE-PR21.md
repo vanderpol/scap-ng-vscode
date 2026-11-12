@@ -55,3 +55,13 @@ The overlay lookup is cached per verified metadata pack and falls back to the
 pinned generated capability schema when an overlay is absent. This preserves
 stable-pack behavior while allowing future schema revisions to add contracts
 without another editor implementation change.
+
+The active Assessment grammar also references `variable-expression.schema.json`
+for `assessment.variables[*]`. Its native expression branches are exactly the
+seven listed above; it has no `count` branch or native function-call envelope.
+`variable-function-expression.schema.json` is a separate inactive migration
+candidate. It does mention `count`, but that schema is not referenced by
+Assessment and must not drive completion, forms, or serialized edits. The editor
+therefore deliberately does not offer or write `count`; if a future pinned
+Assessment schema adds it, the schema-derived controls and tests must change
+with that reviewed pin.

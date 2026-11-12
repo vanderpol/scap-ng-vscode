@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { MetadataPack,SourceBuffer,sha256 } from '../../dist/index.js';
 import { modelFor, explainAssessment, assessmentEditorModel } from '../../dist/structured-model.js';
 import { completionChoices, predicateOperatorChoices, predicateValueSourceChoices, schemaDefaultValue, selectorOperatorChoices, selectorValueChoices } from '../../dist/completion.js';
-import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from '../../dist/structured-model.js';
+import { comparisonOperations, comparisonValueSources, comparisonVariableCompatible, variableExpressionOperations } from '../../dist/structured-model.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from '../../dist/expression-contract.js';
 import { context } from '../helpers.mjs';
 
@@ -199,6 +199,18 @@ test('schema-driven model exposes canonical Registry enum help and revision',()=
  const field=model.fields.find(item=>JSON.stringify(item.path)===JSON.stringify(path));
  assert.ok(field); assert.equal(field.label,'Items found'); assert.deepEqual(field.choices,['none','exactly_one','one_or_more','zero_or_more']);
 });
+test('Variable graphical operations come only from the active native expression schema',()=>{
+ const operations=variableExpressionOperations(pack).map(option=>option.value);
+ assert.deepEqual(operations,['literal','variable','values','concat','regex_capture','unique','merge']);
+ assert.equal(operations.includes('count'),false);
+ const assessment=pack.resource(base+'assessment.schema.json');
+ assert.equal(assessment.properties.assessment.properties.variables.additionalProperties.$ref,'variable-expression.schema.json');
+ const inactive=pack.resource(base+'variable-function-expression.schema.json');
+ assert.ok(inactive.$defs.function_call.properties.function.properties.name.enum.includes('count'));
+ const nativeCount={function:{name:'count',arguments:[{literal:'value'}],options:{}}};
+ assert.ok(pack.validate(base+'variable-expression.schema.json',nativeCount).length>0);
+});
+
 test('graphical operator controls resolve every Object/Require context from the pinned contract',()=>{
  const objectExpected=['equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','matches_regex'];
  assert.deepEqual(selectorOperatorChoices(pack,'windows.registry','hive',false).map(x=>x.value),['equals']);
@@ -303,6 +315,9 @@ test('current sysvol sample separates scalar comparison, value matching, and exi
  assert.equal(valueMatch?.operatorCompatible,undefined);
  assert.equal(valuesFound?.value,'none');
  assert.equal(valuesFound?.operatorCompatible,undefined);
+ const wizardField=model.assessment.tests.find(test=>test.id==='permissions-must-conform-to-minimum-requirements-test').requireFieldOptions.find(field=>field.name==='stderr_line');
+ assert.ok(wizardField.operations.some(operation=>operation.value==='values_found'));
+ assert.deepEqual(wizardField.valueChoices.values_found,['none','exactly_one','one_or_more','every','zero_or_more']);
  assert.equal(model.fields.filter(field=>field.operatorCompatible===false).length,0);
  // A schema-declared scalar operation outside the capability's allowed subset
  // remains explicitly diagnosed rather than being hidden by this distinction.

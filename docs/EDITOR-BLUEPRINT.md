@@ -44,6 +44,7 @@ Specialized controls are needed for:
 - `and`/`or`/`one`/`xor` nested alternatives with visible operator labels and drag/reorder only when semantics-preserving.
 - Test `require` and multi-Test `evaluate` must be distinct editors.
 - Source/evidence, inputs and provenance without dropping unfamiliar schema-permitted metadata.
+- Object and Require forms provide schema-qualified **Add field** and **Remove field** actions. Edits remain minimal source patches, preserve undo/redo, and reject removals/additions that would invalidate the pinned Assessment schema.
 
 Every accepted native field must be editable. If specialized widget support is missing, fall back to a schema-checked generic property editor rather than hiding the field.
 

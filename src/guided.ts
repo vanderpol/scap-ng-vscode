@@ -1,7 +1,7 @@
 import { stringify } from 'yaml';
 import { MetadataPack, type Json } from './metadata.js';
 import { schemaNodes } from './schema-resolver.js';
-import { selectorOperatorChoices } from './completion.js';
+import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedObjectField {
@@ -157,7 +157,29 @@ export class GuidedCatalog {
         try { return this.pack.describe(`${uri}#/$defs/state_predicate/${Array.isArray(predicate.oneOf) ? 'oneOf' : 'anyOf'}/${index}/properties/${name}`, { documentVersion: this.pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] }).description; } catch { return ''; }
       }).find(Boolean) || undefined;
       const operations = selectorOperatorChoices(this.pack, capability, name, true).map(option => ({ value: option.value, label: option.label, description: option.description }));
-      return { name, label: name, description, datatype: datatypes[0] ?? 'string', datatypes, operations };
+      // Presence/cardinality predicates (for example values_found: none) are
+      // native Require operations too, but are intentionally kept separate
+      // from scalar comparison operators by the completion adapter. Derive
+      // those extra operations directly from the pinned predicate schema so a
+      // wizard can restore a presence-only field without a GUI registry.
+      const languageUri = schemaBase + 'assessment-language.schema.json';
+      const scalarPredicate: any = this.pack.resource(languageUri).$defs?.scalar_field_predicate;
+      for (const [value, spec] of Object.entries(scalarPredicate?.properties ?? {})) {
+        const ref = typeof (spec as any)?.$ref === 'string' ? String((spec as any).$ref) : '';
+        if (!/(?:existence_cardinality|cardinality)$/.test(ref) || operations.some(operation => operation.value === value)) continue;
+        operations.push({ value, label: String((spec as any).title || value).replaceAll('_', ' '), description: (spec as any).description });
+      }
+      const valueChoices = Object.fromEntries(operations.map(operation => {
+        const direct = selectorValueChoices(this.pack, capability, name, operation.value, true).map(choice => choice.value);
+        if (direct.length) return [operation.value, direct];
+        const spec = scalarPredicate?.properties?.[operation.value]; const ref = typeof spec?.$ref === 'string' ? spec.$ref : undefined;
+        if (!ref) return [operation.value, []];
+        try {
+          const choices = this.pack.describe(new URL(ref, languageUri).href, schemaContext(this.pack)).choices;
+          return [operation.value, choices.filter((choice: Json): choice is string => typeof choice === 'string')];
+        } catch { return [operation.value, []]; }
+      }));
+      return { name, label: name, description, datatype: datatypes[0] ?? 'string', datatypes, operations, valueChoices };
     });
   }
   operations() {

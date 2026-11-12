@@ -128,7 +128,7 @@ async function synchronizeAssessmentEditorPreference(api: any): Promise<void> {
 function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!)); }
 
 
-import { modelFor, assessmentEditorModel, comparisonOperations, comparisonValueSources, comparisonVariableCompatible } from './structured-model.js';
+import { modelFor, assessmentEditorModel, comparisonOperations, comparisonValueSources, comparisonVariableCompatible, variableExpressionOperations, requireLogicalOperations } from './structured-model.js';
 
 function regexTesterHtml() {
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-regex-tester';"><style>
@@ -258,6 +258,30 @@ function structuralEntityName(collection: string): string {
 }
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
 function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
+
+function variableExpressionTemplate(operation: string, assessment: any, variableId: string): any {
+  const variables = assessment?.variables && typeof assessment.variables === 'object' ? assessment.variables : {};
+  const otherVariable = Object.keys(variables).find(id => id !== variableId) || 'source-variable';
+  const objectRef = assessment?.shared_objects && typeof assessment.shared_objects === 'object'
+    ? Object.keys(assessment.shared_objects)[0] || 'source-object' : 'source-object';
+  switch (operation) {
+    case 'literal': return { literal: '' };
+    case 'variable': return { variable: otherVariable };
+    case 'values': return { values: { object: objectRef, field: 'value' } };
+    case 'concat': return { concat: [{ literal: '' }, { literal: '' }] };
+    case 'regex_capture': return { regex_capture: { pattern: '(.*)', value: { literal: '' } } };
+    case 'unique': return { unique: { literal: [] } };
+    case 'merge': return { merge: { delimiter: ', ', sort: 'document', order: 'ascending', values: { literal: '' } } };
+    default: throw new Error(`Operation '${operation}' is not available in the pinned native Variable schema.`);
+  }
+}
+function variableExpressionPath(path: any[], value: any): boolean {
+  // Root and nested expression branches (concat operands, regex input,
+  // unique/merge input) share the same one-operation native shape.
+  return Array.isArray(path) && path.length >= 4 && path[0] === 'assessment' && path[1] === 'variables' &&
+    typeof path[2] === 'string' && path[3] === 'expression' &&
+    value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1;
+}
 function graphicalTestSkeleton(pack: MetadataPack, id: string, title: string, capability: string) {
   const catalog = new GuidedCatalog(pack); const object: any = {};
   const requirement = catalog.objectRequirements(capability)[0];
@@ -314,7 +338,57 @@ async function promptSharedSelector(api: any, catalog: GuidedCatalog,
   return candidate;
 }
 
-async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string): Promise<any> {
+async function promptRequireField(api: any, catalog: GuidedCatalog, capability: string, already: Record<string, any>, requested?: any) {
+  const fields = catalog.resultFields(capability).filter(field => !Object.prototype.hasOwnProperty.call(already, field.name));
+  if (!fields.length) throw new Error('No additional schema-declared Require fields are available for this capability. Use native YAML for advanced fields.');
+  const requestedName = typeof requested?.fieldName === 'string' ? requested.fieldName : undefined;
+  const field = requestedName
+    ? fields.find(candidate => candidate.name === requestedName)
+    : (await api.window.showQuickPick(fields.map(candidate => ({
+      label: candidate.label || candidate.name, description: candidate.name, detail: candidate.description, field: candidate
+    })), { placeHolder: 'Select a collected field to require' }))?.field;
+  if (!field) {
+    if (requestedName) throw new Error('The selected Require field is not available in the pinned capability schema.');
+    return undefined;
+  }
+  if (!field.operations?.length) throw new Error('The pinned capability metadata has no supported Require operations for ' + field.name);
+  const operation = typeof requested?.operation === 'string'
+    ? field.operations.find((candidate: any) => candidate.value === requested.operation)
+    : field.operations.length === 1 ? field.operations[0] :
+      (await api.window.showQuickPick(field.operations.map((value: any) => ({
+        label: value.label || value.value, description: value.value, value
+      })), { placeHolder: 'Choose how to compare ' + field.name }))?.value;
+  if (!operation) {
+    if (requested?.operation) throw new Error('The selected Require operation is not available in the pinned capability schema.');
+    return undefined;
+  }
+  if (requestedName) {
+    if (!Object.prototype.hasOwnProperty.call(requested, 'value')) throw new Error('The Require field wizard did not provide a value.');
+    const value = operation.value === 'matches_regex' && typeof requested.value === 'string' ? [requested.value] : requested.value;
+    return { [field.name]: { [operation.value]: value } };
+  }
+  let raw: string | undefined;
+  const datatypes = Array.isArray(field.datatypes) ? field.datatypes : [];
+  if (datatypes.includes('boolean') && datatypes.length === 1) {
+    raw = (await api.window.showQuickPick([
+      { label: 'true', value: 'true' }, { label: 'false', value: 'false' }
+    ], { placeHolder: 'Choose the expected Boolean value' }))?.value;
+  } else {
+    raw = await api.window.showInputBox({
+      prompt: 'Expected value for ' + field.name + ' (' + operation.value + ')', value: '',
+      validateInput: (value: string) => value.trim().length ? undefined : 'Enter an expected value.'
+    });
+  }
+  if (raw === undefined || !raw.trim()) return undefined;
+  let value: any = raw;
+  if (operation.value === 'matches_regex') value = [raw];
+  else if (datatypes.includes('boolean') && datatypes.length === 1) value = raw === 'true';
+  else if (datatypes.includes('integer') && datatypes.length === 1 && /^[-+]?\d+$/.test(raw.trim())) value = Number(raw);
+  else if (datatypes.includes('number') && datatypes.length === 1 && Number.isFinite(Number(raw))) value = Number(raw);
+  return { [field.name]: { [operation.value]: value } };
+}
+
+async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string, options?: any): Promise<any> {
   if (!pack) throw new Error('A verified offline metadata pack is required for schema-driven structural additions.');
   const source = new SourceBuffer(document.getText()); const catalog = new GuidedCatalog(pack);
   const last = String(path.at(-1) ?? '');
@@ -392,6 +466,76 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
+  if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'require' && options?.condition === true) {
+    const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
+    if (!test) throw new Error('The Test definition was not found.');
+    const capability = String(test.capability || '');
+    if (!capability) throw new Error('The Test has no valid capability.');
+    const requirement: any = test.require;
+    if (!requirement || typeof requirement !== 'object' || Array.isArray(requirement)) throw new Error('The Test Require section is not a mapping. Use native YAML to repair it.');
+    const logical = typeof options.logicalOperation === 'string' ? options.logicalOperation : '';
+    if (!requireLogicalOperations(pack).includes(logical)) throw new Error('That Require logical operation is not available in the pinned schema.');
+    const candidate = await promptRequireField(api, catalog, capability, {}, options);
+    if (!candidate) return undefined;
+    const condition = { fields: candidate } as any;
+    const currentLogical = ['and', 'or', 'one', 'xor'].find(name => Array.isArray(requirement[name]));
+    let edit: any;
+    if (currentLogical === logical) {
+      edit = source.insertArrayItem(path.concat(logical), condition, expectedHash);
+    } else {
+      const next: any = {};
+      for (const name of ['item_requirement', 'field_requirement']) if (Object.prototype.hasOwnProperty.call(requirement, name)) next[name] = requirement[name];
+      const branches: any[] = [];
+      if (Object.prototype.hasOwnProperty.call(requirement, 'fields')) branches.push({ fields: requirement.fields });
+      else if (currentLogical) branches.push({ [currentLogical]: requirement[currentLogical] });
+      branches.push(condition);
+      next[logical] = branches;
+      edit = source.replacePathValue(path, next, expectedHash);
+    }
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const before = pack.validate(schemaUri, doc);
+    const errors = pack.validate(schemaUri, edit.document.json());
+    const introduced = errors.filter((error: string) => !before.includes(error));
+    if (introduced.length) throw new Error('Pinned schema rejected the new Require condition: ' + introduced.join('; '));
+    return edit;
+  }
+
+  if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'require') {
+    const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
+    if (!test) throw new Error('The Test definition was not found.');
+    const capability = String(test.capability || '');
+    if (!capability) throw new Error('The Test has no valid capability.');
+    const requirement = test.require;
+    if (!requirement || typeof requirement !== 'object' || Array.isArray(requirement))
+      throw new Error('The Test Require section is not a mapping. Use native YAML to repair it.');
+    const existingFields = requirement.fields;
+    if (existingFields !== undefined && (existingFields === null || typeof existingFields !== 'object' || Array.isArray(existingFields)))
+      throw new Error('The Require fields section is not a mapping. Use native YAML to repair it.');
+    const candidate = await promptRequireField(api, catalog, capability, existingFields ?? {}, options);
+    if (!candidate) return undefined;
+    const [fieldName, predicate] = Object.entries(candidate)[0] as [string, any];
+    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    let edit: any;
+    if (existingFields === undefined) {
+      if (requirement.field_requirement === undefined) {
+        const fieldRequirement = {
+          values_found: preferred(catalog.fieldValuesFound()),
+          values_matching: preferred(catalog.fieldValuesMatching())
+        };
+        if (!fieldRequirement.values_found || !fieldRequirement.values_matching)
+          throw new Error('Pinned field-requirement defaults are unavailable; no Require field was added.');
+        edit = source.insertMapEntries(path, [['field_requirement', fieldRequirement], ['fields', { [fieldName]: predicate }]], expectedHash);
+      } else {
+        edit = source.insertMapEntry(path, 'fields', { [fieldName]: predicate }, expectedHash);
+      }
+    } else {
+      edit = source.insertMapEntry(path.concat('fields'), fieldName, predicate, expectedHash);
+    }
+    const errors = pack.validate(schemaUri, edit.document.json());
+    if (errors.length) throw new Error('Pinned schema rejected the new Require field: ' + errors.join('; '));
+    return edit;
+  }
+
   if (last === 'shared_objects' && path.length === 2) {
     const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
     const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
@@ -524,7 +668,8 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
 }
 async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
   const workspaceEdit = new api.WorkspaceEdit();
-  workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement);
+  const replacements = Array.isArray(edit.replacements) ? edit.replacements : [{ start: edit.range[0], end: edit.range[1], replacement: edit.replacement }];
+  for (const item of replacements) workspaceEdit.replace(document.uri, new api.Range(document.positionAt(item.start), document.positionAt(item.end)), item.replacement);
   if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
 }
 class AssessmentEditorProvider {
@@ -683,6 +828,118 @@ class AssessmentEditorProvider {
           if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) throw new Error('Document changed before this structural edit; refresh and try again.');
           const path = Array.isArray(message.path) ? message.path : [];
           if (message.action === 'reveal') { try { await revealNativeSource(api, document, new SourceBuffer(document.getText()).scalarRange(path)); } catch { await revealNativeSource(api, document); } return; }
+          if (message.action === 'addEvaluateTest') {
+            if (path.length !== 2 || path[0] !== 'assessment' || path[1] !== 'evaluate')
+              throw new Error('Evaluate editing is available only from the Assessment Evaluate node.');
+            if (typeof message.testId !== 'string' || !message.testId.length || typeof message.operation !== 'string')
+              throw new Error('Choose a Test and a logical Evaluate operation.');
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for Evaluate edits.');
+            const allowed = new GuidedCatalog(pack).logicalOperators().map(option => option.value);
+            if (!allowed.includes(message.operation)) throw new Error('That logical operation is not available in the pinned Evaluate schema.');
+            const source = new SourceBuffer(document.getText()), original: any = source.json();
+            const assessment = original?.assessment;
+            if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment)) throw new Error('The Assessment root is not an editable mapping.');
+            if (!assessment.tests || typeof assessment.tests !== 'object' || Array.isArray(assessment.tests) ||
+                !Object.prototype.hasOwnProperty.call(assessment.tests, message.testId))
+              throw new Error('Choose an authored Test from this Assessment.');
+            const evaluate = assessment.evaluate;
+            const testExpression = { test: message.testId } as any;
+            let edit: any;
+            if (evaluate === undefined) {
+              edit = source.insertMapEntry(['assessment'], 'evaluate', { [message.operation]: [testExpression] } as any, currentRevision);
+            } else if (evaluate && typeof evaluate === 'object' && !Array.isArray(evaluate) &&
+                       Object.keys(evaluate).length === 1 && evaluate[message.operation] && Array.isArray(evaluate[message.operation])) {
+              edit = source.insertArrayItem(['assessment', 'evaluate', message.operation], testExpression, currentRevision);
+            } else {
+              // Preserve an existing direct Test, conditional, or differently
+              // grouped expression by making it one branch of the selected
+              // schema-defined logical operator.
+              edit = source.replacePathValue(['assessment', 'evaluate'], { [message.operation]: [evaluate, testExpression] } as any, currentRevision);
+            }
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const before = pack.validate(schemaUri, original);
+            const afterDocument = edit.document.json();
+            const after = pack.validate(schemaUri, afterDocument);
+            const introduced = after.filter((error: string) => !before.includes(error));
+            if (introduced.length) throw new Error('The pinned schema rejected this Evaluate edit: ' + introduced.join('; '));
+            await applySourceWorkspaceEdit(api, document, edit);
+            panel.webview.postMessage({ type: 'status', message: 'Added Test "' + message.testId + '" to Evaluate using ' + message.operation + '. Native Undo/Redo remains available.' });
+            return;
+          }
+          if (message.action === 'removeField') {
+            const fieldKind = message.fieldKind === 'require' ? 'require' : message.fieldKind === 'object' ? 'object' : undefined;
+            if (!fieldKind) throw new Error('Unknown field editing context.');
+            const source = new SourceBuffer(document.getText()), original = source.json();
+            const rootPath = Array.isArray(message.path) ? message.path : [];
+            const fieldPath = Array.isArray(message.fieldPath) ? message.fieldPath : [];
+            if (fieldPath.some((part: unknown) =>
+              (typeof part !== 'string' && !(typeof part === 'number' && Number.isInteger(part)))))
+              throw new Error('Invalid field path.');
+            const startsWith = (candidate: (string | number)[], prefix: (string | number)[]) =>
+              candidate.length >= prefix.length && prefix.every((part, index) => candidate[index] === part);
+            let label: string;
+            if (fieldKind === 'require') {
+              if (rootPath.length !== 4 || rootPath[0] !== 'assessment' || rootPath[1] !== 'tests' ||
+                  typeof rootPath[2] !== 'string' || rootPath[3] !== 'require')
+                throw new Error('Require field removal is available only from a Test Require form.');
+              if (!startsWith(fieldPath, rootPath) || fieldPath.length < rootPath.length + 2)
+                throw new Error('The requested Require field is outside this Test Require form.');
+              const relative = fieldPath.slice(rootPath.length);
+              const fieldsIndex = relative.lastIndexOf('fields');
+              // A predicate may be nested below and/or/one/xor branches, but the
+              // field being removed must be the direct member of that predicate's
+              // fields mapping—not a requirement or metadata member.
+              if (fieldsIndex < 0 || fieldsIndex !== relative.length - 2 ||
+                  typeof relative.at(-1) !== 'string' ||
+                  relative.slice(0, fieldsIndex).some((part: string | number, index: number) =>
+                    index % 2 === 0
+                      ? !['and', 'or', 'one', 'xor'].includes(String(part))
+                      : !(typeof part === 'number' && Number.isInteger(part) && part >= 0)))
+                throw new Error('Choose an authored field from a Require predicate.');
+              const fieldsPath = fieldPath.slice(0, -1);
+              const fields = valueAtPathForGraphical(original, fieldsPath);
+              const fieldName = String(fieldPath.at(-1));
+              if (!fields || typeof fields !== 'object' || Array.isArray(fields) ||
+                  !Object.prototype.hasOwnProperty.call(fields, fieldName))
+                throw new Error('The requested Require field is not an authored fields member.');
+              label = 'Require field';
+            } else {
+              const isInlineTestObject = rootPath.length === 4 && rootPath[0] === 'assessment' &&
+                rootPath[1] === 'tests' && typeof rootPath[2] === 'string' && rootPath[3] === 'object';
+              const isSharedObject = rootPath.length === 3 && rootPath[0] === 'assessment' &&
+                rootPath[1] === 'shared_objects' && typeof rootPath[2] === 'string';
+              if (!isInlineTestObject && !isSharedObject)
+                throw new Error('Object field removal is available only from an inline Test Object or Shared Object form.');
+              if (!startsWith(fieldPath, rootPath) || fieldPath.length !== rootPath.length + 1 ||
+                  typeof fieldPath.at(-1) !== 'string')
+                throw new Error('Choose a direct field from this Object form.');
+              const fieldName = String(fieldPath.at(-1));
+              const metadata = new Set(['capability', 'object_title', 'filters', 'set', 'for_each', 'traversal']);
+              if (metadata.has(fieldName)) throw new Error('Object metadata is not removable from the field editor.');
+              const object = valueAtPathForGraphical(original, rootPath);
+              if (!object || typeof object !== 'object' || Array.isArray(object) ||
+                  !Object.prototype.hasOwnProperty.call(object, fieldName))
+                throw new Error('The requested Object field is not an authored direct member.');
+              label = 'Object field';
+            }
+            const fieldName = String(fieldPath.at(-1));
+            const confirmation = await api.window.showWarningMessage(
+              'Remove ' + label + ' "' + fieldName + '" from the YAML document?',
+              { modal: true }, 'Remove field');
+            if (confirmation !== 'Remove field') return;
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for field edits.');
+            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const before = pack.validate(schemaUri, original);
+            const edit = source.removePath(fieldPath, currentRevision);
+            const errors = pack.validate(schemaUri, edit.document.json());
+            const introduced = errors.filter((error: string) => !before.includes(error));
+            if (introduced.length)
+              throw new Error('Removing this field would invalidate the Assessment: ' + introduced.join('; '));
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
           if (message.action === 'rename' || message.action === 'remove') {
             const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
             if (path.length !== 3 || path[0] !== 'assessment' ||
@@ -769,8 +1026,18 @@ class AssessmentEditorProvider {
             return;
           }
           if (message.action === 'add') {
-            const edit = await graphicalAdd(api, document, this.getPack(), path, currentRevision);
-            if (edit) await applySourceWorkspaceEdit(api, document, edit);
+            const beforeDocument = new SourceBuffer(document.getText()).json();
+            const edit = await graphicalAdd(api, document, this.getPack(), path, currentRevision, message);
+            if (edit) {
+              // A field addition is a local Test Require/Object edit. Refuse
+              // any accidental change to the authored Evaluate tree rather
+              // than silently turning a referenced Test into an orphan.
+              const afterDocument = edit.document.json();
+              if (JSON.stringify(valueAtPathForGraphical(beforeDocument, ['assessment', 'evaluate'])) !==
+                  JSON.stringify(valueAtPathForGraphical(afterDocument, ['assessment', 'evaluate'])))
+                throw new Error('The field edit changed Assessment Evaluate references; no source was applied. Use native YAML to review the document.');
+              await applySourceWorkspaceEdit(api, document, edit);
+            }
             return;
           }
         } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }
@@ -780,6 +1047,65 @@ class AssessmentEditorProvider {
         const currentRevision = sha256(document.getText());
         if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version)) { panel.webview.postMessage({ type: 'error', message: 'Document changed before this edit was applied; refreshed the editor.' }); return send(); }
         try { const source = new SourceBuffer(document.getText()); const edit = source.editMappingKey(message.mappingPath, message.oldKey, message.newKey, currentRevision, message.allowedOperations); const pack = this.getPack(); if (pack) { const root = pack.manifest.resources.find((resource: any) => resource.kind === 'schema' && /\/assessment\.schema\.json$/.test(resource.uri))?.uri; const problems = root ? pack.validate(root, edit.document.json()) : []; if (problems.length) throw new Error(`Pinned schema rejected operation change: ${problems.join('; ')}`); } const workspaceEdit = new api.WorkspaceEdit(); workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement); if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit'); } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); } return;
+      }
+      if (message.type === 'variableExpressionChange') {
+        try {
+          const currentRevision = sha256(document.getText());
+          if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version))
+            throw new Error('Document changed before this Variable edit; refresh and try again.');
+          const path = Array.isArray(message.path) ? message.path : [];
+          const source = new SourceBuffer(document.getText());
+          const authored: any = source.json();
+          const currentExpression = valueAtPathForGraphical(authored, path);
+          if (!variableExpressionPath(path, currentExpression)) throw new Error('Select a native Variable expression to change.');
+          const pack = this.getPack();
+          if (!pack) throw new Error('The verified offline schema pack is required for Variable expression edits.');
+          const allowed = variableExpressionOperations(pack).map(option => option.value);
+          if (typeof message.operation !== 'string' || !allowed.includes(message.operation))
+            throw new Error('That operation is not present in the pinned native Variable schema.');
+          const variableId = String(path[2]);
+          const expression = variableExpressionTemplate(message.operation, authored.assessment, variableId);
+          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const before = pack.validate(schemaUri, authored);
+          const edit = source.replaceExpression(path, expression, currentRevision, path.slice(0, 3));
+          const after = pack.validate(schemaUri, edit.document.json());
+          const introduced = after.filter((error: string) => !before.includes(error));
+          if (introduced.length) throw new Error('Pinned schema rejected the new Variable expression: ' + introduced.join('; '));
+          await applySourceWorkspaceEdit(api, document, edit);
+          panel.webview.postMessage({ type: 'status', message: 'Variable expression changed. Native Undo/Redo remains available; review any unresolved placeholder references.' });
+        } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); }
+        return;
+      }
+      if (message.type === 'variableConcatAdd' || message.type === 'variableConcatRemove') {
+        try {
+          const currentRevision = sha256(document.getText());
+          if (message.revision !== currentRevision || (message.version !== undefined && message.version !== document.version))
+            throw new Error('Document changed before this Variable edit; refresh and try again.');
+          const path = Array.isArray(message.path) ? message.path : [];
+          const source = new SourceBuffer(document.getText());
+          const authored: any = source.json();
+          const expression = valueAtPathForGraphical(authored, path);
+          const operands = expression?.concat;
+          if (!Array.isArray(operands)) throw new Error('Select a native concat expression.');
+          let edit: any;
+          if (message.type === 'variableConcatAdd') {
+            edit = source.insertArrayItem(path.concat('concat'), { literal: '' } as any, currentRevision);
+          } else {
+            const index = Number(message.index);
+            if (!Number.isInteger(index) || index < 0 || index >= operands.length) throw new Error('That concat component no longer exists.');
+            if (operands.length <= 2) throw new Error('A native concat requires at least two components.');
+            edit = source.removePath(path.concat('concat', index), currentRevision);
+          }
+          const pack = this.getPack();
+          if (!pack) throw new Error('The verified offline schema pack is required for Variable expression edits.');
+          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const before = pack.validate(schemaUri, authored);
+          const after = pack.validate(schemaUri, edit.document.json());
+          const introduced = after.filter((error: string) => !before.includes(error));
+          if (introduced.length) throw new Error('Pinned schema rejected this concat edit: ' + introduced.join('; '));
+          await applySourceWorkspaceEdit(api, document, edit);
+        } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); }
+        return;
       }
       if (message.type !== 'edit' || !Array.isArray(message.path)) return;
       try {
@@ -845,7 +1171,7 @@ async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTre
 function optionHtml(options: readonly { value: string; label: string; description?: string }[]) { return options.map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join(''); }
 function guidedHtml(catalog: GuidedCatalog, applicabilityOptions: readonly ApplicabilityOption[] = []) {
   const applicabilityOptionHtml = applicabilityOptions.filter(option => option.available).map(option => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`).join('');
-  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-guided';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:900px}fieldset{border:1px solid var(--vscode-panel-border);margin:12px 0;padding:12px}legend{font-weight:600}label{display:block;margin:9px 0}input,select,textarea{display:block;width:100%;box-sizing:border-box;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px}input[type=checkbox]{display:inline;width:auto}textarea{min-height:64px;font-family:var(--vscode-editor-font-family)}.row{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin:8px 0;align-items:end}.row label{margin:0}.hint{color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.explanation{border-left:3px solid var(--vscode-textLink-foreground);padding:8px}.summary{border-left:3px solid var(--vscode-textLink-foreground);padding:8px;margin:10px 0}.advanced{border-top:1px solid var(--vscode-panel-border);margin-top:12px;padding-top:8px}button{padding:7px 12px}.unsupported{color:var(--vscode-descriptionForeground);font-style:italic}</style></head><body><h1>Guided Assessment authoring</h1><p class="hint">Answer the policy question first. Exact YAML keywords remain available in the Graphical editor and native YAML editor. Platform is an authoring context only; it does not assert CPE applicability.</p><p id="status" role="status"></p><fieldset><legend>Authoring workflow</legend><label for="workflow">How would you like to start?<select id="workflow"><option value="guided">Build from structured questions</option><option value="assisted">Paste Rule title and check text (offline best guess)</option></select></label><p class="hint">The assisted path is deterministic and offline. It never calls AI or claims scanner results.</p></fieldset><fieldset id="guidedPurpose"><legend>1. Assessment purpose</legend><label for="platform">Target platform<select id="platform">${optionHtml(catalog.platforms())}</select></label><label for="mode">Assessment mode<select id="mode">${optionHtml(catalog.modes())}</select></label><label for="className">Assessment class<select id="className">${optionHtml(catalog.classes())}</select></label><label for="id">Assessment ID<input id="id" value="guided-assessment"></label><label for="title">Security requirement<input id="title" placeholder="What security requirement should be checked?"></label><label for="procedure">Manual procedure<textarea id="procedure">Review the target according to the documented procedure.</textarea></label><div id="manualResponse"><p class="hint">Manual responses are author-defined choices, not scanner results.</p><label for="responseType">Response contract name<input id="responseType" value="manual-review"></label><div class="row"><label>Value<input id="choice1Value" value="yes"></label><label>Label<input id="choice1Label" value="Yes"></label><label>Outcome<select id="choice1Outcome"><option>true</option><option>false</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><div class="row"><label>Value<input id="choice2Value" value="no"></label><label>Label<input id="choice2Label" value="No"></label><label>Outcome<select id="choice2Outcome"><option>false</option><option>true</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><label><input id="allowComment" type="checkbox" checked> Allow reviewer comment</label><label><input id="allowEvidence" type="checkbox" checked> Allow evidence attachment</label></div></fieldset><fieldset id="applicabilitySection"><legend>Applicability (optional)</legend><p class="hint">Choose an existing shared applicability Assessment when the requirement applies only to a specific target condition. The platform selection above is only authoring context.</p><label for="applicability">Existing applicability condition<select id="applicability"><option value="">No applicability condition selected</option>${applicabilityOptionHtml}</select></label><p class="hint">If the needed condition is not listed, create the companion applicability Assessment first or continue with an explicit review placeholder.</p></fieldset><fieldset id="guidedEvidence"><legend>2. What evidence should be collected?</legend><label for="capability">Evidence collection capability<select id="capability">${optionHtml(catalog.capabilities())}</select></label><p id="capabilityHelp" class="hint"></p><div id="objectRequirements" class="hint" aria-live="polite"></div><div id="objectFields"></div><details class="advanced"><summary>Advanced source fields</summary><p class="unsupported">This slice exposes the schema-declared primary selector fields. Advanced Objects, Variables and dependent sources remain available through the native YAML editor without being discarded.</p></details><legend>3. What counts as sufficient evidence?</legend><label for="testId">Test ID<input id="testId" value="guided-test"></label><label for="testTitle">Human-readable Test summary<input id="testTitle" placeholder="Generated summary; editable before save"></label><label for="itemsFound">Collected Items found<select id="itemsFound">${optionHtml(catalog.itemFound())}</select></label><label id="itemsSatisfyingLabel" for="itemsSatisfying">Selected Items satisfying condition<select id="itemsSatisfying">${optionHtml(catalog.itemsSatisfying())}</select></label><label id="valuesFoundLabel" for="valuesFound">Field values found<select id="valuesFound">${optionHtml(catalog.fieldValuesFound())}</select></label><label id="valuesMatchingLabel" for="valuesMatching">Field values matching<select id="valuesMatching">${optionHtml(catalog.fieldValuesMatching())}</select></label><label><input id="presenceOnly" type="checkbox"> Presence-only check (no field comparison)</label><div id="comparisonFields"></div><button id="addField" type="button">Add comparison field</button><div id="summary" class="summary" aria-live="polite"></div><p class="hint">This first Guided slice creates one Test. Multiple-Test evaluation trees remain editable in Graphical/the native YAML editor until the dedicated tree editor lands.</p></fieldset><button id="guidedCreate">Create Assessment</button><fieldset id="assistedInputs" hidden><legend>Assisted Assessment draft</legend><p class="explanation">Paste the Rule title and human-readable check/procedure text. The editor will infer only patterns it recognizes, validate the result against the pinned schema, and annotate assumptions for review.</p><label for="assistedTitle">Rule title<input id="assistedTitle" placeholder="The system must ..."></label><label for="assistedCheckText">Check text<textarea id="assistedCheckText" placeholder="Paste the STIG check/procedure text here."></textarea></label><button id="generateAssisted" type="button">Generate annotated draft</button></fieldset><script nonce="guided">const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const status=$('status');let objectDefinitions=[];let objectRequirements=[];let resultDefinitions=[];function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function opts(items,selected){return items.map(x=>'<option value=\"'+esc(x.value)+'\" '+(x.value===selected?'selected':'')+'>'+esc(x.label||x.value)+'</option>').join('');}function renderObjectFields(fields,requirements){objectDefinitions=fields;objectRequirements=requirements||[];const requirementRoot=$('objectRequirements');requirementRoot.replaceChildren();if(objectRequirements.length>1){const text=document.createElement('p');text.textContent='Choose one complete item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';requirementRoot.append(text);}else if(objectRequirements.length===1){const text=document.createElement('p');text.textContent='Required item selectors: '+objectRequirements[0].fields.join(', ')+'.';requirementRoot.append(text);}const root=$('objectFields');root.replaceChildren();if(!fields.length){root.innerHTML='<p class="unsupported">No primary selector controls are available for this capability yet. Continue in Structured or the native YAML editor.</p>';return;}for(const f of fields){const row=document.createElement('div');row.className='row object-row';row.dataset.name=f.name;const label=document.createElement('label');label.textContent=f.label;label.title=f.description||'';const operation=document.createElement('select');operation.className='object-operation';const preferredOperation=f.operations.find(value=>value.value==='equals')?.value||f.operations[0]?.value;operation.innerHTML=opts(f.operations,preferredOperation);const value=document.createElement(f.enumValues?.length?'select':'input');value.className='object-value';if(f.enumValues?.length)value.innerHTML='<option value="">Choose '+esc(f.label.toLowerCase())+'</option>'+opts(f.enumValues.map(v=>({value:v,label:v})));else {value.placeholder='Enter '+f.label.toLowerCase();if(f.datatype==='integer'||f.datatype==='number')value.type='number';if(f.datatype==='boolean')value.type='checkbox';}row.append(label,operation,value);root.append(row);}}function renderComparisonFields(fields){resultDefinitions=fields;const root=$('comparisonFields');root.replaceChildren();addComparisonRow(fields[0]?.name||'');}function addComparisonRow(selected){const root=$('comparisonFields');const row=document.createElement('div');row.className='row field-row';const name=document.createElement('select');name.className='field-name';name.innerHTML=opts(resultDefinitions.map(f=>({value:f.name,label:f.label})),selected);const operation=document.createElement('select');operation.className='field-operation';operation.innerHTML=opts(resultDefinitions[0]?.operations||[],'equals');const datatype=document.createElement('select');datatype.className='field-datatype';datatype.innerHTML=opts((resultDefinitions.find(f=>f.name===selected)?.datatypes||['string']).map(v=>({value:v,label:v})),'string');const value=document.createElement('input');value.className='field-value';value.placeholder='Expected value';name.onchange=()=>{const definition=resultDefinitions.find(f=>f.name===name.value);operation.innerHTML=opts(definition?.operations||[],'equals');datatype.innerHTML=opts((definition?.datatypes||['string']).map(v=>({value:v,label:v})),definition?.datatype||'string');};const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(name,operation,datatype,value,remove);root.append(row);}function collectObject(){const object={};document.querySelectorAll('.object-row').forEach(row=>{const input=row.querySelector('.object-value');const value=input.type==='checkbox'?input.checked:input.value;if(value) object[row.dataset.name]={[row.querySelector('.object-operation').value]:value};});return object;}function objectRequirementError(object){if(!objectRequirements.length)return '';if(objectRequirements.some(requirement=>requirement.fields.every(name=>Object.hasOwn(object,name))))return '';if(objectRequirements.length===1)return 'Complete the required item selectors: '+objectRequirements[0].fields.join(', ')+'.';return 'Complete one item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';}function collectFields(){const fields={};document.querySelectorAll('.field-row').forEach(row=>{let value=row.querySelector('.field-value').value;if(value){const datatype=row.querySelector('.field-datatype').value;if(datatype==='integer')value=Number(value);else if(datatype==='boolean')value=value==='true';fields[row.querySelector('.field-name').value]={[row.querySelector('.field-operation').value]:value};}});return fields;}function updateSummary(){const cap=$('capability').selectedOptions[0]?.textContent||$('capability').value;const item=$('itemsFound').selectedOptions[0]?.textContent;const match=$('presenceOnly').checked?'presence only':($('itemsSatisfying').selectedOptions[0]?.textContent+' of selected Items');const field=$('presenceOnly').checked?'No field comparison':($('valuesMatching').selectedOptions[0]?.textContent+' of found values');$('summary').textContent=cap+': at least '+item+' Item(s) must exist; '+match+' must satisfy the condition; '+field+' must match.';}function refresh(){const automated=$('mode').value==='automated';$('guidedEvidence').hidden=!automated;$('manualResponse').hidden=automated;updateSummary();}$('mode').onchange=refresh;$('capability').onchange=()=>vscode.postMessage({type:'capability',value:$('capability').value});$('presenceOnly').onchange=()=>{const hidden=$('presenceOnly').checked;for(const id of ['itemsSatisfyingLabel','valuesFoundLabel','valuesMatchingLabel','comparisonFields','addField'])$(id).hidden=hidden;updateSummary();};$('itemsFound').onchange=updateSummary;$('itemsSatisfying').onchange=updateSummary;$('valuesMatching').onchange=updateSummary;$('addField').onclick=()=>addComparisonRow('');function refreshWorkflow(){const assisted=$('workflow').value==='assisted';$('guidedPurpose').hidden=assisted;$('guidedEvidence').hidden=assisted;$('guidedCreate').hidden=assisted;$('assistedInputs').hidden=!assisted;}$('workflow').onchange=refreshWorkflow;$('generateAssisted').onclick=()=>{vscode.postMessage({type:'assistedDraft',title:$('assistedTitle').value,checkText:$('assistedCheckText').value,applicability:$('applicability').value||undefined});};$('guidedCreate').onclick=()=>{try{const automated=$('mode').value==='automated';const message={type:'create',platform:$('platform').value,id:$('id').value,title:$('title').value,mode:$('mode').value,className:$('className').value,procedure:$('procedure').value,applicability:$('applicability').value||undefined};if(automated){const object=collectObject();const objectError=objectRequirementError(object);if(objectError){status.className='error';status.textContent=objectError;return;}message.tests=[{id:$('testId').value,title:$('testTitle').value,capability:$('capability').value,object,fields:collectFields(),presenceOnly:$('presenceOnly').checked}];}else{message.response={type:$('responseType').value,choices:[{value:$('choice1Value').value,label:$('choice1Label').value,outcome:$('choice1Outcome').value},{value:$('choice2Value').value,label:$('choice2Label').value,outcome:$('choice2Outcome').value}],allow_comment:$('allowComment').checked,allow_evidence:$('allowEvidence').checked};}vscode.postMessage(message);}catch(error){status.className='error';status.textContent=error.message;}};window.addEventListener('message',event=>{if(event.data.type==='objectFields')renderObjectFields(event.data.fields,event.data.requirements);if(event.data.type==='resultFields')renderComparisonFields(event.data.fields);status.className=event.data.ok?'':'error';if(event.data.message)status.textContent=event.data.message;});refresh();refreshWorkflow();vscode.postMessage({type:'capability',value:$('capability').value});</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-guided';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:900px}fieldset{border:1px solid var(--vscode-panel-border);margin:12px 0;padding:12px}legend{font-weight:600}label{display:block;margin:9px 0}input,select,textarea{display:block;width:100%;box-sizing:border-box;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px}input[type=checkbox]{display:inline;width:auto}textarea{min-height:64px;font-family:var(--vscode-editor-font-family)}.row{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin:8px 0;align-items:end}.row label{margin:0}.hint{color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.explanation{border-left:3px solid var(--vscode-textLink-foreground);padding:8px}.summary{border-left:3px solid var(--vscode-textLink-foreground);padding:8px;margin:10px 0}.advanced{border-top:1px solid var(--vscode-panel-border);margin-top:12px;padding-top:8px}button{padding:7px 12px}.unsupported{color:var(--vscode-descriptionForeground);font-style:italic}</style></head><body><h1>Guided Assessment authoring</h1><p class="hint">Answer the policy question first. Exact YAML keywords remain available in the Graphical editor and native YAML editor. Platform is an authoring context only; it does not assert CPE applicability.</p><p id="status" role="status"></p><fieldset><legend>Authoring workflow</legend><label for="workflow">How would you like to start?<select id="workflow"><option value="guided">Build from structured questions</option><option value="assisted">Paste Rule title and check text (offline best guess)</option></select></label><p class="hint">The assisted path is deterministic and offline. It never calls AI or claims scanner results.</p></fieldset><fieldset id="guidedPurpose"><legend>1. Assessment purpose</legend><label for="platform">Target platform<select id="platform">${optionHtml(catalog.platforms())}</select></label><label for="mode">Assessment mode<select id="mode">${optionHtml(catalog.modes())}</select></label><label for="className">Assessment class<select id="className">${optionHtml(catalog.classes())}</select></label><label for="id">Assessment ID<input id="id" value="guided-assessment"></label><label for="title">Security requirement<input id="title" placeholder="What security requirement should be checked?"></label><label for="procedure">Manual procedure<textarea id="procedure">Review the target according to the documented procedure.</textarea></label><div id="manualResponse"><p class="hint">Manual responses are author-defined choices, not scanner results.</p><label for="responseType">Response contract name<input id="responseType" value="manual-review"></label><div class="row"><label>Value<input id="choice1Value" value="yes"></label><label>Label<input id="choice1Label" value="Yes"></label><label>Outcome<select id="choice1Outcome"><option>true</option><option>false</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><div class="row"><label>Value<input id="choice2Value" value="no"></label><label>Label<input id="choice2Label" value="No"></label><label>Outcome<select id="choice2Outcome"><option>false</option><option>true</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><label><input id="allowComment" type="checkbox" checked> Allow reviewer comment</label><label><input id="allowEvidence" type="checkbox" checked> Allow evidence attachment</label></div></fieldset><fieldset id="applicabilitySection"><legend>Applicability (optional)</legend><p class="hint">Choose an existing shared applicability Assessment when the requirement applies only to a specific target condition. The platform selection above is only authoring context.</p><label for="applicability">Existing applicability condition<select id="applicability"><option value="">No applicability condition selected</option>${applicabilityOptionHtml}</select></label><p class="hint">If the needed condition is not listed, create the companion applicability Assessment first or continue with an explicit review placeholder.</p></fieldset><fieldset id="guidedEvidence"><legend>2. What evidence should be collected?</legend><label for="capability">Evidence collection capability<select id="capability">${optionHtml(catalog.capabilities())}</select></label><p id="capabilityHelp" class="hint"></p><div id="objectRequirements" class="hint" aria-live="polite"></div><div id="objectFields"></div><details class="advanced"><summary>Advanced source fields</summary><p class="unsupported">This slice exposes the schema-declared primary selector fields. Advanced Objects, Variables and dependent sources remain available through the native YAML editor without being discarded.</p></details><legend>3. What counts as sufficient evidence?</legend><label for="testId">Test ID<input id="testId" value="guided-test"></label><label for="testTitle">Human-readable Test summary<input id="testTitle" placeholder="Generated summary; editable before save"></label><label for="itemsFound">Collected Items found<select id="itemsFound">${optionHtml(catalog.itemFound())}</select></label><label id="itemsSatisfyingLabel" for="itemsSatisfying">Selected Items satisfying condition<select id="itemsSatisfying">${optionHtml(catalog.itemsSatisfying())}</select></label><label id="valuesFoundLabel" for="valuesFound">Field values found<select id="valuesFound">${optionHtml(catalog.fieldValuesFound())}</select></label><label id="valuesMatchingLabel" for="valuesMatching">Field values matching<select id="valuesMatching">${optionHtml(catalog.fieldValuesMatching())}</select></label><label><input id="presenceOnly" type="checkbox"> Presence-only check (no field comparison)</label><div id="comparisonFields"></div><button id="addField" type="button">Add comparison field</button><div id="summary" class="summary" aria-live="polite"></div><p class="hint">This Guided slice creates one Test. Add additional authored Tests to Evaluate from the Graphical editor with its schema-driven Test/logic wizard.</p></fieldset><button id="guidedCreate">Create Assessment</button><fieldset id="assistedInputs" hidden><legend>Assisted Assessment draft</legend><p class="explanation">Paste the Rule title and human-readable check/procedure text. The editor will infer only patterns it recognizes, validate the result against the pinned schema, and annotate assumptions for review.</p><label for="assistedTitle">Rule title<input id="assistedTitle" placeholder="The system must ..."></label><label for="assistedCheckText">Check text<textarea id="assistedCheckText" placeholder="Paste the STIG check/procedure text here."></textarea></label><button id="generateAssisted" type="button">Generate annotated draft</button></fieldset><script nonce="guided">const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const status=$('status');let objectDefinitions=[];let objectRequirements=[];let resultDefinitions=[];function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function opts(items,selected){return items.map(x=>'<option value=\"'+esc(x.value)+'\" '+(x.value===selected?'selected':'')+'>'+esc(x.label||x.value)+'</option>').join('');}function renderObjectFields(fields,requirements){objectDefinitions=fields;objectRequirements=requirements||[];const requirementRoot=$('objectRequirements');requirementRoot.replaceChildren();if(objectRequirements.length>1){const text=document.createElement('p');text.textContent='Choose one complete item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';requirementRoot.append(text);}else if(objectRequirements.length===1){const text=document.createElement('p');text.textContent='Required item selectors: '+objectRequirements[0].fields.join(', ')+'.';requirementRoot.append(text);}const root=$('objectFields');root.replaceChildren();if(!fields.length){root.innerHTML='<p class="unsupported">No primary selector controls are available for this capability yet. Continue in Structured or the native YAML editor.</p>';return;}for(const f of fields){const row=document.createElement('div');row.className='row object-row';row.dataset.name=f.name;const label=document.createElement('label');label.textContent=f.label;label.title=f.description||'';const operation=document.createElement('select');operation.className='object-operation';const preferredOperation=f.operations.find(value=>value.value==='equals')?.value||f.operations[0]?.value;operation.innerHTML=opts(f.operations,preferredOperation);const value=document.createElement(f.enumValues?.length?'select':'input');value.className='object-value';if(f.enumValues?.length)value.innerHTML='<option value="">Choose '+esc(f.label.toLowerCase())+'</option>'+opts(f.enumValues.map(v=>({value:v,label:v})));else {value.placeholder='Enter '+f.label.toLowerCase();if(f.datatype==='integer'||f.datatype==='number')value.type='number';if(f.datatype==='boolean')value.type='checkbox';}row.append(label,operation,value);root.append(row);}}function renderComparisonFields(fields){resultDefinitions=fields;const root=$('comparisonFields');root.replaceChildren();addComparisonRow(fields[0]?.name||'');}function addComparisonRow(selected){const root=$('comparisonFields');const row=document.createElement('div');row.className='row field-row';const name=document.createElement('select');name.className='field-name';name.innerHTML=opts(resultDefinitions.map(f=>({value:f.name,label:f.label})),selected);const operation=document.createElement('select');operation.className='field-operation';operation.innerHTML=opts(resultDefinitions[0]?.operations||[],'equals');const datatype=document.createElement('select');datatype.className='field-datatype';datatype.innerHTML=opts((resultDefinitions.find(f=>f.name===selected)?.datatypes||['string']).map(v=>({value:v,label:v})),'string');const value=document.createElement('input');value.className='field-value';value.placeholder='Expected value';name.onchange=()=>{const definition=resultDefinitions.find(f=>f.name===name.value);operation.innerHTML=opts(definition?.operations||[],'equals');datatype.innerHTML=opts((definition?.datatypes||['string']).map(v=>({value:v,label:v})),definition?.datatype||'string');};const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(name,operation,datatype,value,remove);root.append(row);}function collectObject(){const object={};document.querySelectorAll('.object-row').forEach(row=>{const input=row.querySelector('.object-value');const value=input.type==='checkbox'?input.checked:input.value;if(value) object[row.dataset.name]={[row.querySelector('.object-operation').value]:value};});return object;}function objectRequirementError(object){if(!objectRequirements.length)return '';if(objectRequirements.some(requirement=>requirement.fields.every(name=>Object.hasOwn(object,name))))return '';if(objectRequirements.length===1)return 'Complete the required item selectors: '+objectRequirements[0].fields.join(', ')+'.';return 'Complete one item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';}function collectFields(){const fields={};document.querySelectorAll('.field-row').forEach(row=>{let value=row.querySelector('.field-value').value;if(value){const datatype=row.querySelector('.field-datatype').value;if(datatype==='integer')value=Number(value);else if(datatype==='boolean')value=value==='true';fields[row.querySelector('.field-name').value]={[row.querySelector('.field-operation').value]:value};}});return fields;}function updateSummary(){const cap=$('capability').selectedOptions[0]?.textContent||$('capability').value;const item=$('itemsFound').selectedOptions[0]?.textContent;const match=$('presenceOnly').checked?'presence only':($('itemsSatisfying').selectedOptions[0]?.textContent+' of selected Items');const field=$('presenceOnly').checked?'No field comparison':($('valuesMatching').selectedOptions[0]?.textContent+' of found values');$('summary').textContent=cap+': at least '+item+' Item(s) must exist; '+match+' must satisfy the condition; '+field+' must match.';}function refresh(){const automated=$('mode').value==='automated';$('guidedEvidence').hidden=!automated;$('manualResponse').hidden=automated;updateSummary();}$('mode').onchange=refresh;$('capability').onchange=()=>vscode.postMessage({type:'capability',value:$('capability').value});$('presenceOnly').onchange=()=>{const hidden=$('presenceOnly').checked;for(const id of ['itemsSatisfyingLabel','valuesFoundLabel','valuesMatchingLabel','comparisonFields','addField'])$(id).hidden=hidden;updateSummary();};$('itemsFound').onchange=updateSummary;$('itemsSatisfying').onchange=updateSummary;$('valuesMatching').onchange=updateSummary;$('addField').onclick=()=>addComparisonRow('');function refreshWorkflow(){const assisted=$('workflow').value==='assisted';$('guidedPurpose').hidden=assisted;$('guidedEvidence').hidden=assisted;$('guidedCreate').hidden=assisted;$('assistedInputs').hidden=!assisted;}$('workflow').onchange=refreshWorkflow;$('generateAssisted').onclick=()=>{vscode.postMessage({type:'assistedDraft',title:$('assistedTitle').value,checkText:$('assistedCheckText').value,applicability:$('applicability').value||undefined});};$('guidedCreate').onclick=()=>{try{const automated=$('mode').value==='automated';const message={type:'create',platform:$('platform').value,id:$('id').value,title:$('title').value,mode:$('mode').value,className:$('className').value,procedure:$('procedure').value,applicability:$('applicability').value||undefined};if(automated){const object=collectObject();const objectError=objectRequirementError(object);if(objectError){status.className='error';status.textContent=objectError;return;}message.tests=[{id:$('testId').value,title:$('testTitle').value,capability:$('capability').value,object,fields:collectFields(),presenceOnly:$('presenceOnly').checked}];}else{message.response={type:$('responseType').value,choices:[{value:$('choice1Value').value,label:$('choice1Label').value,outcome:$('choice1Outcome').value},{value:$('choice2Value').value,label:$('choice2Label').value,outcome:$('choice2Outcome').value}],allow_comment:$('allowComment').checked,allow_evidence:$('allowEvidence').checked};}vscode.postMessage(message);}catch(error){status.className='error';status.textContent=error.message;}};window.addEventListener('message',event=>{if(event.data.type==='objectFields')renderObjectFields(event.data.fields,event.data.requirements);if(event.data.type==='resultFields')renderComparisonFields(event.data.fields);status.className=event.data.ok?'':'error';if(event.data.message)status.textContent=event.data.message;});refresh();refreshWorkflow();vscode.postMessage({type:'capability',value:$('capability').value});</script></body></html>`;
 }
 class GuidedPanel {
   static open(context: vscode.ExtensionContext, pack: MetadataPack | undefined, index: WorkspaceIndex) {

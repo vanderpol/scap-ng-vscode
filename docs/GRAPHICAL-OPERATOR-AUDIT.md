@@ -24,7 +24,7 @@ capability mapping metadata (`schema_uri`, `mapping_uri`, `state_field_datatypes
 | Field-value cardinality | Pinned `field_requirement` schema enums and GuidedCatalog | `field_requirement.values_found/values_matching` | Existing pinned-pack and graphical density requirement tests |
 | Guided Object operation | `GuidedCatalog.objectFields` delegates to Object resolver | Guided capability/Object authoring | `test/integration/guided.test.mjs`; pinned-pack resolver assertions |
 | Guided Require operation | `GuidedCatalog.resultFields` delegates to Require resolver | Guided Require authoring | `test/integration/guided.test.mjs`; pinned-pack resolver assertions |
-| Evaluate logical operator | `expression.schema.json` array alternatives (`and`, `or`, `one`, `xor`) and canonical vocabulary term scopes | Assessment-level evaluation tree; distinct from cardinality and scalar comparison | Guided catalog and pinned-pack evaluation-control tests |
+| Evaluate logical operator | `expression.schema.json` array alternatives (`and`, `or`, `one`, `xor`) and canonical vocabulary term scopes | Assessment-level evaluation tree; distinct from cardinality and scalar comparison | Graphical Add Test wizard plus Guided catalog and pinned-pack evaluation-control tests |
 
 A valid authored operator is never replaced when capability or datatype context
 changes.  If it becomes incompatible, the current option remains visible with a

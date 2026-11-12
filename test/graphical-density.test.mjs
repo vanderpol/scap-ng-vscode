@@ -77,7 +77,7 @@ test('Assessment and contextual help share a left pane without a third grid colu
   assert.match(html, /flex:2 1 0/);
   assert.match(html, /function setHelpOpen\(open\)/);
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
-  assert.match(html, /action:item\.action,path:testPathForSelection\(target\)\|\|target/);
+  assert.match(html, /const resolved=testPathForSelection\(target\)\|\|target/);
 });
 
 test('simplified/all-fields only rerenders the inspector, never rebuilds the tree', () => {
@@ -170,10 +170,12 @@ test('Single Test, conditional evaluation and manual Assessment retain their tru
   assert.ok(!manual.treeModel().root.children.some(n=>n.path[1]==='evaluate'));
 });
 
-test('Evaluate group UI is explicitly read-only, source-backed and does not imply implicit AND', () => {
+test('Evaluate group UI adds authored Tests through a schema-backed wizard', () => {
   const html = graphicalHtml();
   assert.match(html, /function renderEvalOverview\(node\)/);
-  assert.match(html, /To change the logic, use Reveal in YAML/);
+  assert.match(html, /function openEvaluateWizard\(path\)/);
+  assert.match(html, /Add Test to Evaluate/);
+  assert.match(html, /action:'addEvaluateTest'/);
   assert.match(html, /fillEvalTree\(evalRoot,current\?\.assessment\?\.evaluate/);
   assert.doesNotMatch(html, /last==='evaluate'\)items\.push\(\{label:'Add child'/);
 });
@@ -233,7 +235,10 @@ test('Variable stages show collection, capture and concatenation in dependency o
     'Read registry values','Extract with regular expression','Combine values in order']);
   assert.deepEqual(stages[0].controls,[path.concat('concat',1,'regex_capture','value','values')]);
   assert.deepEqual(stages[1].controls,[path.concat('concat',1,'regex_capture','pattern')]);
+  assert.equal(stages[1].operation,'regex_capture');
   assert.deepEqual(stages[2].controls,[path.concat('concat',0,'literal')]);
+  assert.equal(stages[2].operationPath.join('.'),path.join('.'));
+  assert.deepEqual(stages[2].operandPaths,[path.concat('concat',0),path.concat('concat',1)]);
   assert.deepEqual(stages[2].operands,['Literal "icacls "','Regex capture result']);
   assert.match(stages[2].note,/authored order/);
 });
@@ -248,6 +253,13 @@ test('Variable diagnostics remain visible without claiming runtime evaluation',(
 test('Variable UI preserves source-edit controls and never presents runtime-derived output', () => {
   const html=graphicalHtml();
   assert.match(html,/function variableInspector\(path\)/);
+  assert.match(html,/function expressionOperationControl\(step\)/);
+  assert.match(html,/type:'variableExpressionChange'/);
+  assert.match(html,/type:'variableConcatAdd'/);
+  assert.match(html,/type:'variableConcatRemove'/);
+  assert.match(html,/\+ Add Variable/);
+  assert.match(html,/Count is not a native operation/);
+  assert.doesNotMatch(html,/value='count'/);
   assert.match(html,/function stepControls\(step\)/);
   assert.match(html,/function variableUsage\(id\)/);
   assert.match(html,/function variableDefinition\(path\)/);
@@ -304,7 +316,7 @@ test('Object Variable references expose an inline preview and editor navigation'
   const html=graphicalHtml();
   const script=html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
   const start=script.indexOf('function variableReferenceId(f)');
-  const end=script.indexOf('function compactGrid(fields,style)',start);
+  const end=script.indexOf('function compactGrid(fields,style,removeContext)',start);
   assert.ok(start>=0&&end>start);
   const factory=new Function(script.slice(start,end)+';return {variableReferenceId}')();
   const ref={
@@ -367,7 +379,8 @@ test('Shared Object inspector explains selector authoring and does not hide miss
   assert.match(html,/No selectors are authored/);
   assert.match(html,/Missing required object_title/);
   assert.match(html,/Shared Object names must end in -object/);
-  assert.match(html,/Add selector/);
+  assert.match(html,/\+ Add field/);
+  assert.match(html,/field-remove/);
   assert.match(html,/A Test must use its object_ref ID/);
   assert.match(html,/root\.append\(variableDefinition\(editPath\)\?variableInspector\(editPath\):sharedObjectDefinition\(editPath\)\?sharedObjectInspector\(editPath\)/);
   assert.match(html,/label:'Add Object selector \/ required title'/);
@@ -396,7 +409,7 @@ test('context menu labels represent authoring concepts, never generic YAML nodes
   assert.deepEqual(labels(['assessment','variables']),['Add Variable','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','shared_objects']),['Add Shared Object','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','tests','first-test']),[
-    'Duplicate Test','Rename Test ID','Remove Test','Reveal in YAML']);
+    'Add Require condition','Duplicate Test','Rename Test ID','Remove Test','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','variables','first-variable']),[
     'Duplicate Variable','Rename Variable ID','Remove Variable','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','inputs','first-input']),[
@@ -406,7 +419,7 @@ test('context menu labels represent authoring concepts, never generic YAML nodes
     'Rename Shared Object ID','Remove Shared Object','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','tests','first-test','object']),[
     'Add Object selector','Reveal in YAML']);
-  assert.deepEqual(labels(['assessment','tests','first-test','require']),['Reveal in YAML']);
+  assert.deepEqual(labels(['assessment','tests','first-test','require']),['Add Require field','Reveal in YAML']);
   assert.deepEqual(labels(['assessment','tests','first-test','object','hive']),['Reveal in YAML']);
   for(const path of [['assessment'],['assessment','shared_objects','first-object'],
                      ['assessment','tests','first-test','require']])
@@ -450,7 +463,8 @@ test('Require field name and small explanatory text share a responsive heading r
   assert.ok(start>=0&&end>start);
   const card=html.slice(start,end);
   assert.match(card,/const heading=document\.createElement\('div'\);heading\.className='require-predicate-heading'/);
-  assert.match(card,/heading\.append\(note\);section\.append\(heading\)/);
+  assert.match(card,/heading\.append\(note\);/);
+  assert.match(card,/section\.append\(heading\)/);
   assert.doesNotMatch(card,/section\.append\(title\)/);
   assert.doesNotMatch(card,/section\.append\(note\)/);
   assert.match(card,/const meta=visible\.filter/);
@@ -489,6 +503,7 @@ test('Require section headings and explanations share a line including Field con
   assert.match(inspector,/requireSection\('2\. Field-value requirements'/);
   assert.match(inspector,/title\.textContent='3\. Field conditions';group\.append\(title\)/);
   assert.match(inspector,/guide\.textContent='These are the conditions applied to collected evidence fields\.';group\.append\(guide\)/);
+  assert.match(inspector,/panel\.append\(fieldActions\(path,'require'\)\)/);
 });
 
 test('Variable stages share heading/help row and all property forms align labels inline', () => {
@@ -538,12 +553,20 @@ test('Object inspectors give selectors full-width rows and contextual help on ho
   const html=graphicalHtml();
   assert.match(html,/\.property-grid\.object-fields\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{grid-column:1\/-1/);
-  assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{[^}]*grid-template-columns:minmax\(82px,14%\) minmax\(0,1fr\)/);
+  assert.match(html,/\.property-grid\.object-fields \.field-entry,\.property-grid\.object-fields \.field-entry\.wide\{[^}]*grid-template-columns:minmax\(82px,14%\) minmax\(0,1fr\) auto/);
   assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
   assert.match(html,/style==='object-fields'/);
   assert.match(html,/lab\.title=item\.description\|\|pathText\(item\.path\)/);
-  assert.match(html,/compactGrid\(fields,path\.at\(-1\)==='object'\?'object-fields':undefined\)/);
-  assert.match(html,/compactGrid\(controls,'object-fields'\)/);
+  assert.match(html,/compactGrid\(fields,path\.at\(-1\)==='object'\?'object-fields':undefined,isTestObject\?/);
+  assert.match(html,/function fieldActions\(path,kind\)/);
+  assert.match(html,/textContent=logical\?'\+ Add condition':'\+ Add field'/);
+  assert.match(html,/textContent='\+ Add Require condition'/);
+  assert.match(html,/function openFieldWizard\(path,kind,condition=false\)/);
+  assert.match(html,/field-wizard-backdrop/);
+  assert.match(html,/fieldName:option\.name/);
+  assert.match(html,/action:'removeField'/);
+  assert.match(html,/fieldKind:removeContext\.kind/);
+  assert.match(html,/compactGrid\(controls,'object-fields',\{kind:'object'/);
 });
 test('Object controls retain source-provided enumerations, rather than inventing option lists',()=>{
   const html=graphicalHtml();
@@ -628,7 +651,7 @@ test('Require contextual help is not copied from arbitrary first scalar into gro
 
 test('Object Variable source is rendered once with the source selector and retained navigation link',()=>{
  const html=graphicalHtml();
- const start=html.indexOf('function compactGrid(fields,style)');
+ const start=html.indexOf('function compactGrid(fields,style,removeContext)');
  const end=html.indexOf('function variableDefinition(path)',start);
  const grid=html.slice(start,end);
  assert.match(grid,/const chooser=style==='object-fields'\?sourceChoiceForObject\(item\):null/);

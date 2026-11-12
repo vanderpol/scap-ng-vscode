@@ -49,7 +49,12 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(authoringSidebarSource, /id=\"minimize\"|id=\"maximize\"|toggleMaximizedAuxiliaryBar|toggleMaximize/);
   assert.doesNotMatch(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /authoringSidebar\.autoReveal|maybeRevealAuthoring/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"helpContext\"|model\.editor\.fileName|model\.editor\.path\|\|/);
-  assert.match(authoringSidebarSource, /id=\"optionsBody\"/);
+  assert.doesNotMatch(authoringSidebarSource, /id=\"optionsBody\"/);
+  assert.match(authoringSidebarSource, /data-tab=\"about\"/);
+  assert.match(authoringSidebarSource, /id=\"aboutBody\"/);
+  assert.match(authoringSidebarSource, /function renderAbout\(model\)/);
+  assert.doesNotMatch(authoringSidebarSource, /\['Default Assessment editor',/);
+  assert.doesNotMatch(authoringSidebarSource, /\['Source editing',/);
   assert.match(authoringSidebarSource, /yaml-only/);
   assert.match(authoringSidebarSource, /mode-graphical/);
   assert.match(authoringSidebarSource, /viewType === 'scapNg.assessment'/);
@@ -61,6 +66,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /type:'openGuided'/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
   assert.match(authoringSidebarSource, /type:'saveOptions'/);
+  assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /promptRequireField/);
+  assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /message\.action === 'removeField'/);
+  assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /removeField/);
   assert.match(authoringSidebarSource, /revealPath/);
   assert.match(authoringSidebarSource, /Reveal in YAML/);
   const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');

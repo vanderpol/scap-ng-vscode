@@ -25,9 +25,9 @@ Implemented in Phase 1 as a contextual tab. When the cursor is on a regex predic
 
 Direct-selector Item preview remains available through the existing command. Shellcommand result prototyping is deliberately postponed until its input, pattern, and requirement semantics have a separately reviewed design.
 
-### Options and Diagnostics
+### Options, About and Diagnostics
 
-The Options tab shows the current verified offline pack and pinned schema state, identifies native YAML as the source editing surface, and lets the user save or clear the workspace schema-pack path directly in the sidebar. It also provides an action for opening the YAML editor beside the view. The Diagnostics tab shows local YAML parse status, pinned schema status, document-version mismatch, and the explicit “Assessment execution unavailable” boundary. Detailed build, pin, pack, document, and cursor information stays behind a collapsed disclosure. These tabs do not execute commands or send telemetry.
+The Options tab contains only user-configurable controls: the default Assessment editor dropdown, the optional workspace schema-pack path, and actions for saving options or opening the native YAML editor beside the view. The About tab shows the current verified offline pack state and pinned schema version; these are informational contract details, not options. The Diagnostics tab shows local YAML parse status, pinned schema status, document-version mismatch, and the explicit “Assessment execution unavailable” boundary. Detailed build, pin, pack, document, and cursor information stays behind a collapsed disclosure. These tabs do not execute commands or send telemetry.
 
 ### Diagnostics
 

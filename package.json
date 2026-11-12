@@ -21,7 +21,8 @@
     "verify:test-deps": "node scripts/verify-redhat-yaml.mjs",
     "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs",
     "test:host:status": "npm run build && node scripts/status-host-probe.mjs",
-    "test:corpus:graphical": "npm run build && node scripts/issue44-corpus-smoke.mjs"
+    "test:corpus:graphical": "npm run build && node scripts/issue44-corpus-smoke.mjs",
+    "audit:editability": "npm run build && node scripts/audit-editability.mjs"
   },
   "files": [
     "dist",

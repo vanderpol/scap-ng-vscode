@@ -16,6 +16,35 @@ function pathLabel(path: EditPath) { return path.map(part => typeof part === 'nu
 function schemaRoot(pack?: MetadataPack) {
   return pack?.manifest.resources.find((resource: any) => resource.kind === 'schema' && /\/assessment\.schema\.json$/.test(resource.uri))?.uri as string | undefined;
 }
+
+/**
+ * Native Variable expression operations exposed by the pinned 0.4 Assessment
+ * schema.  The inactive variable-function-expression schema is intentionally
+ * not consulted here: it documents a migration candidate, not authoring
+ * syntax accepted by Assessment.
+ */
+export function variableExpressionOperations(pack?: MetadataPack) {
+  if (!pack) return [] as Array<{ value: string; title: string; description: string; required: string[] }>;
+  const uri = pack.manifest.resources.find((resource: any) =>
+    resource.kind === 'schema' && /\/variable-expression\.schema\.json$/.test(resource.uri))?.uri;
+  if (!uri) return [];
+  try {
+    const schema: any = pack.resource(uri);
+    const branches = schema?.$defs?.expression?.oneOf;
+    if (!Array.isArray(branches)) return [];
+    return branches.flatMap((branch: any) => {
+      const properties = branch?.properties;
+      if (!properties || typeof properties !== 'object') return [];
+      const value = Object.keys(properties)[0];
+      return value ? [{
+        value,
+        title: String(branch.title || value),
+        description: String(branch.description || properties[value]?.description || ''),
+        required: Array.isArray(branch.required) ? branch.required.map(String) : [value]
+      }] : [];
+    });
+  } catch { return []; }
+}
 function escapedPart(part: string | number) { return String(part).replace(/~/g, '~0').replace(/\//g, '~1'); }
 function dereference(pack: MetadataPack, uri: string, seen = new Set<string>()): { uri: string; node: any } | undefined {
   if (seen.has(uri)) return undefined; seen.add(uri);
@@ -429,11 +458,26 @@ function evaluationText(value: any): string {
   if (typeof value.test === 'string') return value.test;
   return Object.entries(value).map(([operator, branch]) => `${operator.toUpperCase()} (${evaluationText(branch)})`).join(' ');
 }
+export function requireLogicalOperations(pack?: MetadataPack): string[] {
+  if (!pack) return [];
+  try {
+    const schema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json');
+    const branches = schema.$defs?.canonical_condition?.oneOf;
+    if (!Array.isArray(branches)) return [];
+    const operations = new Set<string>();
+    for (const branch of branches) for (const name of branch.required ?? [])
+      if (branch.properties?.[name]?.type === 'array') operations.add(String(name));
+    return [...operations];
+  } catch { return []; }
+}
+
 function evaluationControl(value: any, pack?: MetadataPack) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.if || !pack) return undefined;
+  if (!pack) return undefined;
   const operations = new GuidedCatalog(pack).logicalOperators().map(option => option.value);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { path: ['assessment', 'evaluate'], operations };
+  if (value.if) return undefined;
   const operation = Object.keys(value).find(key => operations.includes(key));
-  return operation ? { path: ['assessment', 'evaluate'], operation, operations } : undefined;
+  return { path: ['assessment', 'evaluate'], operation, operations };
 }
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
@@ -457,6 +501,8 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   // not only the flattened scalar control list. This is read-only presentation
   // data derived from the same authoritative YAML document.
   base.variableDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) ? (assessment.variables ?? {}) : {};
+  base.variableExpressionOperations = variableExpressionOperations(pack);
+  base.requireLogicalOperations = requireLogicalOperations(pack);
   if (pack && assessment && typeof assessment === 'object' && !Array.isArray(assessment)) {
     const variableAnalysis = analyzeVariables(pack, assessment, Boolean(base.draft));
     base.variableAnalysis = variableAnalysis;
@@ -474,7 +520,7 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
     const requirement = test.require ?? {}; const itemControls = Object.entries(requirement.item_requirement ?? {}).map(([name, current]) => { const control = fieldAt(base.fields, [...path, 'require', 'item_requirement', name]); return { name, label: name === 'items_found' ? 'Items found' : 'Items satisfying', path: [...path, 'require', 'item_requirement', name], value: current, choices: control?.choices ?? [], suggested: control?.suggested, hasSuggestion: control?.hasSuggestion ?? false, hidden: control?.hidden ?? false }; });
     const fieldRequirement = Object.entries(requirement.field_requirement ?? {}).map(([name, current]) => { const control = fieldAt(base.fields, [...path, 'require', 'field_requirement', name]); return { name, label: name === 'values_found' ? 'Field values found' : 'Field values matching', path: [...path, 'require', 'field_requirement', name], value: current, choices: control?.choices ?? [], suggested: control?.suggested, hasSuggestion: control?.hasSuggestion ?? false, hidden: control?.hidden ?? false }; });
     const fieldControls = Object.entries(requirement.fields ?? {}).map(([name, predicate]) => ({ kind: 'field', ...predicateControl(base.fields, [...path, 'require', 'fields', name], name, predicate, name.replaceAll('_', ' ')), operations: catalog?.operations() ?? [] }));
-    return { id, path, title: test.test_title ?? id, titlePath, titleField, capability: test.capability, capabilityLabel: catalog ? catalog.capabilities().find(option => option.value === test.capability)?.label ?? test.capability : test.capability, objectControls: controls, itemControls, fieldRequirement, fieldControls, explanation: explainAssessment({ assessment: { ...assessment, tests: { [id]: test } } }, pack), unsupported: Object.keys(test).filter(key => !['test_title', 'capability', 'object', 'require', 'reported_elements'].includes(key)) };
+    return { id, path, title: test.test_title ?? id, titlePath, titleField, capability: test.capability, capabilityLabel: catalog ? catalog.capabilities().find(option => option.value === test.capability)?.label ?? test.capability : test.capability, objectControls: controls, itemControls, fieldRequirement, fieldControls, requireFieldOptions: catalog?.resultFields(test.capability) ?? [], explanation: explainAssessment({ assessment: { ...assessment, tests: { [id]: test } } }, pack), unsupported: Object.keys(test).filter(key => !['test_title', 'capability', 'object', 'require', 'reported_elements'].includes(key)) };
   });
   const inputControls = Object.entries(assessment.inputs ?? {}).flatMap(([name, input]: [string, any]) => {
     if (!input || typeof input !== 'object') return [];

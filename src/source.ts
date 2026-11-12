@@ -124,6 +124,49 @@ export class SourceBuffer {
       assessmentExecution: 'unavailable' as const};
   }
 
+  /** Replace one native Variable expression branch without reserializing its parent.
+   * Expression branches may be nested in concat/regex_capture/unique/merge.
+   * Comments, anchors and tagged nodes are declined rather than discarded.
+   */
+  replaceExpression(path: (string | number)[], expression: Json, expectedHash: string, forceLocalVariablePath?: (string | number)[]) {
+    if (!path.length || sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML remains editable in Source.');
+    const node: any = doc.getIn(path, true);
+    if (!isMap(node) || node.anchor || node.tag || !Array.isArray(node.range) || node.items.length !== 1)
+      throw new Error('Expression is not a simple YAML mapping; use native YAML.');
+    if (node.items.some((pair: any) => pair.key?.anchor || pair.key?.tag || pair.value?.anchor || pair.value?.tag))
+      throw new Error('Expression contains an anchor or tag; use native YAML.');
+    const sourceFragment = this.text.slice(node.range[0], node.range[1]);
+    if (/(?:^|[\r\n])[ \t]*#/.test(sourceFragment))
+      throw new Error('Expression contains comments; edit it in native YAML to preserve them.');
+    const rawReplacement = stringify(expression).trim();
+    const flow = this.text[node.range[0]] === '{';
+    const lineStart = this.text.lastIndexOf('\n', node.range[0] - 1) + 1;
+    const beforeNode = this.text.slice(lineStart, node.range[0]);
+    const indentation = beforeNode.match(/^[ \t]*/)?.[0] ?? '';
+    // A block mapping is inserted at the existing key's column. Indent only
+    // continuation lines; flow mappings stay inline so a parent flow map is
+    // never silently changed into invalid YAML.
+    const replacement = flow ? yamlInline(expression) : rawReplacement.split('\n').map((line, index) => index ? indentation + line : line).join('\n');
+    const replacements: Array<{ start: number; end: number; replacement: string }> =
+      [{ start: node.range[0], end: node.range[1], replacement }];
+    if (forceLocalVariablePath) {
+      const kindNode: any = doc.getIn([...forceLocalVariablePath, 'kind'], true);
+      if (kindNode?.value === 'constant') {
+        if (!isScalar(kindNode) || kindNode.anchor || kindNode.tag || !Array.isArray(kindNode.range))
+          throw new Error('Variable kind is not a safely editable scalar; set it to local in native YAML.');
+        replacements.push({ start: kindNode.range[0], end: kindNode.range[1], replacement: 'local' });
+      }
+    }
+    const ordered = replacements.slice().sort((left, right) => right.start - left.start);
+    let next = this.text;
+    for (const item of ordered) next = next.slice(0, item.start) + item.replacement + next.slice(item.end);
+    assertYaml(next);
+    return { document: new SourceBuffer(next), range: [node.range[0], node.range[1]] as [number, number], replacement,
+      replacements, undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string, allowedKeys?: readonly string[]) {
     if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
     if (allowedKeys && !allowedKeys.includes(newKey)) throw new Error(`Operation '${newKey}' is not permitted by the pinned schema; use Source mode`);
@@ -164,11 +207,49 @@ export class SourceBuffer {
       const childIndent = mapChildIndent(this.text, parent, start);
       const block = indentBlock(fragment, childIndent);
       const before = this.text.slice(0, end);
+      const following = this.text.slice(end);
       const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
-      replacement = `${prefix}${block}`;
+      const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following) ? '\n' : '';
+      replacement = `${prefix}${block}${suffix}`;
       editStart = end; editEnd = end;
     }
     const next = this.text.slice(0, editStart) + replacement + this.text.slice(editEnd);
+    assertYaml(next);
+    return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], replacement,
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
+  /** Insert several mapping members in one source-local splice. This is
+   * useful when a schema-qualified addition needs a companion member, such as
+   * Require.fields with its required field_requirement sibling.
+   */
+  insertMapEntries(path: (string | number)[], entries: readonly (readonly [string, Json])[], expectedHash: string) {
+    if (!entries.length) throw new Error('No mapping entries to add');
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(path, true);
+    if (!isMap(parent) || !Array.isArray(parent.items) || !Array.isArray(parent.range)) throw new Error('Mapping cannot be edited safely');
+    const keys = new Set(parent.items.map((pair: any) => String(pair.key?.value)));
+    if (entries.some(([key]) => !/^[A-Za-z0-9._/-]+$/.test(key) || /^(?:true|false|null|~)$/i.test(key) || keys.has(key)))
+      throw new Error('Mapping entry cannot be added safely');
+    const [start, end] = parent.range;
+    const flow = this.text[start] === '{' && this.text[end - 1] === '}';
+    const before = this.text.slice(0, end);
+    const following = this.text.slice(end);
+    let replacement: string;
+    let editStart = end;
+    if (flow) {
+      replacement = `${parent.items.length ? ', ' : ''}${entries.map(([key, value]) => flowMapEntryFragment(key, value)).join(', ')}`;
+      editStart = end - 1;
+    } else {
+      const childIndent = mapChildIndent(this.text, parent, start);
+      const block = entries.map(([key, value]) => indentBlock(mapEntryFragment(key, value), childIndent)).join('\n');
+      const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
+      const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following) ? '\n' : '';
+      replacement = `${prefix}${block}${suffix}`;
+    }
+    const next = this.text.slice(0, editStart) + replacement + (flow ? this.text.slice(editStart) : following);
     assertYaml(next);
     return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], replacement,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
@@ -193,11 +274,43 @@ export class SourceBuffer {
     const valueText = value && typeof value === 'object' && !Array.isArray(value) ? `\n${indentBlock(yamlScalarOrBlock(value), 2)}` : ` ${yamlScalarOrBlock(value)}`;
     const fragment = indentBlock(`-${valueText}`, indent);
     const before = this.text.slice(0, end);
+    const following = this.text.slice(end);
     const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
-    const replacement = `${prefix}${fragment}`;
-    const next = this.text.slice(0, end) + replacement + this.text.slice(end);
+    // yaml's block-sequence range can include the final newline of the last
+    // item. In that shape, the next mapping starts immediately after `end`;
+    // terminate the inserted item before it or the new nested mapping is
+    // parsed as a continuation of the following compact mapping.
+    const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following) ? '\n' : '';
+    const replacement = `${prefix}${fragment}${suffix}`;
+    const next = this.text.slice(0, end) + replacement + following;
     assertYaml(next);
     return { document: new SourceBuffer(next), range: [end, end + replacement.length] as [number, number], replacement,
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
+  /** Replace one explicitly selected mapping/sequence value without reserializing the document. */
+  replacePathValue(path: (string | number)[], value: Json, expectedHash: string) {
+    if (!path.length || sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const node: any = doc.getIn(path, true);
+    if (!node || isAlias(node) || node.anchor || node.tag || !Array.isArray(node.range))
+      throw new Error('The selected YAML value cannot be replaced safely; use native YAML.');
+    const sourceFragment = this.text.slice(node.range[0], node.range[1]);
+    if (/(?:^|[\r\n])[ \t]*#/.test(sourceFragment))
+      throw new Error('The selected YAML value contains comments; use native YAML to preserve them.');
+    const [start, end] = node.range;
+    const flow = this.text[start] === '{' || this.text[start] === '[';
+    const raw = flow ? yamlInline(value) : yamlScalarOrBlock(value);
+    const lineStart = this.text.lastIndexOf('\n', start - 1) + 1;
+    const indentation = this.text.slice(lineStart, start).match(/^[ \t]*/)?.[0] ?? '';
+    const replacement = flow ? raw : raw.split('\n').map((line, index) => index ? indentation + line : line).join('\n');
+    const following = this.text.slice(end);
+    const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following)
+      ? (this.text.includes('\r\n') ? '\r\n' : '\n') : '';
+    const next = this.text.slice(0, start) + replacement + suffix + following;
+    assertYaml(next);
+    return { document: new SourceBuffer(next), range: [start, end] as [number, number], replacement: replacement + suffix,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
