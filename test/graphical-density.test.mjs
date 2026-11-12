@@ -154,6 +154,20 @@ test('Evaluate tree follows actual nested expression and resolves Test IDs witho
   assert.ok(!tree.children.find(n=>n.path[1]==='tests'), 'Only Evaluate normally navigates Tests');
 });
 
+test('Evaluate navigation renders schema-authorized non-boolean branches without a Test definitions tree', () => {
+  const ctx = evaluationHarness({
+    mode: 'automated',
+    tests: [{ id: 'first-test' }, { id: 'second-test' }],
+    evaluate: { not: { test: 'first-test' } }
+  });
+  const root = ctx.treeModel().root;
+  const evaluate = root.children.find(node => node.path[1] === 'evaluate');
+  assert.equal(evaluate.label, 'Evaluate — NOT');
+  assert.equal(evaluate.children[0].label, 'first-test');
+  assert.deepEqual(ctx.testPathForSelection(evaluate.children[0].path), ['assessment', 'tests', 'first-test']);
+  assert.equal(root.children.some(node => node.path[1] === 'tests'), false);
+});
+
 test('Parse errors do not synthesize an Evaluate tree or fake unreferenced Tests', () => {
   const ctx = evaluationHarness({ mode: 'automated', parseDiagnostics: ['Missing }'], tests: [{ id: 'authored-test' }], evaluate: undefined });
   const tree = ctx.treeModel().root;

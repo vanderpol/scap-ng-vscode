@@ -29,6 +29,11 @@ test('guided manual and automated Windows Registry drafts validate against pinne
     { id: 'registry-presence-test', title: 'Registry presence', capability: 'windows.registry', object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization' }, name: { equals: 'NoLockScreenSlideshow' } }, presenceOnly: true }
   ] });
   assert.deepEqual(automated.diagnostics, []); assert.deepEqual(automated.document.assessment.evaluate.xor, [{ test: 'registry-value-test' }, { test: 'registry-presence-test' }]);
+  assert.deepEqual(Object.keys(automated.document.assessment), [
+    'id', 'version', 'assessment_title', 'mode', 'class', 'specification', 'evaluate', 'tests'
+  ]);
+  assert.ok(automated.yaml.indexOf('\n  evaluate:\n') < automated.yaml.indexOf('\n  tests:\n'),
+    'new Assessments place Evaluate before Test definitions');
   const itemUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
   const fieldUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
   const context = { documentVersion: pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] };

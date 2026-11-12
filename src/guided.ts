@@ -225,9 +225,12 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
       const testTitle = test.title?.trim() || generatedTestTitle(pack, test);
       tests[test.id] = { test_title: testTitle, capability: test.capability, reported_elements: 'all', object: test.object, require };
     }
-    assessment.tests = tests;
+    // New authoring presents the evaluation graph before its Test definitions.
+    // This is a presentation/layout choice only: existing documents are never
+    // reserialized, and the native schema remains order-insensitive.
     const ids = draft.tests.map(test => ({ test: test.id }) as Json);
     assessment.evaluate = draft.evaluate ? { [draft.evaluate]: ids } : ids[0];
+    assessment.tests = tests;
   }
   const document = { assessment } as Json;
   const diagnostics = pack.validate(schemaBase + 'assessment.schema.json', document);
