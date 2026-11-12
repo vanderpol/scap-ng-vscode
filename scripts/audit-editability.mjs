@@ -250,23 +250,26 @@ function schemaCoverageCatalog(pack, reports) {
       let row = byUri.get(key);
       if (!row) {
         const node = location.node ?? {};
-        const branchKeywords = ['oneOf', 'anyOf', 'allOf', 'if', 'then', 'else'].filter(keyword => node[keyword] !== undefined);
+        const effectiveNodes = schemaNodes(pack, key).map(item => item.node ?? {}).filter(Boolean);
+        const branchKeywords = ['oneOf', 'anyOf', 'allOf', 'if', 'then', 'else'].filter(keyword => effectiveNodes.some(item => item[keyword] !== undefined));
+        const kind = effectiveNodes.map(schemaNodeKind).find(candidate => candidate !== 'unknown') ?? 'unknown';
+        const firstConstraint = keyName => effectiveNodes.find(item => item[keyName] !== undefined)?.[keyName];
         row = {
           uri: key,
           pathParts: [...path],
           path: templatePathText(path),
           relation,
-          kind: schemaNodeKind(node),
-          required: Array.isArray(node.required) ? node.required.map(String) : [],
+          kind,
+          required: [...new Set(effectiveNodes.flatMap(item => Array.isArray(item.required) ? item.required.map(String) : []))],
           branchKeywords,
-          oneOfBranches: Array.isArray(node.oneOf) ? node.oneOf.length : 0,
-          anyOfBranches: Array.isArray(node.anyOf) ? node.anyOf.length : 0,
-          allOfBranches: Array.isArray(node.allOf) ? node.allOf.length : 0,
-          conditional: Boolean(node.if || node.then || node.else),
-          patternProperties: Object.keys(node.patternProperties ?? {}).length,
-          dynamicMembers: node.additionalProperties !== undefined || Object.keys(node.patternProperties ?? {}).length > 0,
-          readOnly: node.readOnly === true || node.writeOnly === true,
-          constraints: Object.fromEntries(['minItems', 'maxItems', 'minProperties', 'maxProperties', 'minLength', 'maxLength'].filter(keyName => node[keyName] !== undefined).map(keyName => [keyName, node[keyName]])),
+          oneOfBranches: effectiveNodes.reduce((sum, item) => sum + (Array.isArray(item.oneOf) ? item.oneOf.length : 0), 0),
+          anyOfBranches: effectiveNodes.reduce((sum, item) => sum + (Array.isArray(item.anyOf) ? item.anyOf.length : 0), 0),
+          allOfBranches: effectiveNodes.reduce((sum, item) => sum + (Array.isArray(item.allOf) ? item.allOf.length : 0), 0),
+          conditional: effectiveNodes.some(item => item.if || item.then || item.else),
+          patternProperties: effectiveNodes.reduce((sum, item) => sum + Object.keys(item.patternProperties ?? {}).length, 0),
+          dynamicMembers: effectiveNodes.some(item => item.additionalProperties !== undefined || Object.keys(item.patternProperties ?? {}).length > 0),
+          readOnly: effectiveNodes.some(item => item.readOnly === true || item.writeOnly === true),
+          constraints: Object.fromEntries(['minItems', 'maxItems', 'minProperties', 'maxProperties', 'minLength', 'maxLength'].filter(keyName => firstConstraint(keyName) !== undefined).map(keyName => [keyName, firstConstraint(keyName)])),
           contexts: []
         };
         byUri.set(key, row); rows.push(row);
@@ -319,7 +322,7 @@ function schemaCoverageCatalog(pack, reports) {
       qualify('delete-item', matched(row, ['array-remove']), Boolean(row.conditional || hasBranch));
     } else if (row.kind === 'variant') {
       qualify('switch-branch', matched(row, ['variant-replace']), true);
-    } else if (['allOf', 'if', 'then', 'else'].includes(row.relation) || /\/(?:allOf|if|then|else)\//.test(row.uri)) {
+    } else if (['oneOf', 'anyOf', 'allOf', 'if', 'then', 'else'].includes(row.relation) || /\/(?:oneOf|anyOf|allOf|if|then|else)\//.test(row.uri)) {
       operations.read = 'schema-composition';
       operations.mutate = 'schema-composition';
     } else {
