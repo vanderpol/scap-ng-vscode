@@ -2,7 +2,7 @@ import { parseDocument } from 'yaml';
 import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
-import { schemaAdditionalPropertyLocations, schemaItemLocations, schemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
+import { schemaDynamicPropertyLocations, schemaItemLocations, schemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
 import { analyzeAssessmentReferences } from './reference-graph.js';
@@ -407,7 +407,7 @@ function schemaLocationsForValuePath(pack: MetadataPack, root: string, path: Edi
       locations = schemaNodes(pack, property.uri);
       continue;
     }
-    const additional = schemaAdditionalPropertyLocations(pack, locations);
+    const additional = schemaDynamicPropertyLocations(pack, locations, String(part));
     if (additional.length) {
       locations = additional.flatMap(location => schemaNodes(pack, location.uri));
       continue;
@@ -440,10 +440,10 @@ function structuralSchemaSummary(pack: MetadataPack, locations: any[]) {
     }
   }
   for (const name of required) if (properties.has(name)) properties.get(name).required = true;
-  const additional = schemaAdditionalPropertyLocations(pack, locations).length > 0;
+  const additional = schemaDynamicPropertyLocations(pack, locations).length > 0;
   const itemLocations = schemaItemLocations(pack, locations);
   const item = itemLocations.length ? {
-    object: itemLocations.some(location => location.node?.type === 'object' || location.node?.properties || location.node?.additionalProperties !== undefined),
+    object: itemLocations.some(location => location.node?.type === 'object' || location.node?.properties || location.node?.patternProperties || location.node?.additionalProperties !== undefined),
     array: itemLocations.some(location => location.node?.type === 'array' || location.node?.items),
     type: itemLocations[0]?.node?.type
   } : undefined;

@@ -148,7 +148,7 @@ function assertSourceShape(beforeText, edit) {
 
 function recordCase(report, kind, path, status, detail = '') {
   report.coverage[kind] = (report.coverage[kind] ?? 0) + (status === 'passed' ? 1 : 0);
-  report.cases.push({ kind, path: pathText(path), status, ...(detail ? { detail } : {}) });
+  report.cases.push({ kind, path: pathText(path), pathParts: [...path], status, ...(detail ? { detail } : {}) });
   if (status === 'failed') report.failures.push(`${kind} ${pathText(path)}: ${detail}`);
 }
 
@@ -223,10 +223,147 @@ function walkLogical(value, path, visit) {
   }
 }
 
+
+function templatePathText(path) {
+  return path.map(part => typeof part === 'number' ? '[i]' : String(part)).join('.').replaceAll('.[', '[');
+}
+
+function schemaNodeKind(node) {
+  const types = new Set(Array.isArray(node?.type) ? node.type : node?.type ? [node.type] : []);
+  if (node?.oneOf || node?.anyOf) return 'variant';
+  if (types.has('array') || node?.items) return 'array';
+  if (types.has('object') || node?.properties || node?.additionalProperties !== undefined || node?.patternProperties) return 'map';
+  if (types.size || node?.enum || node?.const !== undefined) return 'scalar';
+  return 'unknown';
+}
+
+function schemaCoverageCatalog(pack, reports) {
+  const rows = [];
+  const byUri = new Map();
+  const queue = [[schemaUri, ['assessment'], 'root']];
+  const queued = new Set();
+  while (queue.length) {
+    const [uri, path, relation] = queue.shift();
+    const locations = schemaNodes(pack, uri);
+    for (const location of locations) {
+      const key = location.uri;
+      let row = byUri.get(key);
+      if (!row) {
+        const node = location.node ?? {};
+        const branchKeywords = ['oneOf', 'anyOf', 'allOf', 'if', 'then', 'else'].filter(keyword => node[keyword] !== undefined);
+        row = {
+          uri: key,
+          pathParts: [...path],
+          path: templatePathText(path),
+          relation,
+          kind: schemaNodeKind(node),
+          required: Array.isArray(node.required) ? node.required.map(String) : [],
+          branchKeywords,
+          oneOfBranches: Array.isArray(node.oneOf) ? node.oneOf.length : 0,
+          anyOfBranches: Array.isArray(node.anyOf) ? node.anyOf.length : 0,
+          allOfBranches: Array.isArray(node.allOf) ? node.allOf.length : 0,
+          conditional: Boolean(node.if || node.then || node.else),
+          patternProperties: Object.keys(node.patternProperties ?? {}).length,
+          dynamicMembers: node.additionalProperties !== undefined || Object.keys(node.patternProperties ?? {}).length > 0,
+          readOnly: node.readOnly === true || node.writeOnly === true,
+          constraints: Object.fromEntries(['minItems', 'maxItems', 'minProperties', 'maxProperties', 'minLength', 'maxLength'].filter(keyName => node[keyName] !== undefined).map(keyName => [keyName, node[keyName]])),
+          contexts: []
+        };
+        byUri.set(key, row); rows.push(row);
+      }
+      if (row.contexts.length < 8 && !row.contexts.some(context => context.path === templatePathText(path))) row.contexts.push({ path: templatePathText(path), relation });
+      const childQueue = (childUri, childPath, childRelation) => {
+        const childKey = childUri;
+        if (!queued.has(childKey)) { queued.add(childKey); queue.push([childUri, childPath, childRelation]); }
+      };
+      for (const [name, property] of schemaPropertyEntries(pack, [location])) childQueue(property.uri, [...path, name], 'property');
+      for (const property of Object.keys(location.node.patternProperties ?? {})) {
+        const childUri = `${location.uri}${location.uri.includes('#') ? '' : '#'}\/patternProperties\/${property.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+        childQueue(childUri, [...path, '<pattern>'], 'patternProperties');
+      }
+      for (const dynamic of schemaAdditionalPropertyLocations(pack, [location])) childQueue(dynamic.uri, [...path, '<key>'], 'additionalProperties');
+      for (const item of schemaItemLocations(pack, [location])) childQueue(item.uri, [...path, '[i]'], 'items');
+      for (const keyword of ['oneOf', 'anyOf', 'allOf', 'if', 'then', 'else']) {
+        const branches = Array.isArray(location.node[keyword]) ? location.node[keyword] : location.node[keyword] ? [location.node[keyword]] : [];
+        branches.forEach((_branch, index) => childQueue(`${location.uri}${location.uri.includes('#') ? '' : '#'}\/${keyword}\/${index}`, path, keyword));
+      }
+    }
+  }
+  const cases = reports.flatMap(report => report.cases);
+  const baselinePaths = reports.flatMap(report => report.baselinePaths ?? []);
+  const actualPathMatches = (template, actual) => template.length === actual.length && template.every((part, index) => part === actual[index] || part === '<key>' && typeof actual[index] === 'string' || part === '<pattern>' && typeof actual[index] === 'string' || part === '[i]' && typeof actual[index] === 'number');
+  const matched = (row, kinds) => cases.filter(item => kinds.includes(item.kind) && actualPathMatches(row.pathParts, item.pathParts ?? []));
+  const matrix = [];
+  for (const row of rows) {
+    const hasBranch = row.branchKeywords.some(keyword => ['oneOf', 'anyOf'].includes(keyword));
+    const operations = {};
+    const readEvidence = baselinePaths.some(path => actualPathMatches(row.pathParts, path));
+    const qualify = (operation, evidence, conditional = false, rejected = false) => {
+      operations[operation] = evidence.length ? 'qualified' : rejected ? 'rejected' : conditional ? 'conditional' : row.readOnly ? 'read-only' : 'not-evidenced';
+    };
+    if (row.readOnly) {
+      operations.read = 'read-only';
+    } else if (row.kind === 'scalar') {
+      operations.read = readEvidence ? 'qualified' : 'not-evidenced';
+      qualify('update', matched(row, ['scalar-update']), Boolean(row.conditional || hasBranch));
+      qualify('create', matched(row, ['structural-add']), Boolean(row.conditional || hasBranch), row.required.length > 0);
+      qualify('delete', matched(row, ['structural-remove']), Boolean(row.conditional || hasBranch), row.required.length > 0);
+    } else if (row.kind === 'map') {
+      operations.read = readEvidence ? 'qualified' : 'not-evidenced';
+      qualify('create-member', matched(row, ['structural-add']), Boolean(row.dynamicMembers || row.conditional || hasBranch));
+      qualify('delete-member', matched(row, ['structural-remove']), Boolean(row.required.length || row.conditional || hasBranch));
+      qualify('rename-key', [], Boolean(row.dynamicMembers));
+    } else if (row.kind === 'array') {
+      operations.read = readEvidence ? 'qualified' : 'not-evidenced';
+      qualify('create-item', matched(row, ['array-add']), Boolean(row.conditional || hasBranch));
+      qualify('delete-item', matched(row, ['array-remove']), Boolean(row.conditional || hasBranch));
+    } else if (row.kind === 'variant') {
+      qualify('switch-branch', matched(row, ['variant-replace']), true);
+    } else {
+      operations.read = 'not-evidenced';
+      operations.mutate = 'unsupported';
+    }
+    if (hasBranch || row.conditional) operations.branch = 'conditional';
+    matrix.push({ path: row.path, uri: row.uri, kind: row.kind, operations, branchKeywords: row.branchKeywords, patternProperties: row.patternProperties, dynamicMembers: row.dynamicMembers, readOnly: row.readOnly });
+  }
+  const statusCounts = {};
+  for (const item of matrix) for (const [operation, status] of Object.entries(item.operations)) statusCounts[`${operation}:${status}`] = (statusCounts[`${operation}:${status}`] ?? 0) + 1;
+  return {
+    rows,
+    matrix,
+    summary: {
+      schemaLocations: rows.length,
+      scalarLocations: rows.filter(row => row.kind === 'scalar').length,
+      mapLocations: rows.filter(row => row.kind === 'map').length,
+      arrayLocations: rows.filter(row => row.kind === 'array').length,
+      variantLocations: rows.filter(row => row.kind === 'variant').length,
+      oneOfBranches: rows.reduce((sum, row) => sum + row.oneOfBranches, 0),
+      anyOfBranches: rows.reduce((sum, row) => sum + row.anyOfBranches, 0),
+      allOfBranches: rows.reduce((sum, row) => sum + row.allOfBranches, 0),
+      conditionalLocations: rows.filter(row => row.conditional).length,
+      patternPropertyLocations: rows.reduce((sum, row) => sum + row.patternProperties, 0),
+      dynamicMemberLocations: rows.filter(row => row.dynamicMembers).length,
+      readOnlyLocations: rows.filter(row => row.readOnly).length,
+      operationStatuses: statusCounts,
+      intentionallyRejectedOperations: reports.reduce((sum, report) => sum + report.cases.filter(item => item.status === 'passed' && /rejection|invalid/.test(item.kind)).length, 0),
+      notEvidencedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':not-evidenced')).reduce((sum, [, count]) => sum + count, 0),
+      unsupportedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':unsupported')).reduce((sum, [, count]) => sum + count, 0)
+    }
+  };
+}
+
+function collectValuePaths(value, path = ['assessment'], result = []) {
+  result.push(path);
+  if (Array.isArray(value)) value.forEach((entry, index) => collectValuePaths(entry, [...path, index], result));
+  else if (isObject(value)) Object.entries(value).forEach(([key, entry]) => collectValuePaths(entry, [...path, key], result));
+  return result;
+}
+
 function auditDocument(pack, name, text, options = {}) {
   const report = { name, synthetic: Boolean(options.synthetic), pack, coverage: {}, checks: { bytePreservation: 0, undoRedo: 0, noOpBytes: false }, cases: [], failures: [], skips: 0 };
   const source = new SourceBuffer(text);
   const beforeValue = source.json();
+  report.baselinePaths = collectValuePaths(beforeValue);
   report.checks.noOpBytes = source.openOrSave() === text;
   if (!report.checks.noOpBytes) report.failures.push('no-op open/save changed source bytes');
   const model = assessmentEditorModel({ getText: () => text, version: 1 }, pack);
@@ -324,6 +461,7 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
   const logicalBase = files[0] && readFileSync(join(fixtureRoot, files[0]), 'utf8');
   const logicalSynthetic = logicalBase && buildLogicalSynthetic(logicalBase);
   if (logicalSynthetic) reports.push(auditDocument(pack, `${files[0]}#logical-synthetic`, logicalSynthetic, { synthetic: true }));
+  const schemaCoverage = schemaCoverageCatalog(pack, reports);
   for (const report of reports) {
     report.skips = report.cases.filter(item => item.status === 'skipped').length;
     delete report.pack;
@@ -342,7 +480,8 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
     bytePreservationChecks: reports.reduce((sum, report) => sum + report.checks.bytePreservation, 0),
     undoRedoChecks: reports.reduce((sum, report) => sum + report.checks.undoRedo, 0),
     noOpByteChecks: reports.filter(report => report.checks.noOpBytes).length,
-    note: 'Every successful case is a source-local schema-path CRUD transaction; skipped cases are unsupported or conditionally invalid branches, never silently treated as coverage.'
+    schemaCoverage: schemaCoverage.summary,
+    note: 'The schema catalog enumerates reachable pinned-schema locations. qualified means an executed source-local transaction; conditional, not-evidenced, read-only, unsupported, and rejected are reported separately and never counted as coverage.'
   };
   if (summary.modelFailures || summary.schemaInvalid || summary.failures) {
     const details = reports.flatMap(report => report.failures.map(error => `${report.name}: ${error}`));
@@ -350,7 +489,7 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
     error.report = { summary, reports };
     throw error;
   }
-  return { summary, reports };
+  return { summary, reports, schemaCoverage };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -362,11 +501,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       model: report.model,
       coverage: report.coverage,
       checks: report.checks,
+      baselinePathCount: report.baselinePaths?.length ?? 0,
       skipped: report.skips,
       failures: report.failures,
       passedPaths: report.cases.filter(item => item.status === 'passed').map(item => ({ kind: item.kind, path: item.path }))
     }));
-    console.log(JSON.stringify({ summary: result.summary, reports: compactReports }, null, 2));
+    console.log(JSON.stringify({ summary: result.summary, schemaCoverage: result.schemaCoverage, reports: compactReports }, null, 2));
   } catch (error) {
     if (error.report) console.error(JSON.stringify(error.report, null, 2));
     else console.error(error instanceof Error ? error.stack : String(error));

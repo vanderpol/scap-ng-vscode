@@ -62,3 +62,16 @@ test('a deliberately repinned compatible pack updates help and enums without cod
   const f=fixture({type:'string',enum:choices,title});try{assert.deepEqual(f.open().describe(uri,context).choices,choices);assert.equal(f.open().describe(uri,context).title,title);}finally{f.close();}
  }
 });
+
+test('patternProperties are schema-resolved for dynamic Assessment members', async () => {
+ const { resolveSchemaPath, schemaPatternPropertyLocations } = await import('../dist/schema-resolver.js');
+ const root = 'https://example.invalid/root.json';
+ const nodes = new Map([[root, {type:'object', patternProperties:{'^a-': {$ref: 'member.json'}}}],
+   ['https://example.invalid/member.json', {type:'string'}]]);
+ const pack = { node: uri => uri.includes('/patternProperties/') ? nodes.get(root).patternProperties['^a-'] : nodes.get(uri) };
+ const locations = schemaPatternPropertyLocations(pack, [{uri: root, node: nodes.get(root)}], 'a-name');
+ assert.equal(locations.length, 1);
+ assert.equal(locations[0].pattern, '^a-');
+ assert.equal(resolveSchemaPath(pack, root, ['a-name']).at(-1).node.type, 'string');
+ assert.deepEqual(resolveSchemaPath(pack, root, ['b-name']), []);
+});

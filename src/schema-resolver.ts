@@ -57,6 +57,16 @@ export function schemaPropertyEntries(pack: MetadataPack, locations: readonly Sc
   return result;
 }
 
+export function schemaPatternPropertyLocations(pack: MetadataPack, locations: readonly SchemaLocation[], key?: string) {
+  return locations.flatMap(location => Object.entries(location.node.patternProperties ?? {})
+    .filter(([pattern]) => key === undefined || new RegExp(pattern).test(key))
+    .map(([pattern, node]) => ({
+      uri: schemaChildUri(location.uri, 'patternProperties', pattern),
+      node: node as SchemaNode,
+      pattern
+    })));
+}
+
 export function schemaAdditionalPropertyLocations(pack: MetadataPack, locations: readonly SchemaLocation[]) {
   return locations.flatMap(location => {
     const node = location.node.additionalProperties;
@@ -64,6 +74,15 @@ export function schemaAdditionalPropertyLocations(pack: MetadataPack, locations:
       ? [{ uri: schemaChildUri(location.uri, 'additionalProperties', ''), node: node as SchemaNode }]
       : [];
   });
+}
+
+/** Resolve a dynamic mapping member using the canonical additionalProperties or
+ * patternProperties contract. A concrete key is required for pattern matching;
+ * callers creating a new member should validate the user-entered key first. */
+export function schemaDynamicPropertyLocations(pack: MetadataPack, locations: readonly SchemaLocation[], key?: string) {
+  const patterns = schemaPatternPropertyLocations(pack, locations, key);
+  const additional = schemaAdditionalPropertyLocations(pack, locations);
+  return [...patterns, ...additional];
 }
 
 export function schemaItemLocations(pack: MetadataPack, locations: readonly SchemaLocation[]) {
@@ -84,7 +103,7 @@ export function resolveSchemaPath(pack: MetadataPack, rootUri: string, path: rea
     const properties = schemaPropertyEntries(pack, locations);
     const property = properties.get(segment);
     if (property) { locations = schemaNodes(pack, property.uri); index++; continue; }
-    const dynamic = schemaAdditionalPropertyLocations(pack, locations);
+    const dynamic = schemaDynamicPropertyLocations(pack, locations, segment);
     if (dynamic.length) { locations = dynamic.flatMap(location => schemaNodes(pack, location.uri)); index++; continue; }
     const items = schemaItemLocations(pack, locations);
     if (items.length) { locations = items.flatMap(location => schemaNodes(pack, location.uri)); continue; }
@@ -142,7 +161,7 @@ export function schemaPropertiesAtPath(pack: MetadataPack, rootUri: string, path
 
 export function schemaObjectLike(pack: MetadataPack, locations: readonly SchemaLocation[], seen = new Set<string>()): boolean {
   for (const location of locations) {
-    if (location.node.type === 'object' || location.node.properties || location.node.additionalProperties !== undefined) return true;
+    if (location.node.type === 'object' || location.node.properties || location.node.patternProperties || location.node.additionalProperties !== undefined) return true;
     if (location.node.type === 'array') continue;
     if (!seen.has(location.uri)) {
       seen.add(location.uri);

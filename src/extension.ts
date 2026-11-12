@@ -11,7 +11,7 @@ import { WorkspaceIndex, type IndexedDocument, type ApplicabilityOption } from '
 import { GuidedCatalog, createGuidedAssessment, generatedTestTitle } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
-import { schemaAdditionalPropertyLocations, schemaCapabilityObjectProperties, schemaItemLocations, schemaNodes, schemaPropertyEntries } from './schema-resolver.js';
+import { schemaDynamicPropertyLocations, schemaCapabilityObjectProperties, schemaItemLocations, schemaNodes, schemaPropertyEntries } from './schema-resolver.js';
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
@@ -256,7 +256,7 @@ function genericSchemaLocations(pack: MetadataPack, path: (string | number)[]) {
     const property = schemaPropertyEntries(pack, locations).get(part);
     if (property) locations = schemaNodes(pack, property.uri);
     else {
-      const additional = schemaAdditionalPropertyLocations(pack, locations);
+      const additional = schemaDynamicPropertyLocations(pack, locations, String(part));
       if (!additional.length) return [];
       locations = additional.flatMap(location => schemaNodes(pack, location.uri));
     }
@@ -271,7 +271,7 @@ function genericSchemaSeed(pack: MetadataPack, locations: any[]): any {
   if (node.default !== undefined) return structuredClone(node.default);
   if (Array.isArray(node.enum) && node.enum.length) return structuredClone(node.enum[0]);
   if (node.type === 'array' || node.items) return [];
-  if (node.type === 'object' || node.properties || node.additionalProperties !== undefined) return {};
+  if (node.type === 'object' || node.properties || node.patternProperties || node.additionalProperties !== undefined) return {};
   if (node.type === 'boolean') return false;
   if (node.type === 'integer' || node.type === 'number') return 0;
   if (node.type === 'null') return null;
@@ -701,12 +701,17 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
       key = (await api.window.showQuickPick(choices.map(([name, location]) => ({
         label: name, description: String(location.node?.title ?? ''), detail: String(location.node?.description ?? ''), name
       })), { placeHolder: `Add a schema property under ${last}` }))?.name;
-    } else if (schemaAdditionalPropertyLocations(pack, locations).length) {
-      key = await api.window.showInputBox({ prompt: `Add a schema-authorized member under ${last}`, value: 'new-member' });
+    } else if (schemaDynamicPropertyLocations(pack, locations).length) {
+      key = await api.window.showInputBox({
+        prompt: `Add a schema-authorized member under ${last}`,
+        value: 'new-member',
+        validateInput: (candidate: string) => schemaDynamicPropertyLocations(pack, locations, candidate).length
+          ? undefined : 'The member name does not satisfy the pinned schema dynamic-key contract.'
+      });
     }
     if (!key) throw new Error(`No unused schema-declared property is available under ${path.join('.')}.`);
     const selected = entries.get(key);
-    const seedLocations = selected ? schemaNodes(pack, selected.uri) : schemaAdditionalPropertyLocations(pack, locations);
+    const seedLocations = selected ? schemaNodes(pack, selected.uri) : schemaDynamicPropertyLocations(pack, locations, key);
     const seed = genericSchemaSeed(pack, seedLocations);
     const edit = source.insertMapEntry(path, key, seed as any, expectedHash);
     validateGraphicalSchemaEdit(pack, before, edit, `the new ${key} member`);
