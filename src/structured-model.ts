@@ -70,13 +70,69 @@ function schemaForPath(pack: MetadataPack, uri: string, path: EditPath): string 
   if (node.additionalProperties && typeof node.additionalProperties === 'object') return schemaForPath(pack, resolved.uri + (resolved.uri.includes('#') ? '' : '#') + '/additionalProperties', rest);
   return undefined;
 }
+function vocabularyHelp(pack: MetadataPack, path: EditPath): { label?: string; description?: string; choices?: unknown[] } | undefined {
+  try {
+    const vocabulary: any = pack.resource(pack.manifest.vocabulary_uri);
+    const scopes = vocabulary?.term_scopes ?? {};
+    const candidates: string[] = [];
+    if (path[0] === 'assessment') {
+      if (path.length === 2) candidates.push(`assessment.${String(path[1])}`);
+      if (path[1] === 'evaluate' && path.length >= 3) candidates.push(`assessment.evaluate.${String(path[2])}`);
+      const tests = path.indexOf('tests');
+      if (tests >= 0) {
+        const rest = path.slice(tests + 2).map(String);
+        if (rest[0] === 'require') {
+          if (rest[1] === 'item_requirement' && rest[2]) candidates.push(`test.require.item_requirement.${rest[2]}`);
+          if (rest[1] === 'field_requirement') candidates.push('test.require.field_requirement');
+          if (rest[1] === 'fields') {
+            if (rest[2]) candidates.push(`field.${rest[2]}`);
+            if (rest.length === 2) candidates.push('test.require.fields');
+          }
+          if (rest[1] && rest[1] !== 'fields') candidates.push(`test.require.${rest[1]}`);
+          if (rest[1] === 'fields') candidates.push('test.require.fields');
+        } else if (rest.length === 1 && rest[0]) candidates.push(`test.${rest[0]}`);
+        const fields = path.indexOf('fields');
+        if (fields >= 0 && path.length > fields + 1) {
+          // Prefer the operation vocabulary (field.equals, field.matches_regex,
+          // etc.) over the generic Require-fields description.
+          candidates.unshift(`field.${String(path.at(-1))}`);
+        }
+      }
+    }
+    return candidates.map(candidate => scopes[candidate]).find(Boolean);
+  } catch { return undefined; }
+}
+function schemaFacts(pack: MetadataPack, uri: string): { types: string[]; constraints: string[] } {
+  const types = new Set<string>(); const constraints: string[] = [];
+  for (const { node } of schemaNodes(pack, uri)) {
+    const declared = Array.isArray(node?.type) ? node.type : node?.type ? [node.type] : [];
+    for (const type of declared) types.add(String(type));
+    if (Array.isArray(node?.enum) && node.enum.length) constraints.push(`Allowed values: ${node.enum.map((value: unknown) => `\`${String(value)}\``).join(', ')}`);
+    if (typeof node?.pattern === 'string') constraints.push(`Pattern: \`${node.pattern}\``);
+    if (typeof node?.minLength === 'number') constraints.push(`Minimum length: ${node.minLength}`);
+    if (typeof node?.maxLength === 'number') constraints.push(`Maximum length: ${node.maxLength}`);
+    if (node?.format) constraints.push(`Format: \`${String(node.format)}\``);
+  }
+  return { types: [...types], constraints: [...new Set(constraints)] };
+}
 function schemaHelp(pack: MetadataPack | undefined, root: string | undefined, path: EditPath, draft = false) {
   if (!pack || !root || !path.length) return undefined;
   try {
     const uri = schemaForPath(pack, root, path); if (!uri) return undefined;
     const parentUri = path.length > 1 ? schemaForPath(pack, root, path.slice(0, -1)) : undefined;
     const help = pack.describe(uri, { documentVersion: '0.4.0', schemaValid: !draft, isOverride: false, diagnostics: [] });
-    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: !draft, isOverride: false, diagnostics: [], parentSchemaUri: parentUri }, 'hide-defaults'); return { uri, parentUri, title: help.title, description: help.description, annotation: help.annotation, suggested: control.suggested, hasSuggestion: control.hasSuggestion, choices: help.choices.filter((choice: Json) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
+    const vocabulary = vocabularyHelp(pack, path);
+    const facts = schemaFacts(pack, uri);
+    const key = String(path.at(-1));
+    const fieldIndex = path.lastIndexOf('fields');
+    const fieldName = fieldIndex >= 0 && path.length > fieldIndex + 1 ? String(path[fieldIndex + 1]) : undefined;
+    const typeText = facts.types.length ? ` Schema type: ${facts.types.map(type => `\`${type}\``).join(' or ')}.` : '';
+    const fieldPrefix = fieldName && fieldIndex >= 0 ? `Collected field \`${fieldName}\`.${typeText}` : '';
+    const description = vocabulary?.description || help.description || '';
+    const factText = fieldPrefix && facts.constraints.length ? ` ${facts.constraints.join('. ')}.` : '';
+    const completeDescription = `${fieldPrefix}${description ? (fieldPrefix ? ' ' : '') + description : ''}${factText}`.trim() || `Schema-defined ${key.replaceAll('_', ' ')} value.${typeText}`.trim();
+    const title = vocabulary?.label || help.title || key.replaceAll('_', ' ').replace(/^./, value => value.toUpperCase());
+    const control = pack.control(uri, undefined, { documentVersion: pack.pin.schemaVersion, schemaValid: !draft, isOverride: false, diagnostics: [], parentSchemaUri: parentUri }, 'hide-defaults'); return { uri, parentUri, title, description: completeDescription, annotation: help.annotation, suggested: control.suggested, hasSuggestion: control.hasSuggestion, choices: (vocabulary?.choices?.length ? vocabulary.choices : help.choices).filter((choice: unknown) => ['string', 'number', 'boolean'].includes(typeof choice)) as Array<string | number | boolean> };
   } catch { return undefined; }
 }
 

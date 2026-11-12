@@ -142,6 +142,7 @@ function operationChoiceForField(field){
  let source;
  if(sources.length>1){source=document.createElement('select');source.setAttribute('aria-label','Value source');for(const name of sources){const opt=document.createElement('option');opt.value=name;opt.textContent=name==='fixed'?'Fixed value':name==='variable'?'Variable reference':'Organizational Input';source.append(opt)}source.value=field.valueSource||'fixed'}
  else{source=document.createElement('span');source.className='source-static';source.textContent=sources[0]==='variable'?'Variable reference':sources[0]==='input'?'Organizational Input':'Fixed value'}
+ operator.onfocus=()=>renderHelp(field);source.onfocus=()=>renderHelp(field);
  const slot=document.createElement('div');slot.className='operator-value';
  const apply=document.createElement('button');apply.type='button';apply.textContent='Apply';apply.disabled=true;
  const originalSource=field.valueSource||'fixed', originalValue=String(field.value??'');let input;
@@ -162,7 +163,7 @@ function operationChoiceForField(field){
   }else if(field.kind==='boolean'){
    input=document.createElement('select');input.setAttribute('aria-label','Comparison Boolean value');for(const value of ['true','false']){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option)}input.value=originalSource==='fixed'?originalValue:'true';
   }else{input=document.createElement('input');input.type=field.kind==='number'||field.kind==='integer'?'number':'text';input.setAttribute('aria-label','Comparison value');input.placeholder=currentOperation()==='matches_regex'?'Regular expression':'Expected value';input.value=originalSource==='fixed'?originalValue:''}
-  input.onchange=input.oninput=changed;slot.append(input);changed()
+  input.onfocus=()=>renderHelp(field);input.onchange=input.oninput=changed;slot.append(input);changed()
  }
  if(operator instanceof HTMLSelectElement)operator.onchange=draw;if(source instanceof HTMLSelectElement)source.onchange=draw;
  apply.onclick=()=>{if(!input?.value)return;const selected=currentSource(),op=currentOperation();if(op!==operation&&!confirm('Change '+operation+' to '+op+'? This alters the Assessment condition.'))return;let value=op==='matches_regex'&&selected==='fixed'?[input.value]:input.value;if(selected==='fixed'&&op!=='matches_regex'){if(field.kind==='boolean')value=input.value==='true';else if(field.kind==='integer')value=Number(input.value);else if(field.kind==='number')value=Number(input.value)}vscode.postMessage({type:'comparisonChange',path:(field.comparisonPath||field.path).slice(0,-1),operation:op,source:selected,value,allowedOperations:options,revision:current.revision,version:current.version})};
@@ -200,11 +201,11 @@ function sourceChoiceForObject(field){
    value=document.createElement('input');value.type='text';value.placeholder='Enter fixed value';
    value.value=variant==='equals'?String(field.value??''):'';
   }
-  value.oninput=value.onchange=()=>{confirm.disabled=!value.value||(choice.value===variant&&value.value===String(field.value))};
+  value.onfocus=()=>renderHelp(field);value.oninput=value.onchange=()=>{confirm.disabled=!value.value||(choice.value===variant&&value.value===String(field.value))};
   valueSlot.append(value);
   confirm.disabled=!value.value||(choice.value===variant&&value.value===String(field.value));
  }
- choice.onchange=refresh;
+ choice.onfocus=()=>renderHelp(field);choice.onchange=refresh;
  confirm.onclick=()=>vscode.postMessage({type:'selectorSource',path:parts.slice(0,-1),variant:choice.value,value:value.value,revision:current.revision,version:current.version});
  bar.append(choice,valueSlot,confirm);refresh();
  return bar

@@ -193,6 +193,10 @@ function vocabularyEntry(pack: MetadataPack, path: string[], key: string): any |
   const tests = path.indexOf('tests');
   const rest = tests >= 0 ? path.slice(tests + 2) : [];
   const candidates: string[] = [];
+  if (path[0] === 'assessment') {
+    if (path.length === 2) candidates.push(`assessment.${key}`);
+    if (path[1] === 'evaluate' && path.length >= 3) candidates.push(`assessment.evaluate.${String(path[2])}`);
+  }
   if (rest[0] === 'require') {
     if (rest[1] === 'item_requirement' && rest[2]) candidates.push(`test.require.item_requirement.${rest[2]}`);
     if (rest[1] === 'field_requirement') {
@@ -200,10 +204,11 @@ function vocabularyEntry(pack: MetadataPack, path: string[], key: string): any |
       if (rest[2]) candidates.push(`field.${rest[2]}`);
     }
     if (rest[1] === 'fields') {
-      if (rest.length === 2) candidates.push('test.require.fields');
+      if (rest.length > 2) candidates.push(`field.${String(path.at(-1))}`);
       if (rest[2]) candidates.push(`field.${rest[2]}`);
+      if (rest.length === 2) candidates.push('test.require.fields');
     }
-    if (rest[1]) candidates.push(`test.require.${rest[1]}`);
+    if (rest[1] && rest[1] !== 'fields') candidates.push(`test.require.${rest[1]}`);
   } else if (rest.length === 1 && rest[0]) candidates.push(`test.${rest[0]}`);
   return candidates.map(candidate => scopes[candidate]).find(Boolean);
 }
@@ -222,7 +227,18 @@ function schemaHelp(pack: MetadataPack, target: SchemaTarget) {
   const vocabulary = capabilityVocabularyEntry(pack, target) || vocabularyEntry(pack, target.path, target.key);
   const fallbackTitle = target.key.replaceAll('_', ' ').replace(/^./, (value: string) => value.toUpperCase());
   const title = vocabulary?.label || exact?.title || help.title || fallbackTitle;
-  const description = vocabulary?.description || exact?.description || help.description || 'The pinned schema does not declare a human-readable description for this element.';
+  const nodes = expand(pack, target.uri).map(item => item.node);
+  const types = [...new Set(nodes.flatMap(node => Array.isArray(node?.type) ? node.type : node?.type ? [node.type] : []).map(String))];
+  const constraints = [...new Set(nodes.flatMap(node => [
+    typeof node?.pattern === 'string' ? `Pattern: \`${node.pattern}\`` : undefined,
+    typeof node?.minLength === 'number' ? `Minimum length: ${node.minLength}` : undefined,
+    typeof node?.maxLength === 'number' ? `Maximum length: ${node.maxLength}` : undefined,
+    node?.format ? `Format: \`${String(node.format)}\`` : undefined
+  ].filter((value): value is string => Boolean(value))))];
+  const fieldIndex = target.path.lastIndexOf('fields');
+  const fieldPrefix = fieldIndex >= 0 && target.path.length > fieldIndex + 1 ? `Collected field \`${String(target.path[fieldIndex + 1])}\`. ` : '';
+  const schemaFacts = `${types.length ? `Schema type: ${types.map(type => `\`${type}\``).join(' or ')}. ` : ''}${constraints.length ? `${constraints.join('. ')}. ` : ''}`;
+  const description = `${fieldPrefix}${vocabulary?.description || exact?.description || help.description || `Schema-defined ${fallbackTitle.toLowerCase()} value.`} ${schemaFacts}`.trim();
   const schemaChoices = help.choices.length ? help.choices : schemaEnumValues(pack, target.uri);
   const choices = vocabulary && Object.hasOwn(vocabulary, 'choices') ? vocabulary.choices : schemaChoices;
   const allowed = choices.length ? `\n\n**Allowed values:** ${choices.map((value: unknown) => `\`${String(value)}\``).join(', ')}` : '';

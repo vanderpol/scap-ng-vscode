@@ -334,6 +334,10 @@ test('all current-v04 sample Assessments have no false-invalid graphical operato
   const value=new SourceBuffer(raw).json();
   assert.deepEqual(pack.validate(base+'assessment.schema.json',value),[],name);
   const model=assessmentEditorModel({getText:()=>raw,version:1},pack);
+  const missingHelp=model.fields.filter(field=>!String(field.description||'').trim()).map(field=>field.path.join('.'));
+  assert.deepEqual(missingHelp,[],name+' has a schema/vocabulary help description for every authored scalar');
+  const fieldConditions=model.fields.filter(field=>field.path.includes('fields')&&field.path.length>field.path.indexOf('fields')+1);
+  assert.ok(fieldConditions.every(field=>/Collected field|comparison|schema|allowed|datatype/i.test(String(field.description))),name+' field conditions retain contextual schema help');
   const warnings=model.fields.filter(field=>field.operatorCompatible===false).map(field=>field.path.join('.'));
   reports.push({name,warnings});
  }

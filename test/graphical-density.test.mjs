@@ -8,6 +8,9 @@ test('graphical webview contains syntactically valid JavaScript and source-safe 
   assert.ok(script, 'Webview script must exist');
   assert.doesNotThrow(() => new Function(script), 'Webview JS must parse');
   assert.match(html, /vscode\.postMessage\(\{type:'edit'/);
+  assert.match(html, /input\.onfocus=\(\)=>renderHelp\(field\)/);
+  assert.match(html, /operator\.onfocus=\(\)=>renderHelp\(field\)/);
+  assert.match(html, /choice\.onfocus=\(\)=>renderHelp\(field\)/);
   assert.match(html, /data-editor-mode="graphical"/);
   assert.match(html, /data-editor-mode="yaml"/);
   assert.match(html, /data-editor-mode="split"/);
