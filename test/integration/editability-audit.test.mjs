@@ -30,10 +30,10 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.schemaCoverage.oneOfBranches > 0);
   assert.ok(summary.schemaCoverage.allOfBranches > 0);
   assert.ok(summary.schemaCoverage.conditionalLocations > 0);
-  assert.equal(summary.schemaCoverage.qualifiedOperations, 588);
-  assert.equal(summary.schemaCoverage.conditionalOperations, 1703);
+  assert.equal(summary.schemaCoverage.qualifiedOperations, 111);
+  assert.equal(summary.schemaCoverage.conditionalOperations, 2024);
   assert.equal(summary.schemaCoverage.unsupportedOperations, 0);
-  assert.equal(summary.schemaCoverage.notEvidencedOperations, 4571);
+  assert.equal(summary.schemaCoverage.notEvidencedOperations, 4727);
   assert.equal(summary.schemaCoverage.schemaCompositionLocations, 245);
   assert.equal(summary.schemaCoverage.schemaCompositionOperations, 490);
   assert.equal(summary.schemaCoverage.patternPropertyLocations, 0, 'the approved pin currently declares no patternProperties');

@@ -301,7 +301,7 @@ function schemaCoverageCatalog(pack, reports) {
   }
   const baselinePaths = reports.flatMap(report => report.baselinePaths ?? []);
   const actualPathMatches = (template, actual) => template.length === actual.length && template.every((part, index) => part === actual[index] || part === '<key>' && typeof actual[index] === 'string' || part === '<pattern>' && typeof actual[index] === 'string' || part === '[i]' && typeof actual[index] === 'number');
-  const matched = (row, kinds) => cases.filter(item => kinds.includes(item.kind) && actualPathMatches(row.pathParts, item.pathParts ?? []));
+  const matched = (row, kinds) => cases.filter(item => item.status === 'passed' && kinds.includes(item.kind) && actualPathMatches(row.pathParts, item.pathParts ?? []));
   const matrix = [];
   for (const row of rows) {
     const hasBranch = row.branchKeywords.some(keyword => ['oneOf', 'anyOf'].includes(keyword));
