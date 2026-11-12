@@ -156,11 +156,13 @@ function operationChoiceForField(field){
    input.value=authored||values[0]||'';
   }else if(currentOperation()==='equals'&&Array.isArray(field.fixedChoices)&&field.fixedChoices.length){
    input=document.createElement('select');input.setAttribute('aria-label','Comparison value');for(const value of field.fixedChoices){const option=document.createElement('option');option.value=String(value);option.textContent=String(value);input.append(option)}input.value=originalSource==='fixed'?originalValue:'';
-  }else{input=document.createElement('input');input.type='text';input.setAttribute('aria-label','Comparison value');input.placeholder=currentOperation()==='matches_regex'?'Regular expression':'Expected value';input.value=originalSource==='fixed'?originalValue:''}
+  }else if(field.kind==='boolean'){
+   input=document.createElement('select');input.setAttribute('aria-label','Comparison Boolean value');for(const value of ['true','false']){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option)}input.value=originalSource==='fixed'?originalValue:'true';
+  }else{input=document.createElement('input');input.type=field.kind==='number'||field.kind==='integer'?'number':'text';input.setAttribute('aria-label','Comparison value');input.placeholder=currentOperation()==='matches_regex'?'Regular expression':'Expected value';input.value=originalSource==='fixed'?originalValue:''}
   input.onchange=input.oninput=changed;slot.append(input);changed()
  }
  if(operator instanceof HTMLSelectElement)operator.onchange=draw;if(source instanceof HTMLSelectElement)source.onchange=draw;
- apply.onclick=()=>{if(!input?.value)return;const selected=currentSource(),op=currentOperation();if(op!==operation&&!confirm('Change '+operation+' to '+op+'? This alters the Assessment condition.'))return;const value=op==='matches_regex'&&selected==='fixed'?[input.value]:input.value;vscode.postMessage({type:'comparisonChange',path:(field.comparisonPath||field.path).slice(0,-1),operation:op,source:selected,value,allowedOperations:options,revision:current.revision,version:current.version})};
+ apply.onclick=()=>{if(!input?.value)return;const selected=currentSource(),op=currentOperation();if(op!==operation&&!confirm('Change '+operation+' to '+op+'? This alters the Assessment condition.'))return;let value=op==='matches_regex'&&selected==='fixed'?[input.value]:input.value;if(selected==='fixed'&&op!=='matches_regex'){if(field.kind==='boolean')value=input.value==='true';else if(field.kind==='integer')value=Number(input.value);else if(field.kind==='number')value=Number(input.value)}vscode.postMessage({type:'comparisonChange',path:(field.comparisonPath||field.path).slice(0,-1),operation:op,source:selected,value,allowedOperations:options,revision:current.revision,version:current.version})};
  if(field.operatorCompatible===false){const warning=document.createElement('span');warning.className='operator-warning';warning.textContent='Authored operator is not valid for the selected datatype; choose a replacement or use YAML.';bar.append(warning)}
  bar.append(operator,source,slot,apply);draw();return bar
 }
@@ -521,6 +523,10 @@ function menuItems(path){
     ['tests','variables','inputs','shared_objects'].includes(path[1]);
   const entity=path[1]==='tests'?'Test':path[1]==='variables'?'Variable':
     path[1]==='inputs'?'Organizational Input':path[1]==='shared_objects'?'Shared Object':'';
+  const structural=typeof current!=='undefined'?current?.structuralNodes?.find(node=>same(node.path,path)):undefined;
+  if(structural?.kind==='array'&&structural.item)items.push({label:'Append schema-authorized item',action:'add'});
+  if(structural?.kind==='map'&&(structural.properties?.length||structural.additional))items.push({label:'Add schema-authorized member',action:'add'});
+  if(structural&&path.length>3&&!named&&last!=='object'&&last!=='require')items.push({label:'Remove schema member',action:'removeMember'});
   if(path.length===2&&last==='tests')items.push({label:'Add Test',action:'add'});
   else if(path.length===2&&last==='variables')items.push({label:'Add Variable',action:'add'});
   else if(path.length===2&&last==='inputs')items.push({label:'Add Organizational Input',action:'add'});

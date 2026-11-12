@@ -11,7 +11,7 @@ import { WorkspaceIndex, type IndexedDocument, type ApplicabilityOption } from '
 import { GuidedCatalog, createGuidedAssessment, generatedTestTitle } from './guided.js';
 import { completionChoices, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
-import { schemaCapabilityObjectProperties } from './schema-resolver.js';
+import { schemaAdditionalPropertyLocations, schemaCapabilityObjectProperties, schemaItemLocations, schemaNodes, schemaPropertyEntries } from './schema-resolver.js';
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
@@ -257,6 +257,45 @@ function structuralEntityName(collection: string): string {
     collection === 'shared_objects' ? 'Shared Object' : 'definition';
 }
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
+function genericSchemaLocations(pack: MetadataPack, path: (string | number)[]) {
+  const root = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+  let locations = schemaNodes(pack, root);
+  for (const part of path.slice(1)) {
+    if (typeof part === 'number') {
+      locations = schemaItemLocations(pack, locations).flatMap(location => schemaNodes(pack, location.uri));
+      continue;
+    }
+    const property = schemaPropertyEntries(pack, locations).get(part);
+    if (property) locations = schemaNodes(pack, property.uri);
+    else {
+      const additional = schemaAdditionalPropertyLocations(pack, locations);
+      if (!additional.length) return [];
+      locations = additional.flatMap(location => schemaNodes(pack, location.uri));
+    }
+  }
+  return locations;
+}
+function genericSchemaSeed(pack: MetadataPack, locations: any[]): any {
+  const node = locations.find(location => location.node?.const !== undefined)?.node ??
+    locations.find(location => location.node?.default !== undefined)?.node ?? locations[0]?.node;
+  if (!node) return undefined;
+  if (node.const !== undefined) return structuredClone(node.const);
+  if (node.default !== undefined) return structuredClone(node.default);
+  if (Array.isArray(node.enum) && node.enum.length) return structuredClone(node.enum[0]);
+  if (node.type === 'array' || node.items) return [];
+  if (node.type === 'object' || node.properties || node.additionalProperties !== undefined) return {};
+  if (node.type === 'boolean') return false;
+  if (node.type === 'integer' || node.type === 'number') return 0;
+  if (node.type === 'null') return null;
+  return '';
+}
+function validateGraphicalSchemaEdit(pack: MetadataPack, before: any, edit: any, label: string) {
+  const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+  const beforeErrors = pack.validate(schemaUri, before);
+  const afterErrors = pack.validate(schemaUri, edit.document.json());
+  const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
+  if (introduced.length) throw new Error(`Pinned schema rejected ${label}: ${introduced.join('; ')}`);
+}
 function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
 
 function variableExpressionTemplate(operation: string, assessment: any, variableId: string): any {
@@ -654,17 +693,38 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     if (errors.length) throw new Error('Pinned schema rejected the added Object selector: ' + errors.join('; '));
     return edit;
   }
-  const existing = valueAtPathForGraphical(source.json(), path);
+  const before = source.json();
+  const existing = valueAtPathForGraphical(before, path);
+  const locations = genericSchemaLocations(pack, path);
   if (Array.isArray(existing)) {
-    if (last === 'filters') return source.insertArrayItem(path, { include: {} } as any, expectedHash);
-    if (last === 'operands') return source.insertArrayItem(path, { object: {}, filters: [] } as any, expectedHash);
-    return source.insertArrayItem(path, {} as any, expectedHash);
+    const itemLocations = schemaItemLocations(pack, locations);
+    if (!itemLocations.length) throw new Error(`The pinned schema does not authorize sequence items at ${path.join('.')}.`);
+    const seed = genericSchemaSeed(pack, itemLocations.flatMap(location => schemaNodes(pack, location.uri)));
+    const edit = source.insertArrayItem(path, seed as any, expectedHash);
+    validateGraphicalSchemaEdit(pack, before, edit, 'the new sequence item');
+    return edit;
   }
   if (existing && typeof existing === 'object') {
-    const key = await api.window.showInputBox({ prompt: `Add a schema property under ${last}`, value: 'new-property' }); if (!key) return undefined;
-    return source.insertMapEntry(path, key, null, expectedHash);
+    const entries = schemaPropertyEntries(pack, locations);
+    const authored = new Set(Object.keys(existing));
+    const choices = [...entries.entries()].filter(([key]) => !authored.has(key));
+    let key: string | undefined;
+    if (choices.length) {
+      key = (await api.window.showQuickPick(choices.map(([name, location]) => ({
+        label: name, description: String(location.node?.title ?? ''), detail: String(location.node?.description ?? ''), name
+      })), { placeHolder: `Add a schema property under ${last}` }))?.name;
+    } else if (schemaAdditionalPropertyLocations(pack, locations).length) {
+      key = await api.window.showInputBox({ prompt: `Add a schema-authorized member under ${last}`, value: 'new-member' });
+    }
+    if (!key) throw new Error(`No unused schema-declared property is available under ${path.join('.')}.`);
+    const selected = entries.get(key);
+    const seedLocations = selected ? schemaNodes(pack, selected.uri) : schemaAdditionalPropertyLocations(pack, locations);
+    const seed = genericSchemaSeed(pack, seedLocations);
+    const edit = source.insertMapEntry(path, key, seed as any, expectedHash);
+    validateGraphicalSchemaEdit(pack, before, edit, `the new ${key} member`);
+    return edit;
   }
-  throw new Error(`Cannot add a child to ${path.join('.')}; use native YAML for this incomplete structure.`);
+  throw new Error(`Cannot add a child to ${path.join('.')}; the selected YAML node is not a schema-authorized collection.`);
 }
 async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
   const workspaceEdit = new api.WorkspaceEdit();
@@ -940,6 +1000,25 @@ class AssessmentEditorProvider {
             await applySourceWorkspaceEdit(api, document, edit);
             return;
           }
+          if (message.action === 'removeMember') {
+            if (!path.length || path[0] !== 'assessment') throw new Error('Only authored Assessment members can be removed graphically.');
+            const source = new SourceBuffer(document.getText());
+            const original = source.json();
+            const selected = valueAtPathForGraphical(original, path);
+            if (selected === undefined) throw new Error('The selected schema member no longer exists.');
+            const parent = valueAtPathForGraphical(original, path.slice(0, -1));
+            if (!parent || typeof parent !== 'object') throw new Error('The selected member has no editable parent mapping or sequence.');
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for structural edits.');
+            const label = String(path.at(-1));
+            const confirmation = await api.window.showWarningMessage(
+              `Remove schema member "${label}" from the YAML document?`, { modal: true }, 'Remove member');
+            if (confirmation !== 'Remove member') return;
+            const edit = source.removePath(path, currentRevision);
+            validateGraphicalSchemaEdit(pack, original, edit, `removing ${label}`);
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
           if (message.action === 'rename' || message.action === 'remove') {
             const collections = new Set(['tests', 'variables', 'inputs', 'shared_objects']);
             if (path.length !== 3 || path[0] !== 'assessment' ||
@@ -1116,6 +1195,9 @@ class AssessmentEditorProvider {
         }
         const source = new SourceBuffer(document.getText());
         const edit = source.editScalar(message.path, message.value, currentRevision);
+        const pack = this.getPack();
+        if (!pack) throw new Error('The verified offline schema pack is required for graphical scalar edits.');
+        validateGraphicalSchemaEdit(pack, source.json(), edit, 'the scalar edit');
         const workspaceEdit = new api.WorkspaceEdit();
         workspaceEdit.replace(document.uri, new api.Range(document.positionAt(edit.range[0]), document.positionAt(edit.range[1])), edit.replacement);
         if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit');

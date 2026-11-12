@@ -2,7 +2,7 @@ import { parseDocument } from 'yaml';
 import { MetadataPack, sha256, type Json } from './metadata.js';
 import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
-import { schemaNodes, schemaPropertiesAtPath } from './schema-resolver.js';
+import { schemaAdditionalPropertyLocations, schemaItemLocations, schemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
 
@@ -394,6 +394,71 @@ function parseAuthoringDocument(document: any): { value: any; draft: boolean; di
   }
 }
 
+function schemaLocationsForValuePath(pack: MetadataPack, root: string, path: EditPath) {
+  let locations = schemaNodes(pack, root);
+  for (const part of path) {
+    if (typeof part === 'number') {
+      locations = schemaItemLocations(pack, locations).flatMap(location => schemaNodes(pack, location.uri));
+      continue;
+    }
+    const property = schemaPropertyEntries(pack, locations).get(part);
+    if (property) {
+      locations = schemaNodes(pack, property.uri);
+      continue;
+    }
+    const additional = schemaAdditionalPropertyLocations(pack, locations);
+    if (additional.length) {
+      locations = additional.flatMap(location => schemaNodes(pack, location.uri));
+      continue;
+    }
+    return [];
+  }
+  return locations;
+}
+function structuralSchemaSummary(pack: MetadataPack, locations: any[]) {
+  const properties = new Map<string, any>();
+  const required = new Set<string>();
+  for (const location of locations) {
+    for (const name of location.node?.required ?? []) required.add(String(name));
+    for (const [name, property] of schemaPropertyEntries(pack, [location])) {
+      if (!properties.has(name)) {
+        const nodes = schemaNodes(pack, property.uri);
+        const first = nodes[0]?.node ?? property.node;
+        properties.set(name, {
+          name,
+          title: String(first.title ?? name.replaceAll('_', ' ')),
+          description: String(first.description ?? ''),
+          type: Array.isArray(first.type) ? first.type : first.type,
+          enum: Array.isArray(first.enum) ? first.enum : undefined,
+          default: first.default,
+          required: false,
+          object: nodes.some(item => item.node?.type === 'object' || item.node?.properties || item.node?.additionalProperties !== undefined),
+          array: nodes.some(item => item.node?.type === 'array' || item.node?.items)
+        });
+      }
+    }
+  }
+  for (const name of required) if (properties.has(name)) properties.get(name).required = true;
+  const additional = schemaAdditionalPropertyLocations(pack, locations).length > 0;
+  const itemLocations = schemaItemLocations(pack, locations);
+  const item = itemLocations.length ? {
+    object: itemLocations.some(location => location.node?.type === 'object' || location.node?.properties || location.node?.additionalProperties !== undefined),
+    array: itemLocations.some(location => location.node?.type === 'array' || location.node?.items),
+    type: itemLocations[0]?.node?.type
+  } : undefined;
+  return { properties: [...properties.values()], additional, item };
+}
+function structuralNodes(pack: MetadataPack | undefined, root: string | undefined, value: any, path: EditPath = ['assessment']): any[] {
+  if (!pack || !root || !value || typeof value !== 'object') return [];
+  const locations = schemaLocationsForValuePath(pack, root, path);
+  const summary = structuralSchemaSummary(pack, locations);
+  const currentKeys = Array.isArray(value) ? value.map((_entry, index) => String(index)) : Object.keys(value);
+  const result = [{ path, kind: Array.isArray(value) ? 'array' : 'map', currentKeys, ...summary }];
+  if (Array.isArray(value)) value.forEach((entry, index) => result.push(...structuralNodes(pack, root, entry, [...path, index])));
+  else Object.entries(value).forEach(([key, entry]) => result.push(...structuralNodes(pack, root, entry, [...path, key])));
+  return result;
+}
+
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
     const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack);
@@ -448,7 +513,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
       };
     });
     const variableDraft = pack && value?.assessment && typeof value.assessment === 'object' ? analyzeVariables(pack, value.assessment, true).diagnostics.some(item => item.code.startsWith('incomplete-')) : false;
-    return { ok: true, draft: parsed.draft || variableDraft, schemaValid, parseDiagnostics: parsed.diagnostics, schemaDiagnostics, diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields };
+    return { ok: true, draft: parsed.draft || variableDraft, schemaValid, parseDiagnostics: parsed.diagnostics, schemaDiagnostics, diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields, structuralNodes: structuralNodes(pack, root, value, []) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 

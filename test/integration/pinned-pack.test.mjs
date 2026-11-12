@@ -627,3 +627,19 @@ test('recursive Variable expression completion follows schema oneOf and array it
  collectEnums(hiveEquals);
  assert.deepEqual(completionChoices(pack,nestedObject,nestedObject.length).map(choice=>choice.value),[...hiveValues]);
 });
+
+test('generic graphical CRUD metadata exposes schema-authorized collections without a field registry',()=>{
+ const raw=readFileSync(join(source,'examples/windows-server-2025-lock-screen.assessment.yaml'),'utf8');
+ const document={getText:()=>raw,version:1};
+ const model=assessmentEditorModel(document,pack);
+ assert.ok(Array.isArray(model.structuralNodes));
+ const root=model.structuralNodes.find(node=>JSON.stringify(node.path)===JSON.stringify([]));
+ assert.ok(root);
+ const assessmentNode=model.structuralNodes.find(node=>JSON.stringify(node.path)===JSON.stringify(['assessment']));
+ assert.ok(assessmentNode?.properties.some(property=>property.name==='tests'&&property.object));
+ const test=model.structuralNodes.find(node=>node.path.length===3&&node.path[1]==='tests');
+ assert.ok(test?.properties.some(property=>property.name==='require'&&property.object));
+ const require=model.structuralNodes.find(node=>node.path.at(-1)==='require');
+ assert.ok(require?.properties.some(property=>property.name==='item_requirement'&&property.object));
+ assert.equal(model.structuralNodes.some(node=>node.properties?.some(property=>property.name==='new-property')),false);
+});
