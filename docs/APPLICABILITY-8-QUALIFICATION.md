@@ -9,7 +9,7 @@ was **not copied into the repository or VSIX**.
 
 - Release: <https://github.com/vanderpol/scap-ng-tools/releases/tag/assessment-corpus-0.4.0-issue28-applicability.8>
 - Archive: `applicability.8.tar.gz`
-- Archive SHA-256 (GitHub asset and `SHA256SUMS`):
+- Archive SHA-256 (GitHub asset and official `.sha256` sidecar):
   `e164ba54ac99ed1ebc6d205205deedea311ad92abd3d83739073eb0751ae4125`
 - Archive source/tools metadata: tools `aaf3a420840d8a388ac0eb153e05cd54b9e7741c`, source `8c8e5dff860af6b1290ee9273a282db24278f8d5`
 - Archive schema metadata: schema version `0.4.0`, 145 JSON files, 35 roots,
