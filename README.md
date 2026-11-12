@@ -2,7 +2,7 @@
 
 An open-source, offline-first VS Code extension for drafting and reviewing **SCAP-NG** security Assessments, Rules and STIG content.
 
-The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
+The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
@@ -51,7 +51,7 @@ Do not clone private research or commit downloaded corpora into this repo.
 - Distinguish YAML/schema/graph/compile checks, draft/proof warnings and genuine runtime scanner results.
 - Reuse suitable permissively licensed components where it reduces risk, but **do not copy third-party source-available code or unlicensed upstream material**.
 
-The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 235-resource metadata manifest.
+The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 235-resource metadata manifest.
 
 ## License
 

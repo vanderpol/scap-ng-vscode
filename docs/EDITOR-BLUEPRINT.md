@@ -2,7 +2,7 @@
 
 **Status:** implementation guidance for an open-source pre-alpha extension. This document describes product design decisions and a staged delivery strategy; it **does not** change SCAP-NG 0.4 normative grammar or prescribe a future OVAL Board outcome.
 
-See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 canonical Assessment examples](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/examples) for reproducible editor fixtures. The [separate converter and shared authoring-tool contract](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) is not an invitation to reimplement its semantic checks in TypeScript. Canonical schema and behavior are pinned to [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/schema).
+See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 canonical Assessment examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) for reproducible editor fixtures. The [separate converter and shared authoring-tool contract](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) is not an invitation to reimplement its semantic checks in TypeScript. Canonical schema and behavior are pinned to [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema).
 
 ## Product goal and audience
 
