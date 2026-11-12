@@ -19,6 +19,7 @@ import { assessmentCustomEditorId, isAssessmentEditorMode, sameEditorAssociation
 import { createAssistedAssessment } from './assisted-draft.js';
 import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
+import { assessmentSectionBeforeKey } from './assessment-order.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -441,6 +442,12 @@ async function promptRequireField(api: any, catalog: GuidedCatalog, capability: 
   return { [field.name]: { [operation.value]: value } };
 }
 
+function insertAssessmentSection(source: SourceBuffer, key: string, value: any, expectedHash: string) {
+  const authored: any = (source.json() as any)?.assessment;
+  const existingKeys = authored && typeof authored === 'object' && !Array.isArray(authored) ? Object.keys(authored) : [];
+  const beforeKey = assessmentSectionBeforeKey(existingKeys, key, authored?.mode);
+  return source.insertMapEntry(['assessment'], key, value, expectedHash, beforeKey ? { beforeKey } : {});
+}
 async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefined, path: (string | number)[], expectedHash: string, options?: any): Promise<any> {
   if (!pack) throw new Error('A verified offline metadata pack is required for schema-driven structural additions.');
   const source = new SourceBuffer(document.getText()); const catalog = new GuidedCatalog(pack);
@@ -451,7 +458,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const title = await api.window.showInputBox({ prompt: 'Human-readable Test summary (optional; generated when blank)', value: '' }); if (title === undefined) return undefined;
     const skeleton = graphicalTestSkeleton(pack, id, title.trim(), capability.value);
     if (!skeleton.test_title) skeleton.test_title = generatedTestTitle(pack, { capability: capability.value, object: skeleton.object, fields: {}, presenceOnly: false });
-    const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'tests', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'tests', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
   if (last === 'inputs' && path.length === 2 && path[0] === 'assessment') {
     // An Input declares a typed value supplied by the referring policy/Rule.
@@ -509,7 +516,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
       ...(description.trim() ? { description: description.trim() } : {})
     };
     const edit = inputs === undefined
-      ? source.insertMapEntry(['assessment'], 'inputs', { [name]: skeleton } as any, expectedHash)
+      ? insertAssessmentSection(source, 'inputs', { [name]: skeleton } as any, expectedHash)
       : source.insertMapEntry(path, name, skeleton as any, expectedHash);
     const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
     if (errors.length) throw new Error('Pinned schema rejected the new Input: ' + errors.join('; '));
@@ -517,7 +524,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
   }
   if (last === 'variables') {
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
-    const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? source.insertMapEntry(path.slice(0, -1), 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
   if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'require' && options?.condition === true) {
     const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
@@ -739,7 +746,9 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const selected = entries.get(key);
     const seedLocations = selected ? schemaNodes(pack, selected.uri) : schemaDynamicPropertyLocations(pack, locations, key);
     const seed = genericSchemaSeed(pack, seedLocations);
-    const edit = source.insertMapEntry(path, key, seed as any, expectedHash);
+    const edit = path.length === 1 && path[0] === 'assessment'
+      ? insertAssessmentSection(source, key, seed as any, expectedHash)
+      : source.insertMapEntry(path, key, seed as any, expectedHash);
     validateGraphicalSchemaEdit(pack, before, edit, `the new ${key} member`);
     return edit;
   }
@@ -948,7 +957,7 @@ class AssessmentEditorProvider {
             const testExpression = { test: message.testId } as any;
             let edit: any;
             if (evaluate === undefined) {
-              edit = source.insertMapEntry(['assessment'], 'evaluate', { [message.operation]: [testExpression] } as any, currentRevision);
+              edit = insertAssessmentSection(source, 'evaluate', { [message.operation]: [testExpression] } as any, currentRevision);
             } else if (evaluate && typeof evaluate === 'object' && !Array.isArray(evaluate) &&
                        Object.keys(evaluate).length === 1 && evaluate[message.operation] && Array.isArray(evaluate[message.operation])) {
               edit = source.insertArrayItem(['assessment', 'evaluate', message.operation], testExpression, currentRevision);

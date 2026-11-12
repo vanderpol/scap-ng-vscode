@@ -703,3 +703,19 @@ test('Object Variable source is rendered once with the source selector and retai
  assert.doesNotMatch(grid,/entry\.append\(makeInput\(item\)\);if\(style==='object-fields'\)/);
  assert.match(grid,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
 });
+
+test('automated tree presents Evaluate, shared definitions, Inputs and References in authoring order',()=>{
+  const ctx=evaluationHarness({mode:'automated',tests:[{id:'check-test'}],evaluate:{test:'check-test'},shared_objects:{'shared-object':{}},variables:{'derived-variable':{}},inputs:{'policy-input':{}},references:[{source:'policy'}],dependencies:{source:{assessment:'source-assessment'}},applicability:{assessment:'source'}});
+  const root=ctx.treeModel().root;
+  assert.deepEqual(root.children.slice(0,6).map(node=>node.path[1]),[
+    'evaluate','shared_objects','variables','inputs','references','dependencies']);
+  assert.equal(root.children.some(node=>node.path[1]==='tests'),false);
+});
+
+test('manual tree shows manual sections without synthesizing Evaluate or Test definitions',()=>{
+  const ctx=evaluationHarness({mode:'manual',procedure:'Review',response:{type:'manual-review'},evidence_guidance:'Capture evidence',references:[]});
+  const root=ctx.treeModel().root;
+  assert.deepEqual(root.children.map(node=>node.path[1]),['procedure','evidence_guidance','response','references']);
+  assert.equal(root.children.some(node=>node.path[1]==='evaluate'),false);
+  assert.equal(root.children.some(node=>node.path[1]==='tests'),false);
+});

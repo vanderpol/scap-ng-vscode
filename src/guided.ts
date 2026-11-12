@@ -3,6 +3,7 @@ import { MetadataPack, type Json } from './metadata.js';
 import { schemaNodes } from './schema-resolver.js';
 import { styleGeneratedObjects, type YamlObjectStyle } from './yaml-style.js';
 import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
+import { orderGeneratedAssessment } from './assessment-order.js';
 
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedObjectField {
@@ -232,7 +233,7 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
     assessment.evaluate = draft.evaluate ? { [draft.evaluate]: ids } : ids[0];
     assessment.tests = tests;
   }
-  const document = { assessment } as Json;
+  const document = { assessment: orderGeneratedAssessment(assessment, draft.mode) } as Json;
   const diagnostics = pack.validate(schemaBase + 'assessment.schema.json', document);
   return { document, yaml: draft.objectStyle ? styleGeneratedObjects(document, draft.objectStyle) : stringify(document), diagnostics };
 }

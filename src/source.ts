@@ -19,6 +19,8 @@ export interface StructuralEditConstraints {
   maxItems?: number;
   minProperties?: number;
   maxProperties?: number;
+  /** Insert before this authored sibling key; used by Assessment section policy. */
+  beforeKey?: string;
 }
 
 export class SourceBuffer {
@@ -278,18 +280,36 @@ export class SourceBuffer {
     const start = range[0]; const end = range[1];
     const flow = this.text[start] === '{' && this.text[end - 1] === '}';
     const fragment = mapEntryFragment(key, value);
+    const beforePair: any = constraints.beforeKey
+      ? parent.items.find((pair: any) => String(pair.key?.value) === constraints.beforeKey)
+      : undefined;
     let editStart = end - (flow ? 1 : 0); let editEnd = editStart; let replacement = fragment;
     if (flow) {
-      replacement = `${parent.items.length ? ', ' : ''}${flowMapEntryFragment(key, value)}`;
+      if (beforePair?.key?.range) {
+        editStart = beforePair.key.range[0]; editEnd = editStart;
+        // In a flow map the new member precedes the selected sibling, so
+        // it always needs a comma after it.
+        replacement = `${flowMapEntryFragment(key, value)}, `;
+      } else replacement = `${parent.items.length ? ', ' : ''}${flowMapEntryFragment(key, value)}`;
     } else {
       const childIndent = mapChildIndent(this.text, parent, start);
-      const block = indentBlock(fragment, childIndent);
+      const newline = sourceNewline(this.text);
+      const block = indentBlock(fragment, childIndent).replaceAll('\n', newline);
       const before = this.text.slice(0, end);
       const following = this.text.slice(end);
-      const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
-      const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following) ? '\n' : '';
-      replacement = `${prefix}${block}${suffix}`;
-      editStart = end; editEnd = end;
+      const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following) ? newline : '';
+      if (beforePair?.key?.range) {
+        const lineStart = this.text.lastIndexOf('\n', beforePair.key.range[0] - 1) + 1;
+        editStart = lineStart; editEnd = lineStart;
+        // The existing sibling starts at lineStart, so terminate the new
+        // entry explicitly. Without this separator a block value would be
+        // glued to the sibling key (and fail YAML parsing).
+        replacement = `${block}${newline}`;
+      } else {
+        const prefix = before.endsWith('\n') || before.length === 0 ? '' : newline;
+        replacement = `${prefix}${block}${suffix}`;
+        editStart = end; editEnd = end;
+      }
     }
     const next = this.text.slice(0, editStart) + replacement + this.text.slice(editEnd);
     assertYaml(next);
@@ -485,7 +505,8 @@ function sequenceChildIndent(text: string, parent: any, start: number): number {
   if (typeof first === 'number') return lineIndent(text, first);
   return lineIndent(text, start) + 2;
 }
-function lineIndent(text: string, offset: number): number { const line = text.slice(0, offset).split('\n').at(-1) ?? ''; return line.match(/^\s*/)?.[0].length ?? 0; }
+function lineIndent(text: string, offset: number): number { const line = text.slice(0, offset).split('\n').at(-1) ?? ''; return line.match(/^[ \t]*/)?.[0].length ?? 0; }
+function sourceNewline(text: string): '\n' | '\r\n' { return text.includes('\r\n') ? '\r\n' : '\n'; }
 function removableRange(text: string, start: number, end: number, flow: boolean): [number, number] {
   if (flow) {
     let right = end; while (/\s/.test(text[right] ?? '')) right++;

@@ -397,3 +397,19 @@ test('oneOf branch replacement remains localized and supports explicit branch gu
  assert.equal(edit.undo().text,raw);
  assert.throws(()=>source.replaceVariant(['value'],'not-a-mapping',sha256(raw)),/mapping/);
 });
+
+test('Assessment section insertion follows explicit order and preserves CRLF',()=>{
+ const raw=`assessment:\r\n  id: demo-assessment\r\n  tests:\r\n    demo-test: {}\r\n  references:\r\n    - {source: policy}\r\n`;
+ const source=new SourceBuffer(raw);
+ const edit=source.insertMapEntry(['assessment'],'evaluate',{test:'demo-test'},sha256(raw),{beforeKey:'tests'});
+ assert.equal(edit.document.text,`assessment:\r\n  id: demo-assessment\r\n  evaluate:\r\n    test: demo-test\r\n  tests:\r\n    demo-test: {}\r\n  references:\r\n    - {source: policy}\r\n`);
+ assert.deepEqual(Object.keys(edit.document.json().assessment),['id','evaluate','tests','references']);
+ assert.equal(edit.undo().text,raw);
+});
+
+test('Assessment section insertion supports flow mappings before an authored sibling',()=>{
+ const raw='assessment: {id: demo-assessment, tests: {demo-test: {}}, references: [policy]}\n';
+ const edit=new SourceBuffer(raw).insertMapEntry(['assessment'],'evaluate',{test:'demo-test'},sha256(raw),{beforeKey:'tests'});
+ assert.equal(edit.document.text,'assessment: {id: demo-assessment, evaluate: {test: demo-test}, tests: {demo-test: {}}, references: [policy]}\n');
+ assert.deepEqual(Object.keys(edit.document.json().assessment),['id','evaluate','tests','references']);
+});
