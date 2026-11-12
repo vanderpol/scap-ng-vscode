@@ -13,6 +13,7 @@ const code = process.env.VSCODE_BIN ?? 'code';
 const extensionPath = resolve(process.env.SCAP_NG_EXTENSION_PATH ?? process.cwd());
 const useInstalled = process.env.SCAP_NG_USE_INSTALLED === '1';
 const installedExtensionsDir = resolve(process.env.SCAP_NG_INSTALLED_EXTENSIONS_DIR ?? join(process.env.HOME ?? process.cwd(), '.vscode', 'extensions'));
+const installedExtensionPath = resolve(process.env.SCAP_NG_INSTALLED_EXTENSION_PATH ?? join(installedExtensionsDir, 'vanderpol.scap-ng-vscode-metadata-0.0.1'));
 const hostDelay = Number(process.env.SCAP_NG_HOST_DELAY ?? 5000);
 const languageServerDelay = Number(process.env.SCAP_NG_LANGUAGE_SERVER_DELAY ?? 10000);
 if (!packDir || !sampleRoot) throw new Error('SCAP_NG_METADATA_PACK and SCAP_NG_SAMPLE_ROOT are required');
@@ -363,7 +364,7 @@ if (useInstalled) {
   helperSource = helperSource.replace(marker, activation);
 }
 writeFileSync(join(helper, 'extension.js'), helperSource);
-const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : useInstalled ? [`--extensions-dir=${installedExtensionsDir}`] : []), `--extensionDevelopmentPath=${helper}`, ...(useInstalled || process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
+const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : useInstalled ? [`--extensions-dir=${installedExtensionsDir}`] : []), `--extensionDevelopmentPath=${helper}`, ...(useInstalled ? [`--extensionDevelopmentPath=${installedExtensionPath}`] : process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
 const child = spawn(code, args, { detached: true, stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, VSCODE_IPC_HOOK: undefined, VSCODE_IPC_HOOK_CLI: undefined, VSCODE_PID: undefined } });
 const terminateHost = signal => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } } };
 const deadline = Date.now() + Number(process.env.SCAP_NG_HOST_TIMEOUT ?? 90000);
