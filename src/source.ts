@@ -6,9 +6,50 @@ export function sourceRevisionMatches(text: string, expectedHash: string, versio
   return sha256(text) === expectedHash && (expectedVersion === undefined || version === expectedVersion);
 }
 
+export interface SourceRangeEdit {
+  start: number;
+  end: number;
+  replacement: string;
+}
+
+export interface StructuralEditConstraints {
+  /** Mapping keys that may not be removed by a graphical edit. */
+  required?: readonly (string | number)[];
+  minItems?: number;
+  maxItems?: number;
+  minProperties?: number;
+  maxProperties?: number;
+}
+
 export class SourceBuffer {
   constructor(readonly text: string) {}
   openOrSave(): string { return this.text; }
+  /** Apply several disjoint, already schema-qualified source edits atomically.
+   * Ranges are offsets in this buffer. The method deliberately does not parse or
+   * serialize a replacement value: callers retain control of native YAML style,
+   * while the complete transaction is rejected if it would make invalid YAML.
+   */
+  applyEdits(edits: readonly SourceRangeEdit[], expectedHash: string) {
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const ordered = edits.slice().sort((left, right) => right.start - left.start || right.end - left.end);
+    for (const edit of ordered) {
+      if (!Number.isInteger(edit.start) || !Number.isInteger(edit.end) || edit.start < 0 || edit.end < edit.start || edit.end > this.text.length)
+        throw new Error('Source edit range is invalid');
+      if (typeof edit.replacement !== 'string') throw new Error('Source edit replacement must be text');
+    }
+    for (let index = 1; index < ordered.length; index++) {
+      if (ordered[index - 1].start < ordered[index].end) throw new Error('Source edits overlap; transaction rejected');
+    }
+    let next = this.text;
+    for (const edit of ordered) next = next.slice(0, edit.start) + edit.replacement + next.slice(edit.end);
+    assertYaml(next);
+    const start = edits.length ? Math.min(...edits.map(edit => edit.start)) : 0;
+    const end = edits.length ? Math.max(...edits.map(edit => edit.end)) : 0;
+    return { document: new SourceBuffer(next), edits: ordered,
+      range: [start, end] as [number, number], replacement: '',
+      undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
+  }
+
   scalarRange(path: (string | number)[]) {
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
     if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
@@ -188,7 +229,7 @@ export class SourceBuffer {
    * caller owns schema validation; this helper only performs a lossless,
    * revision-checked source splice and declines malformed/unsupported maps.
    */
-  insertMapEntry(path: (string | number)[], key: string, value: Json, expectedHash: string) {
+  insertMapEntry(path: (string | number)[], key: string, value: Json, expectedHash: string, constraints: StructuralEditConstraints = {}) {
     if (!/^[A-Za-z0-9._/-]+$/.test(key) || /^(?:true|false|null|~)$/i.test(key)) throw new Error('Unsafe mapping key; use Source mode');
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
@@ -197,6 +238,7 @@ export class SourceBuffer {
     if (!isMap(parent) || !Array.isArray(parent.items) || parent.items.some((pair: any) => pair.key?.value === key)) throw new Error('Mapping entry cannot be added safely');
     const range = parent.range;
     if (!Array.isArray(range)) throw new Error('Mapping has no safe source range');
+    if (constraints.maxProperties !== undefined && parent.items.length >= constraints.maxProperties) throw new Error('Mapping maximum property count would be exceeded');
     const start = range[0]; const end = range[1];
     const flow = this.text[start] === '{' && this.text[end - 1] === '}';
     const fragment = mapEntryFragment(key, value);
@@ -223,7 +265,7 @@ export class SourceBuffer {
    * useful when a schema-qualified addition needs a companion member, such as
    * Require.fields with its required field_requirement sibling.
    */
-  insertMapEntries(path: (string | number)[], entries: readonly (readonly [string, Json])[], expectedHash: string) {
+  insertMapEntries(path: (string | number)[], entries: readonly (readonly [string, Json])[], expectedHash: string, constraints: StructuralEditConstraints = {}) {
     if (!entries.length) throw new Error('No mapping entries to add');
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
@@ -231,6 +273,7 @@ export class SourceBuffer {
     const parent: any = doc.getIn(path, true);
     if (!isMap(parent) || !Array.isArray(parent.items) || !Array.isArray(parent.range)) throw new Error('Mapping cannot be edited safely');
     const keys = new Set(parent.items.map((pair: any) => String(pair.key?.value)));
+    if (constraints.maxProperties !== undefined && parent.items.length + entries.length > constraints.maxProperties) throw new Error('Mapping maximum property count would be exceeded');
     if (entries.some(([key]) => !/^[A-Za-z0-9._/-]+$/.test(key) || /^(?:true|false|null|~)$/i.test(key) || keys.has(key)))
       throw new Error('Mapping entry cannot be added safely');
     const [start, end] = parent.range;
@@ -256,12 +299,13 @@ export class SourceBuffer {
   }
 
   /** Append an item to an authored YAML sequence while keeping its style. */
-  insertArrayItem(path: (string | number)[], value: Json, expectedHash: string) {
+  insertArrayItem(path: (string | number)[], value: Json, expectedHash: string, constraints: StructuralEditConstraints = {}) {
     if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
     if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
     const parent: any = doc.getIn(path, true);
     if (!parent || !Array.isArray(parent.items) || !Array.isArray(parent.range)) throw new Error('Sequence cannot be edited safely');
+    if (constraints.maxItems !== undefined && parent.items.length >= constraints.maxItems) throw new Error('Sequence maximum item count would be exceeded');
     const start = parent.range[0]; const end = parent.range[1];
     if (this.text[start] === '[' && this.text[end - 1] === ']') {
       const fragment = `${parent.items.length ? ', ' : ''}${yamlScalarOrBlock(value)}`;
@@ -314,8 +358,17 @@ export class SourceBuffer {
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  /** Replace a selected oneOf/anyOf branch as one localized transaction.
+   * The schema adapter supplies the already-authorized branch; this method only
+   * protects source safety and preserves every byte outside the selected node.
+   */
+  replaceVariant(path: (string | number)[], branch: Json, expectedHash: string) {
+    if (!branch || typeof branch !== 'object' || Array.isArray(branch)) throw new Error('A variant branch must be a mapping');
+    return this.replacePathValue(path, branch, expectedHash);
+  }
+
   /** Remove one mapping member or sequence item; required parents are checked by the host. */
-  removePath(path: (string | number)[], expectedHash: string) {
+  removePath(path: (string | number)[], expectedHash: string, constraints: StructuralEditConstraints = {}) {
     if (!path.length || sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
     const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
     if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
@@ -324,12 +377,15 @@ export class SourceBuffer {
       const pair: any = parent.items.find((candidate: any) => candidate.key?.value === last);
       const pairRange = pair?.range ?? (pair?.key?.range && pair?.value?.range ? [pair.key.range[0], pair.value.range[1]] : undefined);
       if (!pairRange) throw new Error('Mapping member has no safe source range');
+      if (constraints.required?.some(required => required === last)) throw new Error('Required mapping member cannot be removed graphically');
+      if (constraints.minProperties !== undefined && parent.items.length <= constraints.minProperties) throw new Error('Mapping minimum property count would be violated');
       const [start, end] = pairRange; const flow = Array.isArray(parent.range) && this.text[parent.range[0]] === '{';
       const removal = removableRange(this.text, start, end, flow);
       return this.spliceAndValidate(removal[0], removal[1], '');
     }
     if (Array.isArray(parent?.items) && typeof last === 'number') {
       const item: any = parent.items[last]; if (!item?.range) throw new Error('Sequence item has no safe source range');
+      if (constraints.minItems !== undefined && parent.items.length <= constraints.minItems) throw new Error('Sequence minimum item count would be violated');
       const [start, end] = item.range; const flow = Array.isArray(parent.range) && this.text[parent.range[0]] === '[';
       const removal = removableRange(this.text, start, end, flow);
       return this.spliceAndValidate(removal[0], removal[1], '');

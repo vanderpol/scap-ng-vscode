@@ -335,3 +335,42 @@ test('shared comparison replacement supports regex arrays and refuses unsafe map
  }
  assert.throws(()=>source.replaceComparison(path,'bad-op!', 'x',sha256(raw)),/Invalid comparison/);
 });
+
+test('source transactions apply disjoint edits atomically and restore exact bytes',()=>{
+ const raw='# keep\nassessment:\n  id: demo\n  title: Old\n';
+ const source=new SourceBuffer(raw);
+ const id=source.scalarRange(['assessment','id']);
+ const title=source.scalarRange(['assessment','title']);
+ const edit=source.applyEdits([
+   {start:id[0],end:id[1],replacement:'changed'},
+   {start:title[0],end:title[1],replacement:'New'}
+ ],sha256(raw));
+ assert.deepEqual(edit.document.json(),{assessment:{id:'changed',title:'New'}});
+ assert.match(edit.document.text,/^# keep\n/);
+ assert.equal(edit.undo().text,raw);
+ assert.throws(()=>source.applyEdits([{start:id[0],end:title[1],replacement:'bad'},{start:title[0],end:title[1],replacement:'bad'}],sha256(raw)),/overlap/);
+ assert.throws(()=>source.applyEdits([{start:0,end:raw.length,replacement:'assessment: ['}],sha256(raw)),/break YAML/);
+ assert.throws(()=>source.applyEdits([{start:id[0],end:id[1],replacement:'stale'}],'0'.repeat(64)),/Stale/);
+});
+
+test('schema structural cardinality guards reject unsafe graphical CRUD',()=>{
+ const map='assessment: {id: demo, title: old}\n';
+ const source=new SourceBuffer(map);
+ assert.throws(()=>source.insertMapEntry(['assessment'],'mode','manual',sha256(map),{maxProperties:2}),/maximum/);
+ assert.throws(()=>source.removePath(['assessment','id'],sha256(map),{required:['id']}),/Required/);
+ assert.throws(()=>source.removePath(['assessment','id'],sha256(map),{minProperties:2}),/minimum/);
+ const seq='values: [one]\n';
+ const sequence=new SourceBuffer(seq);
+ assert.throws(()=>sequence.insertArrayItem(['values'],'two',sha256(seq),{maxItems:1}),/maximum/);
+ assert.throws(()=>sequence.removePath(['values',0],sha256(seq),{minItems:1}),/minimum/);
+});
+
+test('oneOf branch replacement remains localized and supports explicit branch guards',()=>{
+ const raw='# before\nvalue: {equals: old} # after\nsibling: untouched\n';
+ const source=new SourceBuffer(raw);
+ const edit=source.replaceVariant(['value'],{matches_regex:['^new$']},sha256(raw));
+ assert.deepEqual(edit.document.json(),{value:{matches_regex:['^new$']},sibling:'untouched'});
+ assert.match(edit.document.text,/^# before\n/); assert.match(edit.document.text,/# after/);
+ assert.equal(edit.undo().text,raw);
+ assert.throws(()=>source.replaceVariant(['value'],'not-a-mapping',sha256(raw)),/mapping/);
+});
