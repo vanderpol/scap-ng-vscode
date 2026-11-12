@@ -104,7 +104,7 @@ def bootstrap(*, offline=False, with_pack=False):
                        '--oval-root', str(inputs['oval-v5.12.3']),
                        '--source-commit', PROFILE['sourceCommit'], '--output', str(output)]
             try:
-                subprocess.run(command, check=True, env=env)
+                subprocess.run(command, check=True)
             except subprocess.CalledProcessError as error:
                 raise ValueError('metadata export failed; install tools Python dependencies first') from error
         verify_pack(output)
