@@ -14,8 +14,10 @@ function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath
   return [{ path, value }];
 }
 function pathLabel(path: EditPath) { return path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.').replaceAll('.[', '['); }
-function schemaRoot(pack?: MetadataPack) {
-  return pack?.manifest.resources.find((resource: any) => resource.kind === 'schema' && /\/assessment\.schema\.json$/.test(resource.uri))?.uri as string | undefined;
+function schemaRoot(pack?: MetadataPack, value?: any) {
+  const manual = value?.assessment?.mode === 'manual';
+  const suffix = manual ? /\/manual-assessment\.schema\.json$/ : /\/assessment\.schema\.json$/;
+  return pack?.manifest.resources.find((resource: any) => resource.kind === 'schema' && suffix.test(resource.uri))?.uri as string | undefined;
 }
 
 /**
@@ -462,7 +464,7 @@ function structuralNodes(pack: MetadataPack | undefined, root: string | undefine
 
 export function modelFor(document: any, pack?: MetadataPack) {
   try {
-    const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack);
+    const parsed = parseAuthoringDocument(document); const value = parsed.value; const root = schemaRoot(pack, value);
     // A parseable document can still violate the pinned schema. Keep those
     // diagnostics separate from YAML parse errors and make the value-aware
     // default policy conservative: invalid authored values must stay visible.

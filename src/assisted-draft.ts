@@ -1,5 +1,6 @@
 import { MetadataPack, type Json } from './metadata.js';
 import { GuidedCatalog, createGuidedAssessment, type GuidedApplicabilitySelection } from './guided.js';
+import type { YamlObjectStyle } from './yaml-style.js';
 
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 
@@ -7,6 +8,7 @@ export interface AssistedDraftInput {
   title: string;
   checkText: string;
   applicability?: GuidedApplicabilitySelection;
+  objectStyle?: YamlObjectStyle;
 }
 
 export type AssistedConfidence = 'high' | 'medium' | 'low';
@@ -380,6 +382,7 @@ function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: 
   const result = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
     mode: 'manual', className: firstClass(pack), procedure: checkText || `Review the requirement: ${title}`, applicability: input.applicability,
+    objectStyle: input.objectStyle,
     response: { type: 'manual-review', choices: [
       { value: 'yes', label: 'Meets requirement', outcome: 'true' },
       { value: 'no', label: 'Does not meet requirement', outcome: 'false' }
@@ -396,7 +399,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   if (!checkText) throw new Error('Paste the check text or procedure before generating a draft.');
   const candidate = candidateFor({ title, checkText }, pack);
   if (!candidate || !pack.manifest.capabilities[candidate.capability]) {
-    return manualDraft(pack, { title, checkText, applicability: input.applicability }, 'low', [], [
+    return manualDraft(pack, { title, checkText, applicability: input.applicability, objectStyle: input.objectStyle }, 'low', [], [
       'No supported automated selector pattern was confidently recognized.',
       'The draft was created as a manual procedure so no scanner semantics were invented.'
     ]);
@@ -405,19 +408,19 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   const required = catalog.objectRequirements(candidate.capability);
   const complete = candidate.presenceOnly || Object.keys(candidate.object).length === 0 || required.some(branch => branch.fields.every(field => Object.hasOwn(candidate.object, field)));
   if (!complete) {
-    return manualDraft(pack, { title, checkText, applicability: input.applicability }, 'low', candidate.assumptions, ['The inferred Object does not satisfy a complete schema-required selector branch.']);
+    return manualDraft(pack, { title, checkText, applicability: input.applicability, objectStyle: input.objectStyle }, 'low', candidate.assumptions, ['The inferred Object does not satisfy a complete schema-required selector branch.']);
   }
   const testCandidates = candidate.testCandidates ?? [{ title, fields: candidate.fields ?? {} }];
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), evaluate: candidate.evaluate, applicability: input.applicability,
+    mode: 'automated', className: firstClass(pack), evaluate: candidate.evaluate, applicability: input.applicability, objectStyle: input.objectStyle,
     tests: testCandidates.map((test, index) => ({
       id: candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'), title: test.title, capability: candidate.capability,
       object: candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false
     }))
   });
   if (generated.diagnostics.length) {
-    return manualDraft(pack, { title, checkText, applicability: input.applicability }, 'low', candidate.assumptions, [
+    return manualDraft(pack, { title, checkText, applicability: input.applicability, objectStyle: input.objectStyle }, 'low', candidate.assumptions, [
       `The best automated guess failed pinned schema validation: ${generated.diagnostics.join('; ')}`
     ]);
   }

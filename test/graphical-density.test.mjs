@@ -8,6 +8,14 @@ test('graphical webview contains syntactically valid JavaScript and source-safe 
   assert.ok(script, 'Webview script must exist');
   assert.doesNotThrow(() => new Function(script), 'Webview JS must parse');
   assert.match(html, /vscode\.postMessage\(\{type:'edit'/);
+  assert.match(html, /textContent='Switch to YAML editor'/);
+  assert.match(html, /type:'switchToSource'/);
+  assert.match(html, /action:'renameMember'/);
+  assert.match(html, /Rename.*field/);
+  assert.match(html, /kind:'filter'/);
+  assert.match(html, /Add Filter field/);
+  assert.match(html, /current\?\.assessment\?\.mode==='manual'/);
+  assert.match(html, /YAML parse errors prevent reliable Evaluate and Test navigation/);
   assert.match(html, /revision:current\.revision,version:current\.version/);
 });
 
@@ -18,9 +26,10 @@ test('defaults are explained locally rather than by an opaque global toolbar cou
   assert.match(html, /function defaultsSummary\(path\)/);
   assert.match(html, /What is hidden\?/);
   assert.match(html, /Show all fields/);
-  assert.match(html, /Simplified/);
-  assert.match(html, /All fields/);
-  assert.match(html, /No schema defaults are hidden in this section/);
+  assert.doesNotMatch(html, /function viewToggle\(path\)/);
+  assert.doesNotMatch(html, /Simplified/);
+  assert.doesNotMatch(html, /All fields/);
+  assert.doesNotMatch(html, /No schema defaults are hidden in this section/);
 });
 
 test('left tree defaults every authored branch to expanded', () => {
@@ -80,13 +89,13 @@ test('Assessment and contextual help share a left pane without a third grid colu
   assert.match(html, /const resolved=testPathForSelection\(target\)\|\|target/);
 });
 
-test('simplified/all-fields only rerenders the inspector, never rebuilds the tree', () => {
+test('scoped defaults action only rerenders the inspector, never rebuilds the tree', () => {
   const html = graphicalHtml();
   assert.match(html, /function setDefaultsView\(next\)/);
   const block = html.slice(html.indexOf('function setDefaultsView(next)'), html.indexOf('function defaultsSummary(path)'));
   assert.match(block, /renderCenter\(\);renderHelp\(\)/);
   assert.doesNotMatch(block, /renderTree\(\)|render\(current\)|revealPath\(/);
-  assert.match(html, /button\.onclick=\(\)=>setDefaultsView\(item\.value\)/);
+  assert.doesNotMatch(html, /setDefaultsView\(item\.value\)/);
   assert.match(html, /action\.onclick=\(\)=>setDefaultsView\(!showDefaults\)/);
   assert.match(html, /const objectFields=allFieldsUnder\(object\)/);
   assert.match(html, /\|\|allFieldsUnder\(node\.path\)\.length>0/);
@@ -118,7 +127,7 @@ function evaluationHarness(assessment) {
     logic,
     'return {treeModel,evaluationSelection,testPathForSelection};'
   ].join('\n'));
-  return factory({ fields: [], assessment });
+  return factory({ fields: [], assessment, parseDiagnostics: assessment.parseDiagnostics });
 }
 
 test('Evaluate tree follows actual nested expression and resolves Test IDs without duplication', () => {
@@ -143,6 +152,14 @@ test('Evaluate tree follows actual nested expression and resolves Test IDs witho
   assert.deepEqual(ctx.testPathForSelection(evalRoot.children[1].children[1].path),
     ['assessment','tests','registry-policy-test']);
   assert.ok(!tree.children.find(n=>n.path[1]==='tests'), 'Only Evaluate normally navigates Tests');
+});
+
+test('Parse errors do not synthesize an Evaluate tree or fake unreferenced Tests', () => {
+  const ctx = evaluationHarness({ mode: 'automated', parseDiagnostics: ['Missing }'], tests: [{ id: 'authored-test' }], evaluate: undefined });
+  const tree = ctx.treeModel().root;
+  assert.equal(tree.children.some(node => node.path[1] === 'evaluate'), false);
+  assert.equal(tree.children.find(node => node.path[1] === 'yaml_errors').label, 'YAML parse errors (1)');
+  assert.equal(tree.children.some(node => node.path[1] === 'unreferenced_tests'), false);
 });
 
 test('Single Test, conditional evaluation and manual Assessment retain their true shapes', () => {
@@ -243,11 +260,14 @@ test('Variable stages show collection, capture and concatenation in dependency o
   assert.match(stages[2].note,/authored order/);
 });
 
-test('Variable diagnostics remain visible without claiming runtime evaluation',()=>{
+test('Variable diagnostics are contextual and do not clutter clean forms',()=>{
  const html=graphicalHtml();
- assert.match(html,/current\?\.variableAnalysisSummary/);
- assert.match(html,/Variable diagnostics/);
- assert.match(html,/variableAnalysisSummary/);
+ const center=html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
+ assert.match(center,/const variableIssues=\(current\?\.variableDiagnostics\|\|\[\]\)\.filter/);
+ assert.match(center,/Variable diagnostics/);
+ assert.match(center,/Show details/);
+ assert.doesNotMatch(center,/current\?\.variableAnalysisSummary/);
+ assert.doesNotMatch(center,/runtime evaluation not available/);
 });
 
 test('Variable UI preserves source-edit controls and never presents runtime-derived output', () => {
@@ -340,8 +360,8 @@ test('Test summary always shows authored metadata without an inapplicable defaul
   const html=graphicalHtml();
   const center=html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
   assert.match(center,/const isTestOverview=editPath\.length===3&&editPath\[1\]==='tests'/);
-  assert.match(center,/&&\!isTestOverview&&\!isCollection\(editPath\)\)heading\.append\(viewToggle\(editPath\)\)/);
-  assert.match(center,/if\(!isTestOverview\)root\.append\(defaultsSummary\(editPath\)\)/);
+  assert.doesNotMatch(center,/viewToggle/);
+  assert.match(center,/if\(!isTestOverview\)\{const defaultsNotice=defaultsSummary\(editPath\);if\(defaultsNotice\)root\.append\(defaultsNotice\)\}/);
   const overview=html.slice(html.indexOf('function testOverview(path)'),html.indexOf('function requireDefinition(path)'));
   assert.match(overview,/const headFields=sectionFields\(path\)/, 'Summary shows authored Test metadata regardless of display preference');
   assert.doesNotMatch(overview,/const headFields=editorFields\(path\)/);
@@ -367,7 +387,7 @@ test('Organizational Inputs page describes policy-supplied values and has Add co
   assert.match(html, /add\.onclick=\(\)=>vscode\.postMessage\(\{type:'structural',action:'add',path,revision:current\?\.revision,version:current\?\.version\}\)/);
   assert.match(html, /last==='inputs'\)items\.push\(\{label:'Add Organizational Input',action:'add'\}\)/);
   const center = html.slice(html.indexOf('function renderCenter(){'),html.indexOf('function renderHelp(',html.indexOf('function renderCenter(){')));
-  assert.match(center, /!\s*isCollection\(editPath\)\)heading\.append\(viewToggle\(editPath\)\)/);
+  assert.doesNotMatch(center, /viewToggle/);
 });
 
 

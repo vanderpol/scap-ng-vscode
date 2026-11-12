@@ -1,6 +1,7 @@
 import { stringify } from 'yaml';
 import { MetadataPack, type Json } from './metadata.js';
 import { schemaNodes } from './schema-resolver.js';
+import { styleGeneratedObjects, type YamlObjectStyle } from './yaml-style.js';
 import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
@@ -16,7 +17,7 @@ export interface GuidedObjectField {
 export interface GuidedObjectRequirement { fields: string[]; description?: string; }
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; }
 export interface GuidedApplicabilitySelection { alias: string; assessmentId: string; expectedVersion: string | number; }
-export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; applicability?: GuidedApplicabilitySelection; }
+export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
 const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
@@ -230,5 +231,5 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   }
   const document = { assessment } as Json;
   const diagnostics = pack.validate(schemaBase + 'assessment.schema.json', document);
-  return { document, yaml: stringify(document), diagnostics };
+  return { document, yaml: draft.objectStyle ? styleGeneratedObjects(document, draft.objectStyle) : stringify(document), diagnostics };
 }

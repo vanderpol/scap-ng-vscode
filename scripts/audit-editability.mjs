@@ -40,8 +40,8 @@ function valueAt(value, path) {
   return current;
 }
 
-function schemaLocationsForPath(pack, path) {
-  let locations = schemaNodes(pack, schemaUri);
+function schemaLocationsForPath(pack, path, rootUri = schemaUri) {
+  let locations = schemaNodes(pack, rootUri);
   for (const part of path) {
     if (typeof part === 'number') {
       locations = schemaItemLocations(pack, locations).flatMap(location => schemaNodes(pack, location.uri));
@@ -240,7 +240,8 @@ function schemaNodeKind(node) {
 function schemaCoverageCatalog(pack, reports) {
   const rows = [];
   const byUri = new Map();
-  const queue = [[schemaUri, ['assessment'], 'root']];
+  const manualSchemaUri = pack.manifest.resources.find(resource => resource.kind === 'schema' && /\/manual-assessment\.schema\.json$/.test(resource.uri))?.uri;
+  const queue = [[schemaUri, [], 'root'], ...(manualSchemaUri ? [[manualSchemaUri, [], 'manual-branch']] : [])];
   const queued = new Set();
   while (queue.length) {
     const [uri, path, relation] = queue.shift();
@@ -293,6 +294,11 @@ function schemaCoverageCatalog(pack, reports) {
     }
   }
   const cases = reports.flatMap(report => report.cases);
+  const concreteKindsByPath = new Map();
+  for (const row of rows) if (row.kind !== 'unknown') {
+    const kinds = concreteKindsByPath.get(row.path) ?? new Set();
+    kinds.add(row.kind); concreteKindsByPath.set(row.path, kinds);
+  }
   const baselinePaths = reports.flatMap(report => report.baselinePaths ?? []);
   const actualPathMatches = (template, actual) => template.length === actual.length && template.every((part, index) => part === actual[index] || part === '<key>' && typeof actual[index] === 'string' || part === '<pattern>' && typeof actual[index] === 'string' || part === '[i]' && typeof actual[index] === 'number');
   const matched = (row, kinds) => cases.filter(item => kinds.includes(item.kind) && actualPathMatches(row.pathParts, item.pathParts ?? []));
@@ -304,8 +310,12 @@ function schemaCoverageCatalog(pack, reports) {
     const qualify = (operation, evidence, conditional = false, rejected = false) => {
       operations[operation] = evidence.length ? 'qualified' : rejected ? 'rejected' : conditional ? 'conditional' : row.readOnly ? 'read-only' : 'not-evidenced';
     };
+    const schemaPlaceholder = row.kind === 'unknown' && (concreteKindsByPath.get(row.path)?.size ?? 0) > 0;
     if (row.readOnly) {
       operations.read = 'read-only';
+    } else if (schemaPlaceholder) {
+      operations.read = 'schema-composition';
+      operations.mutate = 'schema-composition';
     } else if (row.kind === 'scalar') {
       operations.read = readEvidence ? 'qualified' : 'not-evidenced';
       qualify('update', matched(row, ['scalar-update']), Boolean(row.conditional || hasBranch));
@@ -313,9 +323,10 @@ function schemaCoverageCatalog(pack, reports) {
       qualify('delete', matched(row, ['structural-remove']), Boolean(row.conditional || hasBranch), row.required.length > 0);
     } else if (row.kind === 'map') {
       operations.read = readEvidence ? 'qualified' : 'not-evidenced';
-      qualify('create-member', matched(row, ['structural-add']), Boolean(row.dynamicMembers || row.conditional || hasBranch));
-      qualify('delete-member', matched(row, ['structural-remove']), Boolean(row.required.length || row.conditional || hasBranch));
-      qualify('rename-key', [], Boolean(row.dynamicMembers));
+      const rejectedDynamic = matched(row, ['dynamic-member-rejection']);
+      qualify('create-member', matched(row, ['structural-add']), Boolean(row.dynamicMembers || row.conditional || hasBranch), rejectedDynamic.length > 0);
+      qualify('delete-member', matched(row, ['structural-remove']), Boolean(row.required.length || row.conditional || hasBranch), rejectedDynamic.length > 0);
+      qualify('rename-key', matched(row, ['dynamic-key-rename']), Boolean(row.dynamicMembers));
     } else if (row.kind === 'array') {
       operations.read = readEvidence ? 'qualified' : 'not-evidenced';
       qualify('create-item', matched(row, ['array-add']), Boolean(row.conditional || hasBranch));
@@ -352,8 +363,12 @@ function schemaCoverageCatalog(pack, reports) {
       readOnlyLocations: rows.filter(row => row.readOnly).length,
       operationStatuses: statusCounts,
       intentionallyRejectedOperations: reports.reduce((sum, report) => sum + report.cases.filter(item => item.status === 'passed' && /rejection|invalid/.test(item.kind)).length, 0),
+      qualifiedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':qualified')).reduce((sum, [, count]) => sum + count, 0),
+      conditionalOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':conditional')).reduce((sum, [, count]) => sum + count, 0),
       notEvidencedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':not-evidenced')).reduce((sum, [, count]) => sum + count, 0),
-      unsupportedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':unsupported')).reduce((sum, [, count]) => sum + count, 0)
+      unsupportedOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':unsupported')).reduce((sum, [, count]) => sum + count, 0),
+      schemaCompositionLocations: statusCounts['read:schema-composition'] ?? 0,
+      schemaCompositionOperations: Object.entries(statusCounts).filter(([key]) => key.endsWith(':schema-composition')).reduce((sum, [, count]) => sum + count, 0)
     }
   };
 }
@@ -369,6 +384,9 @@ function auditDocument(pack, name, text, options = {}) {
   const report = { name, synthetic: Boolean(options.synthetic), pack, coverage: {}, checks: { bytePreservation: 0, undoRedo: 0, noOpBytes: false }, cases: [], failures: [], skips: 0 };
   const source = new SourceBuffer(text);
   const beforeValue = source.json();
+  const documentSchemaUri = beforeValue?.assessment?.mode === 'manual'
+    ? (pack.manifest.resources.find(resource => resource.kind === 'schema' && /\/manual-assessment\.schema\.json$/.test(resource.uri))?.uri ?? schemaUri)
+    : schemaUri;
   report.baselinePaths = collectValuePaths(beforeValue);
   report.checks.noOpBytes = source.openOrSave() === text;
   if (!report.checks.noOpBytes) report.failures.push('no-op open/save changed source bytes');
@@ -385,7 +403,7 @@ function auditDocument(pack, name, text, options = {}) {
 
   for (const node of model.structuralNodes ?? []) {
     const value = valueAt(beforeValue, node.path);
-    const locations = schemaLocationsForPath(pack, node.path);
+    const locations = schemaLocationsForPath(pack, node.path, documentSchemaUri);
     if (Array.isArray(value)) {
       const itemLocations = schemaItemLocations(pack, locations).flatMap(location => schemaNodes(pack, location.uri));
       const existing = value.length ? value[0] : undefined;
@@ -406,6 +424,37 @@ function auditDocument(pack, name, text, options = {}) {
       continue;
     }
     if (!isObject(value)) continue;
+    // Dynamic Require field names are authored record members, not schema
+    // composition nodes. Qualify their rename operation against real converted
+    // Assessments; named definition IDs use the reference-safe rename path
+    // instead and are intentionally not counted here.
+    if (node.additional && ((node.path.at(-1) === 'fields' && node.path.includes('require')) || node.path.at(-1) === 'include')) {
+      const [oldKey] = Object.keys(value);
+      if (oldKey) {
+        const seed = clone(value[oldKey]);
+        const addedKey = `${oldKey}-added`;
+        if (node.path.at(-1) === 'include') {
+          auditInvalid(report, 'dynamic-member-rejection', node.path, text, beforeValue,
+            (buffer, revision) => buffer.insertMapEntry(node.path, addedKey, seed, revision));
+          auditInvalid(report, 'dynamic-member-rejection', node.path, text, beforeValue,
+            (buffer, revision) => buffer.removePath(node.path.concat(oldKey), revision));
+        } else {
+          executeEdit(report, 'structural-add', node.path.concat(addedKey), text, beforeValue,
+            (buffer, revision) => buffer.insertMapEntry(node.path, addedKey, seed, revision));
+        }
+        if (!report.synthetic || node.path.at(-1) === 'include') {
+          const newKey = `${oldKey}-renamed`;
+          executeEdit(report, 'dynamic-key-rename', node.path, text, beforeValue,
+            (buffer, revision) => {
+              const edit = buffer.editMappingKey(node.path, oldKey, newKey, revision);
+              if (node.path.at(-1) === 'include' &&
+                  JSON.stringify(edit.document.json()?.assessment?.tests) !== JSON.stringify(beforeValue?.assessment?.tests))
+                throw new Error('Filter key rename changed Test references');
+              return edit;
+            });
+        }
+      }
+    }
     const entries = schemaProperties(pack, locations);
     const required = schemaRequired(locations);
     for (const [property, location] of entries) {
@@ -446,6 +495,69 @@ function auditDocument(pack, name, text, options = {}) {
   return report;
 }
 
+const manualAuthoringFixture = `assessment:
+  id: manual-review-assessment
+  version: 1
+  assessment_title: Manual review Assessment
+  mode: manual
+  class: compliance
+  procedure: Review the target according to the approved procedure.
+  evidence_guidance: Capture an approved screenshot and reviewer note.
+  references:
+    - {source: policy-123, title: Local policy}
+    - {source: ticket-456, title: Change record}
+  response:
+    type: manual-review
+    choices:
+      - {value: yes, label: Yes, outcome: 'true'}
+      - {value: no, label: No, outcome: 'false'}
+    allow_comment: true
+    allow_evidence: true
+`;
+const manualMinimalAuthoringFixture = `assessment:
+  id: manual-minimal-assessment
+  version: 1
+  assessment_title: Manual minimal Assessment
+  mode: manual
+  class: compliance
+  procedure: Review the target according to the approved procedure.
+  response:
+    type: manual-review
+    choices:
+      - {value: yes, label: Yes, outcome: 'true'}
+    allow_comment: true
+    allow_evidence: true
+`;
+const sharedFilterAuthoringFixture = `assessment:
+  id: shared-filter-assessment
+  version: 1
+  assessment_title: Shared filter Assessment
+  mode: automated
+  class: compliance
+  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.0}
+  shared_objects:
+    shared-filter-object:
+      object_title: Registry object
+      capability: windows.registry
+      hive: {equals: local_machine}
+      key: {equals: 'SOFTWARE\\Policies'}
+      name: {equals: NoLockScreenSlideshow}
+      filters:
+        - include:
+            type: {values_found: one_or_more, values_matching: every, equals: dword}
+  tests:
+    shared-filter-test:
+      test_title: Shared filter test
+      capability: windows.registry
+      object: shared-filter-object
+      require:
+        item_requirement: {items_found: one_or_more, items_satisfying: every}
+        field_requirement: {values_found: one_or_more, values_matching: every}
+        fields: {value: {equals: 1}}
+      reported_elements: all
+  evaluate: {test: shared-filter-test}
+`;
+
 function buildLogicalSynthetic(baseText) {
   const value = new SourceBuffer(baseText).json();
   const tests = value.assessment.tests;
@@ -467,6 +579,9 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
   const logicalBase = files[0] && readFileSync(join(fixtureRoot, files[0]), 'utf8');
   const logicalSynthetic = logicalBase && buildLogicalSynthetic(logicalBase);
   if (logicalSynthetic) reports.push(auditDocument(pack, `${files[0]}#logical-synthetic`, logicalSynthetic, { synthetic: true }));
+  reports.push(auditDocument(pack, 'manual-assessment#authoring-fixture', manualAuthoringFixture, { synthetic: true }));
+  reports.push(auditDocument(pack, 'manual-minimal-assessment#authoring-fixture', manualMinimalAuthoringFixture, { synthetic: true }));
+  reports.push(auditDocument(pack, 'shared-filter-assessment#authoring-fixture', sharedFilterAuthoringFixture, { synthetic: true }));
   const schemaCoverage = schemaCoverageCatalog(pack, reports);
   for (const report of reports) {
     report.skips = report.cases.filter(item => item.status === 'skipped').length;
@@ -487,7 +602,7 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
     undoRedoChecks: reports.reduce((sum, report) => sum + report.checks.undoRedo, 0),
     noOpByteChecks: reports.filter(report => report.checks.noOpBytes).length,
     schemaCoverage: schemaCoverage.summary,
-    note: 'The schema catalog enumerates reachable pinned-schema locations. qualified means an executed source-local transaction; conditional, not-evidenced, read-only, unsupported, and rejected are reported separately and never counted as coverage.'
+    note: 'The schema catalog enumerates reachable pinned-schema locations. qualified means an executed source-local transaction; conditional, not-evidenced, read-only, unsupported, rejected, and schema-composition nodes are reported separately. Composition nodes are schema mechanics, not user-editable fields, and are never counted as CRUD coverage.'
   };
   if (summary.modelFailures || summary.schemaInvalid || summary.failures) {
     const details = reports.flatMap(report => report.failures.map(error => `${report.name}: ${error}`));

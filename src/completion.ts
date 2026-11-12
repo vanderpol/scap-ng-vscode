@@ -20,7 +20,7 @@ function lineAt(source: string, offset: number) {
   const start = source.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
   return { start, text: source.slice(start, offset) };
 }
-function inlineMappingPath(text: string): string[] {
+export function inlineMappingPath(text: string): string[] {
   // Track the flow mappings that are still open at the cursor. This matters
   // after a comma: `object: {hive: {...}, k` is still inside `object`, but a
   // simple last-brace/last-comma heuristic loses that parent context.

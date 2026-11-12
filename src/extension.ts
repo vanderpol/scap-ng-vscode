@@ -9,7 +9,7 @@ import { findFirstRegexContext, findRegexContext, replaceRegexScalars } from './
 import { evaluateObjectSamples, findObjectContext, objectTesterGuidance, starterSampleItems } from './sample-object.js';
 import { WorkspaceIndex, type IndexedDocument, type ApplicabilityOption } from './indexer.js';
 import { GuidedCatalog, createGuidedAssessment, generatedTestTitle } from './guided.js';
-import { completionChoices, propertyChoicesForPath } from './completion.js';
+import { completionChoices, inlineMappingPath, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
 import { schemaDynamicPropertyLocations, schemaCapabilityObjectProperties, schemaItemLocations, schemaNodes, schemaPropertyEntries } from './schema-resolver.js';
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
@@ -17,6 +17,7 @@ import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
 import { isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
 import { createAssistedAssessment } from './assisted-draft.js';
+import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
@@ -238,6 +239,14 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
   return editor;
 }
 
+async function switchToNativeSource(api: any, document: any, panel: any) {
+  const editor = await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+  // Show the text editor first so disposing this custom-editor panel cannot
+  // leave the workbench without an active view of the authoritative document.
+  panel?.dispose?.();
+  return editor;
+}
+
 
 function structuralEntityName(collection: string): string {
   return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
@@ -245,10 +254,12 @@ function structuralEntityName(collection: string): string {
     collection === 'shared_objects' ? 'Shared Object' : 'definition';
 }
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
-function genericSchemaLocations(pack: MetadataPack, path: (string | number)[]) {
-  const root = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+function genericSchemaLocations(pack: MetadataPack, path: (string | number)[], value?: any) {
+  const root = value?.assessment?.mode === 'manual'
+    ? 'https://scap-ng.dev/schema/v0.4.0/manual-assessment.schema.json'
+    : 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
   let locations = schemaNodes(pack, root);
-  for (const part of path.slice(1)) {
+  for (const part of path) {
     if (typeof part === 'number') {
       locations = schemaItemLocations(pack, locations).flatMap(location => schemaNodes(pack, location.uri));
       continue;
@@ -683,7 +694,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
   }
   const before = source.json();
   const existing = valueAtPathForGraphical(before, path);
-  const locations = genericSchemaLocations(pack, path);
+  const locations = genericSchemaLocations(pack, path, before);
   if (Array.isArray(existing)) {
     const itemLocations = schemaItemLocations(pack, locations);
     if (!itemLocations.length) throw new Error(`The pinned schema does not authorize sequence items at ${path.join('.')}.`);
@@ -752,6 +763,7 @@ class AssessmentEditorProvider {
       }
       // Open native YAML editor beside workbench: the webview never becomes a second source document.
       if (message.type === 'openSource') { await revealNativeSource(api, document); return; }
+      if (message.type === 'switchToSource') { await switchToNativeSource(api, document, panel); return; }
       if (message.type === 'openRegex') { await api.commands.executeCommand('scapNg.testRegex', { document, useFirst: true }); return; }
       if (message.type === 'openGuided') { await api.commands.executeCommand('scapNg.createGuidedAssessment'); return; }
       if (message.type === 'selectPath' && Array.isArray(message.path)) {
@@ -921,7 +933,7 @@ class AssessmentEditorProvider {
             return;
           }
           if (message.action === 'removeField') {
-            const fieldKind = message.fieldKind === 'require' ? 'require' : message.fieldKind === 'object' ? 'object' : undefined;
+            const fieldKind = message.fieldKind === 'require' ? 'require' : message.fieldKind === 'object' ? 'object' : message.fieldKind === 'filter' ? 'filter' : undefined;
             if (!fieldKind) throw new Error('Unknown field editing context.');
             const source = new SourceBuffer(document.getText()), original = source.json();
             const rootPath = Array.isArray(message.path) ? message.path : [];
@@ -957,6 +969,20 @@ class AssessmentEditorProvider {
                   !Object.prototype.hasOwnProperty.call(fields, fieldName))
                 throw new Error('The requested Require field is not an authored fields member.');
               label = 'Require field';
+            } else if (fieldKind === 'filter') {
+              const isSharedFilterInclude = rootPath.length === 6 && rootPath[0] === 'assessment' &&
+                rootPath[1] === 'shared_objects' && typeof rootPath[2] === 'string' &&
+                rootPath[3] === 'filters' && typeof rootPath[4] === 'number' &&
+                rootPath[5] === 'include';
+              if (!isSharedFilterInclude || !startsWith(fieldPath, rootPath) ||
+                  fieldPath.length !== rootPath.length + 1 || typeof fieldPath.at(-1) !== 'string')
+                throw new Error('Filter field removal is available only for direct Shared Object Filter include members.');
+              const fieldName = String(fieldPath.at(-1));
+              const include = valueAtPathForGraphical(original, rootPath);
+              if (!include || typeof include !== 'object' || Array.isArray(include) ||
+                  !Object.prototype.hasOwnProperty.call(include, fieldName))
+                throw new Error('The requested Filter include member is not authored.');
+              label = 'Filter include field';
             } else {
               const isInlineTestObject = rootPath.length === 4 && rootPath[0] === 'assessment' &&
                 rootPath[1] === 'tests' && typeof rootPath[2] === 'string' && rootPath[3] === 'object';
@@ -990,6 +1016,44 @@ class AssessmentEditorProvider {
             const introduced = errors.filter((error: string) => !before.includes(error));
             if (introduced.length)
               throw new Error('Removing this field would invalidate the Assessment: ' + introduced.join('; '));
+            await applySourceWorkspaceEdit(api, document, edit);
+            return;
+          }
+          if (message.action === 'renameMember') {
+            const mappingPath = Array.isArray(message.mappingPath) ? message.mappingPath : [];
+            const oldKey = typeof message.oldKey === 'string' ? message.oldKey : '';
+            const isRequireFields = mappingPath.length >= 2 && mappingPath[0] === 'assessment' &&
+              mappingPath.at(-1) === 'fields' && mappingPath.includes('require');
+            const isSharedFilterInclude = mappingPath.length === 6 && mappingPath[0] === 'assessment' &&
+              mappingPath[1] === 'shared_objects' && typeof mappingPath[2] === 'string' &&
+              mappingPath[3] === 'filters' && typeof mappingPath[4] === 'number' && mappingPath[5] === 'include';
+            if ((!isRequireFields && !isSharedFilterInclude) || !oldKey)
+              throw new Error('Only authored Require fields and Shared Object Filter include members can be renamed graphically.');
+            const source = new SourceBuffer(document.getText());
+            const original = source.json();
+            const mapping = valueAtPathForGraphical(original, mappingPath);
+            if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) ||
+                !Object.prototype.hasOwnProperty.call(mapping, oldKey))
+              throw new Error('The selected Require field no longer exists.');
+            const pack = this.getPack();
+            if (!pack) throw new Error('The verified offline schema pack is required for field edits.');
+            const locations = genericSchemaLocations(pack, mappingPath, original);
+            const staticKeys = new Set(schemaPropertyEntries(pack, locations).keys());
+            if (staticKeys.has(oldKey) || !schemaDynamicPropertyLocations(pack, locations, oldKey).length)
+              throw new Error('The selected member is not a schema-authorized dynamic field.');
+            const newKey = await api.window.showInputBox({
+              prompt: (isSharedFilterInclude ? 'Rename Filter include field "' : 'Rename Require field "') + oldKey + '"', value: oldKey,
+              validateInput: (candidate: string) => candidate !== oldKey &&
+                !Object.prototype.hasOwnProperty.call(mapping, candidate) &&
+                schemaDynamicPropertyLocations(pack, locations, candidate).length
+                  ? undefined : 'Use a new member name accepted by the pinned schema.'
+            });
+            if (!newKey) return;
+            const before = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', original);
+            const edit = source.editMappingKey(mappingPath, oldKey, newKey, currentRevision);
+            const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+            const introduced = errors.filter((error: string) => !before.includes(error));
+            if (introduced.length) throw new Error('Renaming this dynamic field would invalidate the Assessment: ' + introduced.join('; '));
             await applySourceWorkspaceEdit(api, document, edit);
             return;
           }
@@ -1261,14 +1325,14 @@ class GuidedPanel {
   static open(context: vscode.ExtensionContext, pack: MetadataPack | undefined, index: WorkspaceIndex) {
     const api: any = vscode;
     if (!pack) return void vscode.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using Guided authoring.');
-    const catalog = new GuidedCatalog(pack); const applicabilityOptions = index.applicabilityOptions(); const panel = api.window.createWebviewPanel('scapNg.guided', 'SCAP-NG Guided Assessment', api.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    const catalog = new GuidedCatalog(pack); const applicabilityOptions = index.applicabilityOptions(); const objectStyle = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')); const panel = api.window.createWebviewPanel('scapNg.guided', 'SCAP-NG Guided Assessment', api.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
     panel.webview.html = guidedHtml(catalog, applicabilityOptions);
     panel.webview.onDidReceiveMessage(async (message: any) => {
       if (message.type === 'capability') { panel.webview.postMessage({ type: 'objectFields', fields: catalog.objectFields(message.value), requirements: catalog.objectRequirements(message.value) }); panel.webview.postMessage({ type: 'resultFields', fields: catalog.resultFields(message.value) }); return; }
       if (message.type === 'assistedDraft') {
         try {
           const selected = typeof message.applicability === 'string' ? applicabilityOptions.find(option => option.key === message.applicability && option.available) : undefined;
-          const result = createAssistedAssessment(pack, { title: String(message.title ?? ''), checkText: String(message.checkText ?? ''), applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined });
+          const result = createAssistedAssessment(pack, { title: String(message.title ?? ''), checkText: String(message.checkText ?? ''), applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined, objectStyle });
           const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' }); await api.window.showTextDocument(document);
           panel.webview.postMessage({ ok: true, message: `Annotated ${result.generatedMode} draft opened (${result.confidence} confidence). Review every assumption before use; no scanner result was produced.` });
         } catch (error) { panel.webview.postMessage({ ok: false, message: error instanceof Error ? error.message : String(error) }); }
@@ -1277,7 +1341,7 @@ class GuidedPanel {
       if (message.type !== 'create') return;
       try {
         const selected = typeof message.applicability === 'string' ? applicabilityOptions.find(option => option.key === message.applicability && option.available) : undefined;
-        const draft = { ...message, applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined };
+        const draft = { ...message, applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined, objectStyle };
         const result = createGuidedAssessment(pack, draft);
         if (result.diagnostics.length) { panel.webview.postMessage({ ok: false, message: `Schema validation: ${result.diagnostics.join('; ')}` }); return; }
         const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' }); await api.window.showTextDocument(document);
@@ -1313,14 +1377,21 @@ function inlineYaml(value: unknown): string {
   if (value && typeof value === 'object') return `{${Object.entries(value).map(([key, item]) => `${key}: ${inlineYaml(item)}`).join(', ')}}`;
   return stringify(value).trim();
 }
-function quickFixFragment(choice: { value: string; insertText?: string; defaultValue?: unknown }, block: boolean): string {
-  if (choice.defaultValue !== undefined) return `${choice.value}: ${inlineYaml(choice.defaultValue)}`;
-  // Keep newly inserted schema objects in the parent's style. A block opener
-  // is intentionally left as a skeleton so the next completion can add its
-  // schema-defined child; `{}` would create a visually mixed object and an
-  // equally incomplete flow mapping beside block-form siblings.
-  if (choice.insertText?.endsWith('{')) return block ? `${choice.value}:` : `${choice.value}: {}`;
+function quickFixFragment(choice: { value: string; insertText?: string; defaultValue?: unknown }, block: boolean, style: YamlObjectStyle = 'tree'): string {
+  const flow = !block || style === 'compact';
+  if (choice.defaultValue !== undefined) {
+    if (flow && choice.defaultValue && typeof choice.defaultValue === 'object' && !Array.isArray(choice.defaultValue)) return `${choice.value}: ${inlineYaml(choice.defaultValue)}`;
+    if (!flow && choice.defaultValue && typeof choice.defaultValue === 'object' && !Array.isArray(choice.defaultValue)) return `${choice.value}:\n${String(stringify(choice.defaultValue)).trim()}`;
+    return `${choice.value}: ${inlineYaml(choice.defaultValue)}`;
+  }
+  // A flow parent cannot safely contain expanded children. In that case the
+  // requested style falls back to the parent's syntax rather than corrupting
+  // YAML; `tree` follows the parent by design.
+  if (choice.insertText?.endsWith('{')) return flow ? `${choice.value}: {}` : `${choice.value}:`;
   return choice.insertText ?? `${choice.value}: `;
+}
+function indentYamlFragment(fragment: string, indent: number): string {
+  return fragment.split('\n').map((line, index) => `${' '.repeat(index ? indent + 2 : indent)}${line}`).join('\n');
 }
 function capabilityForPath(value: any, path: string[]): string {
   const tests = path.indexOf('tests');
@@ -1443,7 +1514,8 @@ function missingRequiredActions(document: any, pack: MetadataPack, api: any): an
     const group = grouped.get(groupKey) ?? { parentPath, map, mapStart, mapEnd, flow, source, choices: [] };
     group.choices.push(choice);
     grouped.set(groupKey, group);
-    const fragment = quickFixFragment(choice, !flow);
+    const style = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg', document.uri).get('objectStyle'));
+    const fragment = quickFixFragment(choice, !flow, style);
     let position: any;
     let text: string;
     if (flow) {
@@ -1461,7 +1533,7 @@ function missingRequiredActions(document: any, pack: MetadataPack, api: any): an
       const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
       const suffix = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
       position = document.positionAt(mapEnd);
-      text = `${prefix}${' '.repeat(indent)}${fragment}${suffix}`;
+      text = `${prefix}${indentYamlFragment(fragment, indent)}${suffix}`;
     }
     const edit = new api.WorkspaceEdit();
     edit.insert(document.uri, position, text);
@@ -1477,7 +1549,8 @@ function missingRequiredActions(document: any, pack: MetadataPack, api: any): an
     if (group.parentPath.at(-1) !== 'object' || group.choices.length < 2) continue;
     const uniqueChoices = [...new Map(group.choices.map((choice: any) => [choice.value, choice])).values()];
     if (uniqueChoices.length < 2) continue;
-    const fragments = uniqueChoices.map((choice: any) => quickFixFragment(choice, !group.flow));
+    const style = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg', document.uri).get('objectStyle'));
+    const fragments = uniqueChoices.map((choice: any) => quickFixFragment(choice, !group.flow, style));
     let position: any;
     let text: string;
     if (group.flow) {
@@ -1490,7 +1563,7 @@ function missingRequiredActions(document: any, pack: MetadataPack, api: any): an
       const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
       const suffix = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
       position = document.positionAt(group.mapEnd);
-      text = `${prefix}${fragments.map((fragment: string) => `${' '.repeat(indent)}${fragment}`).join('\n')}${suffix}`;
+      text = `${prefix}${fragments.map((fragment: string) => indentYamlFragment(fragment, indent)).join('\n')}${suffix}`;
     }
     const edit = new api.WorkspaceEdit();
     edit.insert(document.uri, position, text);
@@ -1638,13 +1711,17 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         const linePrefix = typeof document.lineAt === 'function'
           ? document.lineAt(position.line).text.slice(0, position.character)
           : '';
-        const flowMapping = linePrefix.lastIndexOf('{') > linePrefix.lastIndexOf('}');
+        const flowMapping = linePrefix.lastIndexOf('{') > linePrefix.lastIndexOf('}') || inlineMappingPath(documentText.slice(0, offset)).length > 0;
+        const objectStyle = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg', document.uri).get('objectStyle'));
+        const useFlowMapping = flowMapping || objectStyle === 'compact';
         let propertyInsert = choice.insertText ?? `${choice.value}: `;
+        const objectDefault = choice.defaultValue && typeof choice.defaultValue === 'object' && !Array.isArray(choice.defaultValue);
         // A schema object must not force authors into flow syntax. In a block
         // mapping, `require: {` followed by newline-authored children is
-        // invalid YAML unless commas are added. Keep the flow template only
-        // when the cursor is actually inside a flow mapping.
-        if (!flowMapping && propertyInsert.endsWith('{')) propertyInsert = `${choice.value}:`;
+        // invalid YAML unless commas are added. The tree default follows the
+        // surrounding mapping, while compact is explicit for new mappings.
+        if (!useFlowMapping && (propertyInsert.endsWith('{') || objectDefault)) propertyInsert = `${choice.value}:`;
+        else if (useFlowMapping && objectDefault && objectStyle === 'compact') propertyInsert = `${choice.value}: ${inlineYaml(choice.defaultValue)}`;
         // If the user deleted only the property name, preserve the existing
         // colon (`k: ...`) instead of producing `key: : ...`.
         let completionInsert = choice.kind === 'property'
@@ -1656,7 +1733,7 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
         // Flow mappings and already-indented sequence items stay compact.
         const blankParent = linePrefix.match(/^(\s*)(?:-\s*)?[A-Za-z_][A-Za-z0-9_-]*:\s*$/);
         let normalizeInsertedLine: { line: number; indent: number } | undefined;
-        if (choice.kind === 'property' && !flowMapping && blankParent && nextCharacter !== ':') {
+        if (choice.kind === 'property' && !flowMapping && objectStyle !== 'compact' && blankParent && nextCharacter !== ':') {
           // Keep the textual edit minimal, then normalize the newly created
           // line after VS Code/Red Hat YAML has had a chance to apply its own
           // indentation. This avoids both same-level children and doubled

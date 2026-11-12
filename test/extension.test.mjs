@@ -20,6 +20,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.createGuidedAssessment'));
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enum, ['yaml', 'graphical']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentAuthoringPrototype'));
@@ -75,6 +77,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Authoring workflow/);
   assert.match(extensionSource, /assistedDraft/);
   assert.match(extensionSource, /createAssistedAssessment/);
+  assert.match(extensionSource, /switchToNativeSource/);
+  assert.match(extensionSource, /message\.type === 'switchToSource'/);
   assert.match(extensionSource, /id=\"workflow\"/);
   assert.match(extensionSource, /id=\"assistedTitle\"/);
   assert.match(extensionSource, /id=\"assistedCheckText\"/);

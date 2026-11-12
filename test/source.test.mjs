@@ -125,6 +125,29 @@ test('mapping-key edits can enforce schema-authorized operations before patching
  assert.equal(edit.document.json().require.fields.value.not_equal,1);
 });
 
+
+test('manual Assessment and Shared Object Filter CRUD preserve source and references',()=>{
+ const manual=`assessment:\n  id: manual-review-assessment\n  version: 1\n  assessment_title: Manual review\n  mode: manual\n  class: compliance\n  procedure: Review the target.\n  evidence_guidance: Capture evidence.\n  references:\n    - {source: policy-123, title: Policy}\n    - {source: ticket-456, title: Ticket}\n  response:\n    type: manual-review\n    choices:\n      - {value: yes, label: Yes, outcome: 'true'}\n    allow_comment: true\n    allow_evidence: true\n`;
+ const manualSource=new SourceBuffer(manual); const manualEdit=manualSource.editScalar(['assessment','evidence_guidance'],'Capture updated evidence.',sha256(manual));
+ assert.equal(manualEdit.document.json().assessment.evidence_guidance,'Capture updated evidence.'); assert.equal(manualEdit.undo().text,manual);
+ const addedReference=manualSource.insertArrayItem(['assessment','references'],{source:'change-789',title:'Change'},sha256(manual));
+ assert.equal(addedReference.document.json().assessment.references.length,3); assert.equal(addedReference.undo().text,manual);
+ const removedReference=manualSource.removePath(['assessment','references',0],sha256(manual));
+ assert.equal(removedReference.document.json().assessment.references.length,1); assert.equal(removedReference.undo().text,manual);
+ const shared=`assessment:\n  id: shared-filter-assessment\n  version: 1\n  assessment_title: Shared filter\n  mode: automated\n  class: compliance\n  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.0}\n  shared_objects:\n    shared-filter-object:\n      object_title: Registry object\n      capability: windows.registry\n      filters:\n        - include:\n            type: {values_found: one_or_more, values_matching: every, equals: dword}\n  tests:\n    shared-filter-test:\n      capability: windows.registry\n      object: shared-filter-object\n      require: {item_requirement: {items_found: one_or_more, items_satisfying: every}}\n  evaluate: {test: shared-filter-test}\n`;
+ const sharedSource=new SourceBuffer(shared); const include=['assessment','shared_objects','shared-filter-object','filters',0,'include'];
+ const added=sharedSource.insertMapEntry(include,'name',{values_found:'one_or_more',values_matching:'every',equals:'NoLockScreenSlideshow'},sha256(shared));
+ assert.equal(added.document.json().assessment.tests['shared-filter-test'].object,'shared-filter-object'); assert.equal(added.undo().text,shared);
+ const renamed=sharedSource.editMappingKey(include,'type','datatype',sha256(shared));
+ assert.equal(renamed.document.json().assessment.shared_objects['shared-filter-object'].filters[0].include.datatype.equals,'dword');
+ assert.equal(renamed.document.json().assessment.tests['shared-filter-test'].object,'shared-filter-object'); assert.equal(renamed.undo().text,shared);
+ const sharedWithTwo=shared.replace('            type: {values_found: one_or_more, values_matching: every, equals: dword}\n', '            type: {values_found: one_or_more, values_matching: every, equals: dword}\n            name: {values_found: one_or_more, values_matching: every, equals: NoLockScreenSlideshow}\n');
+ const removedSource=new SourceBuffer(sharedWithTwo); const removed=removedSource.removePath(include.concat('type'),sha256(sharedWithTwo));
+ assert.equal(removed.document.json().assessment.shared_objects['shared-filter-object'].filters[0].include.type,undefined); assert.equal(removed.document.json().assessment.shared_objects['shared-filter-object'].filters[0].include.name.equals,'NoLockScreenSlideshow'); assert.equal(removed.undo().text,sharedWithTwo);
+ assert.throws(()=>sharedSource.editMappingKey(include,'type','datatype',sha256(shared),['type']),/not permitted/);
+ assert.throws(()=>sharedSource.editMappingKey(include,'type','datatype','stale'),/Stale/);
+});
+
 test('offline PCRE2 preview accepts inline modifiers and remains bounded',async()=>{
  const result=await previewRegex('^user=(.+)$','user=alice');
  assert.equal(result.dialect,'PCRE2-safe-preview'); assert.equal(result.matched,true); assert.deepEqual(result.captures,['alice']);

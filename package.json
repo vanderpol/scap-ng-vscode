@@ -167,6 +167,22 @@
           "default": "yaml",
           "scope": "window",
           "description": "Default editor for SCAP-NG Assessment YAML files. Use Open With\u2026 for a one-time choice."
+        },
+        "scapNg.objectStyle": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "expanded",
+            "tree"
+          ],
+          "enumDescriptions": [
+            "Write newly authored Object mappings in compact inline flow style when safe.",
+            "Write newly authored Object mappings as readable expanded block YAML.",
+            "Follow the surrounding YAML tree style; this is the default and preserves existing flow/block context."
+          ],
+          "default": "tree",
+          "scope": "resource",
+          "description": "Presentation style for newly authored SCAP-NG Object mappings. Existing YAML is never reformatted on open or save."
         }
       }
     },
