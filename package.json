@@ -158,11 +158,13 @@
           "type": "string",
           "enum": [
             "yaml",
-            "graphical"
+            "graphical",
+            "split"
           ],
           "enumDescriptions": [
             "Open Assessment YAML files in the native VS Code YAML editor.",
-            "Open Assessment YAML files in the SCAP-NG Graphical editor."
+            "Open Assessment YAML files in the SCAP-NG Graphical editor.",
+            "Open the Graphical editor with the same authoritative YAML document in a native VS Code editor beside it."
           ],
           "default": "yaml",
           "scope": "window",

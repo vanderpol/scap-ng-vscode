@@ -9,12 +9,20 @@ export const assessmentEditorAssociationPatterns = [
   '**/*.assessment.yml'
 ] as const;
 
-export const assessmentEditorModes = ['yaml', 'graphical'] as const;
+export const assessmentEditorModes = ['yaml', 'graphical', 'split'] as const;
 export type AssessmentEditorMode = typeof assessmentEditorModes[number];
 export const assessmentCustomEditorId = 'scapNg.assessment';
 
 export function isAssessmentEditorMode(value: unknown): value is AssessmentEditorMode {
-  return value === 'yaml' || value === 'graphical';
+  return value === 'yaml' || value === 'graphical' || value === 'split';
+}
+
+export function usesGraphicalEditor(mode: AssessmentEditorMode): boolean {
+  return mode === 'graphical' || mode === 'split';
+}
+
+export function usesNativeYamlEditor(mode: AssessmentEditorMode): boolean {
+  return mode === 'yaml' || mode === 'split';
 }
 
 /** Return a new association map with only SCAP-NG's entries changed. */
@@ -27,10 +35,10 @@ export function withAssessmentEditorAssociation(
     : {};
 
   for (const pattern of assessmentEditorAssociationPatterns) {
-    if (mode === 'graphical') {
+    if (usesGraphicalEditor(mode)) {
       associations[pattern] = assessmentCustomEditorId;
     } else if (associations[pattern] === assessmentCustomEditorId) {
-      // YAML mode restores VS Code's normal text-editor choice while leaving
+      // YAML-only mode restores VS Code's normal text-editor choice while leaving
       // any unrelated association untouched.
       delete associations[pattern];
     }

@@ -15,7 +15,7 @@ import { schemaDynamicPropertyLocations, schemaCapabilityObjectProperties, schem
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
-import { isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
+import { assessmentCustomEditorId, isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
 import { createAssistedAssessment } from './assisted-draft.js';
 import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
@@ -115,6 +115,21 @@ function readBuildInfo(root: string): BuildInfo {
 }
 function buildLabel(info: BuildInfo) { return `${info.buildId} · ${info.builtAt}`; }
 function yamlServiceLabel(api: any) { const extension = api.extensions?.getExtension?.('redhat.vscode-yaml'); return extension ? `Red Hat YAML ${extension.packageJSON?.version ?? 'installed'}` : 'Red Hat YAML not detected'; }
+function configuredAssessmentEditor(api: any, document?: any) {
+  const configured = api.workspace.getConfiguration('scapNg', document?.uri).get('assessmentEditor', 'yaml');
+  return isAssessmentEditorMode(configured) ? configured : 'yaml';
+}
+async function openNativeYamlBeside(api: any, document: any) {
+  return api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Beside ?? 2, preserveFocus: true, preview: false });
+}
+async function openConfiguredSplitSource(api: any) {
+  if (configuredAssessmentEditor(api) !== 'split') return;
+  const tabs = (api.window.tabGroups?.all ?? []).flatMap((group: any) => group.tabs ?? []);
+  const custom = tabs.find((tab: any) => tab.input?.viewType === assessmentCustomEditorId && tab.input?.uri);
+  if (!custom?.input?.uri || !api.workspace.openTextDocument) return;
+  const document = await api.workspace.openTextDocument(custom.input.uri);
+  await openNativeYamlBeside(api, document);
+}
 
 /** Keep the default Assessment editor in sync without touching unrelated user associations. */
 async function synchronizeAssessmentEditorPreference(api: any): Promise<void> {
@@ -740,6 +755,9 @@ class AssessmentEditorProvider {
   constructor(private readonly getPack: () => MetadataPack | undefined) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
     const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = graphicalHtml();
+    // Split mode keeps the graphical inspector and the actual VS Code YAML
+    // editor visible together. Both views still bind to this one TextDocument.
+    if (configuredAssessmentEditor(api, document) === 'split') void openNativeYamlBeside(api, document);
     const send = () => {
       try {
         const model = assessmentEditorModel(document, this.getPack());
@@ -1854,7 +1872,10 @@ export function activate(context: vscode.ExtensionContext) {
   const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, () => { resetPack(); syncEditorPreference(); });
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('scapNg-authoringSidebar', authoringSidebar));
   if (api.workspace.onDidChangeConfiguration) context.subscriptions.push(api.workspace.onDidChangeConfiguration((event: any) => {
-    if (event?.affectsConfiguration?.('scapNg.assessmentEditor')) syncEditorPreference();
+    if (event?.affectsConfiguration?.('scapNg.assessmentEditor')) {
+      syncEditorPreference();
+      void openConfiguredSplitSource(api);
+    }
   }));
   const revealAuthoring = async () => {
     try { await api.commands.executeCommand('workbench.view.extension.scapNg-authoring'); return true; }

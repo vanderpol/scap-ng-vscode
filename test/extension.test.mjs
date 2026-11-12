@@ -18,7 +18,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.searchIndex'));
   assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.searchIndex' && menu.when === 'view == scapNg-assessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.createGuidedAssessment'));
-  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enum, ['yaml', 'graphical']);
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enum, ['yaml', 'graphical', 'split']);
+  assert.match(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enumDescriptions[2], /same authoritative YAML.*native VS Code.*beside/i);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
@@ -79,6 +80,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /createAssistedAssessment/);
   assert.match(extensionSource, /switchToNativeSource/);
   assert.match(extensionSource, /message\.type === 'switchToSource'/);
+  assert.match(extensionSource, /configuredAssessmentEditor/);
+  assert.match(extensionSource, /openNativeYamlBeside/);
+  assert.match(extensionSource, /openConfiguredSplitSource/);
   assert.match(extensionSource, /id=\"workflow\"/);
   assert.match(extensionSource, /id=\"assistedTitle\"/);
   assert.match(extensionSource, /id=\"assistedCheckText\"/);
