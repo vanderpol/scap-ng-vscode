@@ -342,6 +342,9 @@ test('Require predicate planner preserves separate statuses, regex list and valu
 test('Require inspector groups Item, Field and predicate requirements with editable patterns', () => {
   const html=graphicalHtml();
   assert.match(html,/function requireInspector\(path\)/);
+  assert.match(html,/function logicalConditionLabel\(basePath\)/);
+  assert.match(html,/require-condition-group/);
+  assert.match(html,/all fields in this branch must match \(AND\)/);
   assert.match(html,/function fieldCheckCard\(path,plan\)/);
   assert.match(html,/1\. Item requirements/);
   assert.match(html,/2\. Field-value requirements/);
