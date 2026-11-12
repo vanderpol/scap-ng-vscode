@@ -293,7 +293,7 @@ export class SourceBuffer {
     }
     const next = this.text.slice(0, editStart) + replacement + this.text.slice(editEnd);
     assertYaml(next);
-    return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], replacement,
+    return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], sourceRange: [editStart, editEnd] as [number, number], replacement,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
@@ -317,8 +317,9 @@ export class SourceBuffer {
     const before = this.text.slice(0, end);
     const following = this.text.slice(end);
     let replacement: string;
-    let editStart = end;
+    let editStart = end; let editEnd = end;
     if (flow) {
+      editEnd = end - 1;
       replacement = `${parent.items.length ? ', ' : ''}${entries.map(([key, value]) => flowMapEntryFragment(key, value)).join(', ')}`;
       editStart = end - 1;
     } else {
@@ -330,7 +331,7 @@ export class SourceBuffer {
     }
     const next = this.text.slice(0, editStart) + replacement + (flow ? this.text.slice(editStart) : following);
     assertYaml(next);
-    return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], replacement,
+    return { document: new SourceBuffer(next), range: [editStart, editStart + replacement.length] as [number, number], sourceRange: [editStart, editEnd] as [number, number], replacement,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
@@ -347,7 +348,7 @@ export class SourceBuffer {
       const fragment = `${parent.items.length ? ', ' : ''}${yamlScalarOrBlock(value)}`;
       const next = this.text.slice(0, end - 1) + fragment + this.text.slice(end - 1);
       assertYaml(next);
-      return { document: new SourceBuffer(next), range: [end - 1, end - 1 + fragment.length] as [number, number], replacement: fragment,
+      return { document: new SourceBuffer(next), range: [end - 1, end - 1 + fragment.length] as [number, number], sourceRange: [end - 1, end - 1] as [number, number], replacement: fragment,
         undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
     }
     const indent = sequenceChildIndent(this.text, parent, start);
@@ -364,7 +365,7 @@ export class SourceBuffer {
     const replacement = `${prefix}${fragment}${suffix}`;
     const next = this.text.slice(0, end) + replacement + following;
     assertYaml(next);
-    return { document: new SourceBuffer(next), range: [end, end + replacement.length] as [number, number], replacement,
+    return { document: new SourceBuffer(next), range: [end, end + replacement.length] as [number, number], sourceRange: [end, end] as [number, number], replacement,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
@@ -386,11 +387,11 @@ export class SourceBuffer {
     const indentation = this.text.slice(lineStart, start).match(/^[ \t]*/)?.[0] ?? '';
     const replacement = flow ? raw : raw.split('\n').map((line, index) => index ? indentation + line : line).join('\n');
     const following = this.text.slice(end);
-    const suffix = following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following)
-      ? (this.text.includes('\r\n') ? '\r\n' : '\n') : '';
+    const suffix = flow ? '' : (following.length > 0 && !/^[ \t]*(?:\r?\n)/.test(following)
+      ? (this.text.includes('\r\n') ? '\r\n' : '\n') : '');
     const next = this.text.slice(0, start) + replacement + suffix + following;
     assertYaml(next);
-    return { document: new SourceBuffer(next), range: [start, end] as [number, number], replacement: replacement + suffix,
+    return { document: new SourceBuffer(next), range: [start, end] as [number, number], sourceRange: [start, end] as [number, number], replacement: replacement + suffix,
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 

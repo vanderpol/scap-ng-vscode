@@ -136,7 +136,7 @@ function transition(pack, beforeValue, edit, label) {
 }
 
 function assertSourceShape(beforeText, edit) {
-  const [start, end] = edit.range ?? [];
+  const [start, end] = edit.sourceRange ?? edit.range ?? [];
   if (!Number.isInteger(start) || !Number.isInteger(end)) throw new Error('edit has no source range');
   const replacement = String(edit.replacement ?? '');
   const after = edit.document.text;
