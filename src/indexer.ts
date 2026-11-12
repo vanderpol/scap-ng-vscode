@@ -1,15 +1,16 @@
 import { parseDocument } from 'yaml';
 import { sha256, type Json } from './metadata.js';
+import { analyzeAssessmentReferences, type AssessmentReferenceAnalysis } from './reference-graph.js';
 
 export type DocumentKind = 'assessment' | 'rule' | 'benchmark' | 'applicability' | 'unknown';
-export type IndexDiagnosticCode = 'parse-error' | 'duplicate-id' | 'unresolved-assessment' | 'ambiguous-assessment' | 'wrong-reference-kind' | 'incompatible-version';
+export type IndexDiagnosticCode = 'parse-error' | 'duplicate-id' | 'unresolved-assessment' | 'ambiguous-assessment' | 'wrong-reference-kind' | 'incompatible-version' | 'unresolved-local-reference';
 export interface IndexDiagnostic { code: IndexDiagnosticCode; message: string; uri: string; path?: string; severity: 'error' | 'warning' }
 export interface AssessmentReference { targetId: string; expectedVersion?: string | number; path: string; purpose?: 'assessment' | 'applicability'; }
 export interface ApplicabilityCondition { name: string; targetId: string; path: string; catalogUri: string; }
 export interface ApplicabilityOption { key: string; value: string; label: string; description?: string; condition: string; assessmentId: string; expectedVersion: string | number; catalogUri: string; targetUri?: string; available: boolean; }
 export interface IndexedDocument {
   uri: string; path: string; kind: DocumentKind; id?: string; version?: string | number; title?: string;
-  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; sourceHash: string;
+  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
   diagnostics: readonly IndexDiagnostic[];
 }
 
@@ -56,7 +57,8 @@ export class WorkspaceIndex {
         }
       }
       const capabilities = kind === 'assessment' && object(body.tests) ? Object.values(body.tests).flatMap(test => object(test) && typeof test.capability === 'string' ? [test.capability] : []) : [];
-      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: typeof (body.title ?? body.assessment_title ?? body.benchmark_title) === 'string' ? (body.title ?? body.assessment_title ?? body.benchmark_title) : undefined, mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, sourceHash: sha256(text) };
+      const localReferenceAnalysis = kind === 'assessment' ? analyzeAssessmentReferences(body) : undefined;
+      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: typeof (body.title ?? body.assessment_title ?? body.benchmark_title) === 'string' ? (body.title ?? body.assessment_title ?? body.benchmark_title) : undefined, mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, localReferenceAnalysis, sourceHash: sha256(text) };
     }
     this.documents.set(uri, record); if (rebuild) this.rebuildDiagnostics(); return this.get(uri)!;
   }
@@ -107,6 +109,9 @@ export class WorkspaceIndex {
       const parsed = document.kind === 'unknown' && !document.id ? 'parse-error' : undefined;
       if (parsed) diagnostics.push({ code: 'parse-error', message: 'Document is not a parseable SCAP-NG Assessment, Rule, Benchmark or Applicability Catalog mapping', uri: document.uri, severity: 'error' });
       if (document.id && (this.byId.get(document.id)?.length ?? 0) > 1) diagnostics.push({ code: 'duplicate-id', message: `Duplicate logical ID: ${document.id}`, uri: document.uri, path: '/'+document.kind+'/id', severity: 'error' });
+      for (const reference of document.localReferenceAnalysis?.unresolved ?? []) {
+        diagnostics.push({ code: 'unresolved-local-reference', message: `Assessment ${reference.kind} reference not found: ${reference.targetId}`, uri: document.uri, path: '/' + reference.path.slice(1).map(String).join('/'), severity: 'error' });
+      }
       for (const reference of document.references) {
         const candidates = this.find(reference.targetId);
         if (!candidates.length) { diagnostics.push({ code: 'unresolved-assessment', message: `Assessment reference not found: ${reference.targetId}`, uri: document.uri, path: reference.path, severity: 'error' }); continue; }

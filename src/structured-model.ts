@@ -5,6 +5,7 @@ import { GuidedCatalog } from './guided.js';
 import { schemaAdditionalPropertyLocations, schemaItemLocations, schemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
+import { analyzeAssessmentReferences } from './reference-graph.js';
 
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -562,6 +563,15 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const base: any = modelFor(document, pack); if (!base.ok) return base;
   base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256;
   const value: any = parsed.value; const assessment = value.assessment;
+  const referenceAnalysis = assessment && typeof assessment === 'object' && !Array.isArray(assessment)
+    ? analyzeAssessmentReferences(assessment) : undefined;
+  // Webview models must remain structured-clone serializable; keep the
+  // analyzer's callable lookup API in the host and expose only its receipt.
+  base.referenceAnalysis = referenceAnalysis ? {
+    definitions: referenceAnalysis.definitions,
+    references: referenceAnalysis.references,
+    unresolved: referenceAnalysis.unresolved
+  } : undefined;
   // The graphical Variables inspector needs the authored expression structure,
   // not only the flattened scalar control list. This is read-only presentation
   // data derived from the same authoritative YAML document.

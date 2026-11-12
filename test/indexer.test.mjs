@@ -64,3 +64,24 @@ test('tracks applicability Assessment dependencies and reports missing targets',
   assert.equal(index.diagnostics()[0].code, 'unresolved-assessment');
   assert.equal(index.diagnostics()[0].path, '/assessment/dependencies/domain-joined/assessment');
 });
+
+test('indexes typed local Assessment references and reports unresolved targets without matching literals', () => {
+  const index = new WorkspaceIndex();
+  index.update('local.assessment.yaml', `assessment:
+  id: local
+  version: 1
+  assessment_title: Local
+  mode: automated
+  tests:
+    check-test:
+      test_title: Check
+      capability: independent.shellcommand
+      object: {command: {equals: first-test}}
+      require: {item_requirement: {items_found: one_or_more}}
+  evaluate: {test: missing-test}
+`);
+  const record = index.get('local.assessment.yaml');
+  assert.equal(record.localReferenceAnalysis.referencesTo('test', 'missing-test').length, 1);
+  assert.equal(record.localReferenceAnalysis.referencesTo('test', 'first-test').length, 0, 'literal selector text is not a Test reference');
+  assert.deepEqual(record.diagnostics.map(diagnostic => diagnostic.code), ['unresolved-local-reference']);
+});

@@ -17,6 +17,7 @@ import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
 import { isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
 import { createAssistedAssessment } from './assisted-draft.js';
+import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -238,19 +239,6 @@ async function revealNativeSource(api: any, document: any, range?: [number, numb
 }
 
 
-function structuralReferencePaths(value: any, needle: string, prefix: (string | number)[] = []): string[] {
-  const paths: string[] = [];
-  const visit = (node: any, path: (string | number)[], depth: number) => {
-    if (paths.length >= 12 || depth > 80) return;
-    if (typeof node === 'string' && node === needle) { paths.push(path.map(String).join('.')); return; }
-    if (!node || typeof node !== 'object') return;
-    for (const [key, child] of Object.entries(node)) {
-      visit(child, path.concat(Array.isArray(node) ? Number(key) : key), depth + 1);
-    }
-  };
-  visit(value, prefix, 0);
-  return paths;
-}
 function structuralEntityName(collection: string): string {
   return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
     collection === 'inputs' ? 'Organizational Input' :
@@ -1033,13 +1021,11 @@ class AssessmentEditorProvider {
             const schema: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
             const rule: any = schema?.propertyNames;
             if (!rule?.pattern) throw new Error('The pinned schema does not define the naming rules for ' + entity + '.');
-            // Never silently break Test/Evaluate, Object, Variable or Input references.
-            // The GUI does not yet support coordinated multi-reference rewrites.
-            const inUse = structuralReferencePaths(original, oldId);
-            if (inUse.length) throw new Error('Cannot ' + (message.action === 'rename' ? 'rename' : 'remove') +
-              ' ' + entity + ' "' + oldId + '" because it is referenced at ' +
-              inUse.slice(0,3).join(', ') +
-              '. Update references explicitly in YAML before changing its ID.');
+            const referenceKind: ReferenceKind = collection === 'tests' ? 'test' :
+              collection === 'variables' ? 'variable' : collection === 'inputs' ? 'input' : 'shared-object';
+            const analysis = analyzeAssessmentReferences((original as any)?.assessment);
+            const references = analysis.referencesTo(referenceKind, oldId);
+            const referenceLabels = references.map(referencePathLabel);
             const before = pack.validate(schemaUri, original);
             if (message.action === 'rename') {
               const namePattern = new RegExp(rule.pattern), max = rule.maxLength ?? 64;
@@ -1050,15 +1036,26 @@ class AssessmentEditorProvider {
                   ? undefined : 'The ' + entity + ' ID must match its schema naming rule (maximum ' + max + ' characters).'
               });
               if (!newId || newId === oldId) return;
-              const edit = source.editMappingKey(path.slice(0,-1), oldId, newId, currentRevision);
+              // References are rewritten only at schema-authorized typed paths;
+              // literals equal to an ID remain untouched. SourceBuffer verifies
+              // all ranges first and applies the key plus references atomically.
+              const edit = source.renameDefinitionAndReferences(path, references.map(reference => reference.path), oldId, newId, currentRevision);
               const errors = pack.validate(schemaUri, edit.document.json());
               if (errors.length > before.length)
                 throw new Error('Renaming the ' + entity + ' would introduce validation errors: ' + errors.join('; '));
               await applySourceWorkspaceEdit(api, document, edit);
-              if (errors.length) void panel.webview.postMessage({ type: 'status',
+              if (references.length) void panel.webview.postMessage({ type: 'status',
+                message: 'Renamed ' + entity + ' and updated ' + references.length + ' typed reference' + (references.length === 1 ? '' : 's') + '.' });
+              else if (errors.length) void panel.webview.postMessage({ type: 'status',
                 message: 'Renamed ' + entity + ' ID; pre-existing schema diagnostics remain.' });
               return;
             }
+            // Deletion is deliberately fail-closed. Unlike rename, there is no
+            // safe local replacement for a dangling reference and no implicit
+            // Evaluate/Variable/Input rewrite is allowed.
+            if (references.length) throw new Error('Cannot remove ' + entity + ' "' + oldId +
+              '" because it is referenced at ' + referenceLabels.slice(0, 3).join(', ') +
+              (referenceLabels.length > 3 ? ', …' : '') + '. Remove or update those references explicitly in YAML first.');
             const confirmation = await api.window.showWarningMessage(
               'Remove ' + entity + ' "' + oldId + '"? This deletes its entire definition from YAML.',
               { modal: true }, 'Remove ' + entity);

@@ -208,6 +208,42 @@ export class SourceBuffer {
       replacements, undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  /**
+   * Rename one named Assessment definition and its already typed local
+   * references as one source-local transaction. The reference analyzer owns
+   * which paths are eligible; this method only verifies ranges and preserves
+   * each scalar's existing quoting style. Unsafe YAML is declined.
+   */
+  renameDefinitionAndReferences(definitionPath: (string | number)[], referencePaths: readonly (string | number)[][],
+      oldId: string, newId: string, expectedHash: string) {
+    if (!oldId || !newId || oldId === newId) throw new Error('A distinct non-empty identifier is required');
+    if (!/^[A-Za-z0-9._/-]+$/.test(newId) || /^(?:true|false|null|~)$/i.test(newId)) throw new Error('Unsafe replacement identifier; use Source mode');
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const parent: any = doc.getIn(definitionPath.slice(0, -1), true);
+    if (!isMap(parent) || !Array.isArray(parent.items)) throw new Error('Definition collection is not a YAML mapping');
+    const pair: any = parent.items.find((candidate: any) => candidate.key?.value === oldId);
+    if (parent.items.some((candidate: any) => candidate.key?.value === newId)) throw new Error('Definition key already exists');
+    if (!pair?.key || !isScalar(pair.key) || !Array.isArray(pair.key.range) || pair.key.anchor || pair.key.tag)
+      throw new Error('Definition key is not safely editable; use Source mode');
+    const edits: SourceRangeEdit[] = [{
+      start: pair.key.range[0], end: pair.key.range[1],
+      replacement: referenceScalarReplacement(pair.key, newId)
+    }];
+    const seen = new Set<string>();
+    for (const referencePath of referencePaths) {
+      const key = referencePath.map(String).join('/');
+      if (seen.has(key)) throw new Error('Duplicate reference path; transaction rejected');
+      seen.add(key);
+      const node: any = doc.getIn(referencePath, true);
+      if (!node || !isScalar(node) || !Array.isArray(node.range) || node.anchor || node.tag || node.value !== oldId)
+        throw new Error('Reference is not a safe authored scalar; update it in Source mode');
+      edits.push({ start: node.range[0], end: node.range[1], replacement: referenceScalarReplacement(node, newId) });
+    }
+    return this.applyEdits(edits, expectedHash);
+  }
+
   editMappingKey(path: (string | number)[], oldKey: string, newKey: string, expectedHash: string, allowedKeys?: readonly string[]) {
     if (!/^[A-Za-z0-9._/-]+$/.test(newKey) || /^(?:true|false|null|~)$/i.test(newKey)) throw new Error('Unsafe mapping key; use Source mode');
     if (allowedKeys && !allowedKeys.includes(newKey)) throw new Error(`Operation '${newKey}' is not permitted by the pinned schema; use Source mode`);
@@ -405,6 +441,15 @@ export class SourceBuffer {
     if (doc.errors.length) throw new Error('YAML parse error');
     return doc.toJS({ maxAliasCount: 50 }) as Json;
   }
+}
+
+
+function referenceScalarReplacement(node: any, value: string): string {
+  if (typeof node.value !== 'string' || !Array.isArray(node.range)) throw new Error('Reference is not a string scalar');
+  if (node.type === 'QUOTE_SINGLE') return `'${value.replace(/'/g, "''")}'`;
+  if (node.type === 'QUOTE_DOUBLE') return JSON.stringify(value);
+  if (node.type === 'PLAIN' || node.type === undefined) return /^[A-Za-z0-9._/-]+$/.test(value) ? value : JSON.stringify(value);
+  throw new Error(`Reference scalar style '${String(node.type)}' is not safely editable; use Source mode`);
 }
 
 
