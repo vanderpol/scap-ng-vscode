@@ -51,7 +51,7 @@ Do not clone private research or commit downloaded corpora into this repo.
 - Distinguish YAML/schema/graph/compile checks, draft/proof warnings and genuine runtime scanner results.
 - Reuse suitable permissively licensed components where it reduces risk, but **do not copy third-party source-available code or unlicensed upstream material**.
 
-The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 235-resource metadata manifest.
+The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 236-resource metadata manifest.
 
 ## License
 
@@ -75,7 +75,7 @@ npm run lint
 npm test
 ```
 
-The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `463675f3` and manifest SHA-256 `0b8df930…` (235 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools` exporter from `dependency-pins.json`, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`). The installed build can be confirmed from the Command Palette with **SCAP-NG: Show installed build**; it displays the short commit and UTC build timestamp.
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `7b9b611` and manifest SHA-256 `2aa28f99…` (236 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools@1f4f74d` exporter plus the reviewed 145-file compatibility adapter, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`). The installed build can be confirmed from the Command Palette with **SCAP-NG: Show installed build**; it displays the short commit and UTC build timestamp.
 
 The current pinned 0.4 schema pack adopts native Result A (`require_*` source
 locations and Field Results). Offline integration checks supplied synthetic
