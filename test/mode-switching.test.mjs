@@ -31,3 +31,15 @@ test('Split keeps native edits and Graphical edits on the same source document',
   assert.match(extensionSource, /document\.uri/);
   assert.match(extensionSource, /supportsMultipleEditorsPerDocument: true/);
 });
+
+test('Graphical mode exposes top-level Graphical/YAML/Split tabs instead of bottom source links', () => {
+  const graphicalSource = readFileSync(new URL('../src/graphical.ts', import.meta.url), 'utf8');
+  assert.match(graphicalSource, /data-editor-mode="graphical"/);
+  assert.match(graphicalSource, /data-editor-mode="yaml"/);
+  assert.match(graphicalSource, /data-editor-mode="split"/);
+  assert.match(graphicalSource, /type:'editorMode',mode/);
+  assert.match(extensionSource, /message\.type === 'editorMode'/);
+  assert.match(extensionSource, /openNativeYamlBeside\(api, document\)/);
+  assert.doesNotMatch(graphicalSource, /textContent='Switch to YAML editor'/);
+  assert.doesNotMatch(graphicalSource, /textContent=linkedPath\?'Reveal Test definition in YAML':'Reveal in YAML'/);
+});

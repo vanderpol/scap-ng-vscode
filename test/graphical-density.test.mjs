@@ -8,8 +8,12 @@ test('graphical webview contains syntactically valid JavaScript and source-safe 
   assert.ok(script, 'Webview script must exist');
   assert.doesNotThrow(() => new Function(script), 'Webview JS must parse');
   assert.match(html, /vscode\.postMessage\(\{type:'edit'/);
-  assert.match(html, /textContent='Switch to YAML editor'/);
-  assert.match(html, /type:'switchToSource'/);
+  assert.match(html, /data-editor-mode="graphical"/);
+  assert.match(html, /data-editor-mode="yaml"/);
+  assert.match(html, /data-editor-mode="split"/);
+  assert.match(html, /type:'editorMode',mode/);
+  assert.doesNotMatch(html, /textContent='Switch to YAML editor'/);
+  assert.doesNotMatch(html, /textContent=linkedPath\?'Reveal Test definition in YAML':'Reveal in YAML'/);
   assert.match(html, /action:'renameMember'/);
   assert.match(html, /Rename.*field/);
   assert.match(html, /kind:'filter'/);

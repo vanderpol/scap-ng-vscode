@@ -761,7 +761,7 @@ class AssessmentEditorProvider {
     const send = () => {
       try {
         const model = assessmentEditorModel(document, this.getPack());
-        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document' } });
+        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode: configuredAssessmentEditor(api, document) } });
       } catch (error) {
         // A malformed/exotic YAML document must never strand the custom editor
         // on its loading placeholder. Keep the native YAML editor available
@@ -779,7 +779,23 @@ class AssessmentEditorProvider {
         void api.window.showErrorMessage(`SCAP-NG graphical editor failed to load: ${detail}`);
         return;
       }
-      // Open native YAML editor beside workbench: the webview never becomes a second source document.
+      // Mode buttons keep the Graphical webview and native YAML editor bound to
+      // this one TextDocument. YAML uses the active column; Split keeps both views.
+      if (message.type === 'editorMode') {
+        const mode = message.mode === 'yaml' || message.mode === 'split' || message.mode === 'graphical' ? message.mode : undefined;
+        if (!mode) return;
+        if (mode === 'yaml') {
+          await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+        } else if (mode === 'split') {
+          await openNativeYamlBeside(api, document);
+          panel.reveal?.(api.ViewColumn?.Active ?? 1, false);
+        } else {
+          panel.reveal?.(api.ViewColumn?.Active ?? 1, false);
+        }
+        panel.webview.postMessage({ type: 'editorMode', mode });
+        return;
+      }
+      // Compatibility for older webviews: the document remains authoritative.
       if (message.type === 'openSource') { await revealNativeSource(api, document); return; }
       if (message.type === 'switchToSource') { await switchToNativeSource(api, document, panel); return; }
       if (message.type === 'openRegex') { await api.commands.executeCommand('scapNg.testRegex', { document, useFirst: true }); return; }

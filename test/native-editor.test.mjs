@@ -7,7 +7,7 @@ test('native YAML architecture keeps Source out of the webview textarea', () => 
   assert.doesNotMatch(source, /<textarea id="source"/);
   assert.match(source, /showTextDocument\(document/);
   assert.match(source, /onDidChangeTextEditorSelection/);
-  assert.match(source, /Open native YAML editor beside workbench/);
+  assert.match(source, /Mode buttons keep the Graphical webview and native YAML editor/);
   assert.match(source, /registerCompletionItemProvider\(\{ language: 'yaml', scheme: 'file' \}/);
   assert.match(source, /registerCodeActionsProvider\(\{ language: 'yaml', scheme: 'file' \}/);
   assert.match(source, /invalid `fields: mount_options:` YAML/);
