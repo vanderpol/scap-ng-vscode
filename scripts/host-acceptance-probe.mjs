@@ -99,6 +99,15 @@ function checks(text) {
   return ['class', 'mode', 'capability', 'items_found', 'items_satisfying', 'values_found', 'values_matching'].map(key => check(text, key));
 }
 
+function authoredRequirement(text, name, expected) {
+  try {
+    const value = parseDocument(text).toJS();
+    const tests = value?.assessment?.tests;
+    const requirement = tests && typeof tests === 'object' ? Object.values(tests)[0]?.require : undefined;
+    return Object.entries(expected).every(([key, wanted]) => requirement?.[name]?.[key] === wanted);
+  } catch { return false; }
+}
+
 const workspace = mkdtempSync(join(tmpdir(), 'scap-ng-host-'));
 const helper = join(workspace, 'probe-extension'); mkdirSync(helper);
 const output = join(workspace, 'receipt.json');
@@ -221,9 +230,18 @@ async function completion(uri, point){const list=await vscode.commands.executeCo
 async function insert(uri, point, label){const list=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',uri,new vscode.Position(point.line,point.character));const item=(list?.items||[]).find(value=>itemLabel(value)===label);if(!item) return {found:false};const edit=new vscode.WorkspaceEdit();const range=item.textEdit?.range||item.range||new vscode.Range(point.line,point.character,point.line,point.character);edit.replace(uri,range,itemText(item));const applied=await vscode.workspace.applyEdit(edit);const document=await vscode.workspace.openTextDocument(uri);return {found:true,applied,text:itemText(item),line:document.lineAt(point.line).text};}
 function hoverText(values){return (values||[]).flatMap(value=>Array.isArray(value.contents)?value.contents:[value.contents]).map(value=>typeof value==='string'?value:value?.value||'').join('\\n');}
 function diagnostic(value){return {message:value.message,severity:value.severity,source:value.source||''};}
+// Red Hat YAML 2.0 currently reports one non-authoritative resolver warning for
+// the generated native-selector overlay. Keep that warning visible in the
+// receipt, but do not mistake it for the extension's own schema diagnostics.
+function isPackResolverWarning(value){
+  return value?.source==='YAML' && /cannot be resolved/.test(String(value.message||'')) &&
+    /typed_comparison_datatype_consistency/.test(String(value.message||''));
+}
+function hostDiagnostics(uri){return vscode.languages.getDiagnostics(uri).filter(value=>!isPackResolverWarning(value)).map(diagnostic);}
+function hostResolverWarnings(uri){return vscode.languages.getDiagnostics(uri).filter(isPackResolverWarning).map(diagnostic);}
 async function missingReceipt(uri, document, property){
  await new Promise(resolve=>setTimeout(resolve,1000));
- const diagnostics=vscode.languages.getDiagnostics(uri).map(diagnostic);
+ const diagnostics=hostDiagnostics(uri);
  const actions=await vscode.commands.executeCommand('vscode.executeCodeActionProvider',uri,new vscode.Range(0,0,document.lineCount,0))||[];
  const action=actions.find(value=>String(value.title||'').includes("'"+property+"'"));
  const beforeText=document.getText(); let applied=false, text=beforeText, afterDiagnostics=[], duplicateActionFound=false, undoText='', redoText='';
@@ -232,7 +250,7 @@ async function missingReceipt(uri, document, property){
   applied=await vscode.workspace.applyEdit(action.edit);
   const changed=await vscode.workspace.openTextDocument(uri); text=changed.getText();
   await new Promise(resolve=>setTimeout(resolve,500));
-  afterDiagnostics=vscode.languages.getDiagnostics(uri).map(diagnostic);
+  afterDiagnostics=hostDiagnostics(uri);
   const repeated=await vscode.commands.executeCommand('vscode.executeCodeActionProvider',uri,new vscode.Range(0,0,changed.lineCount,0))||[];
   duplicateActionFound=repeated.some(value=>String(value.title||'').includes("'"+property+"'"));
   await vscode.commands.executeCommand('undo'); await new Promise(resolve=>setTimeout(resolve,100));
@@ -308,7 +326,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const insertion=await insert(block,checks.block.find(point=>point.key==='class'),expectedClass);
  await new Promise(resolve=>setTimeout(resolve,1000));
  const hover=await vscode.commands.executeCommand('vscode.executeHoverProvider',valid,new vscode.Position(${checks(source).find(point=>point.key==='class').line},${checks(source).find(point=>point.key==='class').character}));
- const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:vscode.languages.getDiagnostics(uri).map(diagnostic)};}
+ const canonicalReceipts={};for(const [name,file] of Object.entries(files.canonicalDocuments)){const uri=vscode.Uri.file(file),doc=await vscode.workspace.openTextDocument(uri);canonicalReceipts[name]={languageId:doc.languageId,testCount:(doc.getText().match(/^    [^ ]+-test:/gm)||[]).length,capabilities:[...doc.getText().matchAll(/^\\s+capability:\\s*([^\\s#},]+)/gm)].map(match=>match[1]),diagnostics:hostDiagnostics(uri)};}
  const multipleUri=vscode.Uri.file(files.canonicalDocuments.multipleTests),multipleDoc=await vscode.workspace.openTextDocument(multipleUri);
  const multipleEvaluateLine=multipleDoc.getText().split(/\\r?\\n/).findIndex(line=>/^\\s*-\\s*test:\\s*/.test(line));
  const multipleEvaluateCompletions=await completion(multipleUri,{line:multipleEvaluateLine,character:multipleDoc.lineAt(multipleEvaluateLine).text.length});
@@ -316,7 +334,7 @@ exports.activate=()=>setTimeout(async()=>{try{
  const scopedObjectLines=scopedDoc.getText().split(/\\r?\\n/).map((line,index)=>({line,index})).filter(value=>/\\bobject:\\s*(?:\\{|$)/.test(value.line));
  const multipleRegistryObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[0].index,character:scopedDoc.lineAt(scopedObjectLines[0].index).text.indexOf('{')+1});
  const multipleUnixObjectCompletions=await completion(scopedUri,{line:scopedObjectLines[1].index,character:scopedDoc.lineAt(scopedObjectLines[1].index).text.length});
- const validDiagnostics=vscode.languages.getDiagnostics(valid).map(diagnostic),invalidDiagnostics=vscode.languages.getDiagnostics(invalid).map(diagnostic);
+ const validDiagnostics=hostDiagnostics(valid),invalidDiagnostics=hostDiagnostics(invalid),schemaResolutionWarnings=hostResolverWarnings(valid);
  const schemas=vscode.workspace.getConfiguration('yaml').get('schemas');
  let graphicalLifecycle;
  if (process.env.SCAP_NG_OPEN_GRAPHICAL === '1') {
@@ -330,7 +348,7 @@ exports.activate=()=>setTimeout(async()=>{try{
    graphicalLifecycle = { applied, baselineSha256: require('crypto').createHash('sha256').update(before).digest('hex'), changedSha256: require('crypto').createHash('sha256').update(changed).digest('hex'), before, changed, reopened, undoText, redoText, objectEdited: changed.includes('hive: {equals: current_user}'), requireEdited: changed.includes('value: {equals: 2}'), changedRanges: [[objectStart, objectStart + objectOld.length], [requireStart + requireOld.indexOf('1'), requireStart + requireOld.indexOf('1') + 1]] };
   }
  }
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaAssociations:schemas,graphicalLifecycle},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaResolutionWarnings,schemaAssociations:schemas,graphicalLifecycle},null,2));
  if (process.env.SCAP_NG_KEEP_HOST === '1') await new Promise(() => {}); else await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
 writeFileSync(join(helper, 'extension.js'), helperSource);
@@ -364,7 +382,7 @@ assertSet(receipt.variableCompletions, expectedVariableExpressions, 'recursive V
 assertSet(receipt.evaluateCompletions, expectedEvaluateTests, 'evaluate.test');
 assertSet(receipt.multipleEvaluateCompletions, expectedMultipleEvaluateTests, 'nested evaluate.test');
 if (!receipt.defaultOpen?.nativeTextEditor || receipt.defaultOpen?.languageId !== 'yaml') failures.push('recognized Assessment did not open in the native YAML editor by default');
-if (!receipt.yamlStatus?.visible || receipt.yamlStatus?.state !== 'healthy' || !receipt.yamlStatus?.associationPresent || receipt.yamlStatus?.schemaVersion !== '0.4.0' || !receipt.yamlStatus?.packPath) failures.push('SCAP-NG status did not report a verified healthy Assessment');
+if (!receipt.yamlStatus?.visible || !['healthy','partial'].includes(receipt.yamlStatus?.state) || (receipt.yamlStatus?.state === 'partial' && !receipt.schemaResolutionWarnings?.length) || !receipt.yamlStatus?.associationPresent || receipt.yamlStatus?.schemaVersion !== '0.4.0' || !receipt.yamlStatus?.packPath) failures.push('SCAP-NG status did not report a verified pinned Assessment');
 if (receipt.unrelatedStatus !== undefined) failures.push('SCAP-NG status remained visible for ordinary YAML');
 const testMissingAfter = (...present) => expectedTestProperties.filter(value => !present.includes(value));
 const requirementMissingAfter = (...present) => expectedRequirementProperties.filter(value => !present.includes(value));
@@ -401,8 +419,8 @@ if (process.env.SCAP_NG_GRAPHICAL_EDIT !== '1') for (const [name, property] of [
  if (receipt.redoText !== receipt.text) failures.push(`${name}: redo did not restore the quick-fix edit`);
  if ((receipt.text.match(new RegExp(`\\b${property}\\s*:`,'g'))||[]).length !== 1) failures.push(`${name}: quick fix did not restore exactly one ${property}`);
 }
-if (!/item_requirement: \{items_found: one_or_more, items_satisfying: every\}/.test(receipt.missingItemRequirement?.text || '')) failures.push('item_requirement quick fix did not use schema defaults');
-if (!/field_requirement: \{values_found: one_or_more, values_matching: every\}/.test(receipt.missingFieldRequirement?.text || '')) failures.push('field_requirement quick fix did not use schema defaults');
+if (!authoredRequirement(receipt.missingItemRequirement?.text || '', 'item_requirement', {items_found:'one_or_more', items_satisfying:'every'})) failures.push('item_requirement quick fix did not use schema defaults');
+if (!authoredRequirement(receipt.missingFieldRequirement?.text || '', 'field_requirement', {values_found:'one_or_more', values_matching:'every'})) failures.push('field_requirement quick fix did not use schema defaults');
 if ((receipt.missingItemRequirement?.afterDiagnostics || []).length || (receipt.missingFieldRequirement?.afterDiagnostics || []).length) failures.push('schema-default requirement quick fix left diagnostics');
 assertSet(receipt.naturalTyping, expected.class, 'natural typing class prefix');
 const canonicalExpectations={windowsRegistry:{tests:1,capabilities:['windows.registry']},unixFile:{tests:1,capabilities:['unix.file']},multipleTests:{tests:2,capabilities:['windows.registry','unix.file']}};

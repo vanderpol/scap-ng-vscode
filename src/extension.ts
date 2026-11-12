@@ -1587,7 +1587,7 @@ function parseDiagnosticMessage(message: string): string {
   }
   return message;
 }
-function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection) {
+function validateDocument(document: vscode.TextDocument, profile: Pin, diagnostics: vscode.DiagnosticCollection, pack?: MetadataPack) {
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   const output: vscode.Diagnostic[] = [];
   for (const error of parsed.errors) {
@@ -1600,6 +1600,19 @@ function validateDocument(document: vscode.TextDocument, profile: Pin, diagnosti
     if (!value || typeof value !== 'object' || Array.isArray(value)) output.push(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 1), 'Assessment document must be a YAML mapping', vscode.DiagnosticSeverity.Error));
     const version = value && (value.version ?? value.specification_version ?? value.schema_version);
     if (typeof version === 'string' && version !== profile.schemaVersion) output.push(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 1), `Document version ${version} does not match pinned SCAP-NG ${profile.schemaVersion}`, vscode.DiagnosticSeverity.Error));
+    // Red Hat YAML remains an optional presentation/authoring aid. Keep the
+    // extension's own pinned-schema diagnostics authoritative so an unresolved
+    // external $ref in that optional service cannot make invalid edits appear
+    // valid (or make valid canonical content unusable).
+    if (!output.length && pack && isAssessmentDocument(document)) {
+      const schemaUri = assessmentSchemaUri(pack);
+      if (schemaUri && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const error of pack.validateDetailed(schemaUri, value as any)) {
+          const path = error.instancePath || '/';
+          output.push(new vscode.Diagnostic(new vscode.Range(0, 0, 0, 1), `${path}: ${error.message ?? 'schema validation error'}`, vscode.DiagnosticSeverity.Error));
+        }
+      }
+    }
   }
   diagnostics.set(document.uri, output);
 }
@@ -1952,7 +1965,7 @@ export function activate(context: vscode.ExtensionContext) {
   const inspect = (document: vscode.TextDocument) => {
     loadPack(document.uri.fsPath);
     if (document.languageId === 'yaml' || /\.(ya?ml)$/.test(document.uri.fsPath)) {
-      validateDocument(document, profile, diagnostics);
+      validateDocument(document, profile, diagnostics, pack);
       publishSchemaRequiredDiagnostics(document, pack, schemaDiagnostics);
     }
     const activeEditor = api.window.activeTextEditor;
