@@ -413,7 +413,7 @@ function auditDocument(pack, name, text, options = {}) {
           (buffer, revision) => buffer.insertArrayItem(node.path, seed, revision));
       }
       if (value.length > 1) {
-        executeEdit(report, 'array-remove', node.path.concat(0), text, beforeValue,
+        executeEdit(report, 'array-remove', node.path, text, beforeValue,
           (buffer, revision) => buffer.removePath(node.path.concat(0), revision));
       }
       const invalid = invalidSeed(pack, itemLocations, existing);
