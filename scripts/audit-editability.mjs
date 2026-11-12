@@ -319,6 +319,9 @@ function schemaCoverageCatalog(pack, reports) {
       qualify('delete-item', matched(row, ['array-remove']), Boolean(row.conditional || hasBranch));
     } else if (row.kind === 'variant') {
       qualify('switch-branch', matched(row, ['variant-replace']), true);
+    } else if (['allOf', 'if', 'then', 'else'].includes(row.relation) || /\/(?:allOf|if|then|else)\//.test(row.uri)) {
+      operations.read = 'schema-composition';
+      operations.mutate = 'schema-composition';
     } else {
       operations.read = 'not-evidenced';
       operations.mutate = 'unsupported';
