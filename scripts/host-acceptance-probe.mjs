@@ -11,6 +11,7 @@ const packDir = process.env.SCAP_NG_METADATA_PACK;
 const sampleRoot = process.env.SCAP_NG_SAMPLE_ROOT;
 const code = process.env.VSCODE_BIN ?? 'code';
 const extensionPath = resolve(process.env.SCAP_NG_EXTENSION_PATH ?? process.cwd());
+const useInstalled = process.env.SCAP_NG_USE_INSTALLED === '1';
 const hostDelay = Number(process.env.SCAP_NG_HOST_DELAY ?? 5000);
 const languageServerDelay = Number(process.env.SCAP_NG_LANGUAGE_SERVER_DELAY ?? 10000);
 if (!packDir || !sampleRoot) throw new Error('SCAP_NG_METADATA_PACK and SCAP_NG_SAMPLE_ROOT are required');
@@ -348,11 +349,20 @@ exports.activate=()=>setTimeout(async()=>{try{
    graphicalLifecycle = { applied, baselineSha256: require('crypto').createHash('sha256').update(before).digest('hex'), changedSha256: require('crypto').createHash('sha256').update(changed).digest('hex'), before, changed, reopened, undoText, redoText, objectEdited: changed.includes('hive: {equals: current_user}'), requireEdited: changed.includes('value: {equals: 2}'), changedRanges: [[objectStart, objectStart + objectOld.length], [requireStart + requireOld.indexOf('1'), requireStart + requireOld.indexOf('1') + 1]] };
   }
  }
- fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaResolutionWarnings,schemaAssociations:schemas,graphicalLifecycle},null,2));
+ fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({extensionSource:${JSON.stringify(useInstalled ? 'installed-vsix' : 'development-checkout')},languageId:validDoc.languageId,defaultOpen,variableCompletions,evaluateCompletions,multipleEvaluateCompletions,multipleRegistryObjectCompletions,multipleUnixObjectCompletions,yamlStatus,unrelatedStatus,sourcePreserved:validDoc.getText()===expectedSource,redhatYaml:Boolean(vscode.extensions.getExtension('redhat.vscode-yaml')),blockCompletions,flowCompletions,blankCompletions,objectCompletions,requireBlockInsertion,traversalInsertion,hiveOperators,hiveValues,hiveOperatorInsertion,typeValues,typeValueInsertion,missingObject,missingRequire,missingItemRequirement,missingFieldRequirement,missingFields,objectKeyCompletions,objectNameCompletions,requireFieldCompletions,objectInsertion,objectKeyInsertion,objectNameInsertion,requireFieldInsertion,naturalTyping,prefixInsertion,canonicalReceipts,insertion,hoverCount:hover?.length||0,hoverText:hoverText(hover),validDiagnostics,invalidDiagnostics,schemaResolutionWarnings,schemaAssociations:schemas,graphicalLifecycle},null,2));
  if (process.env.SCAP_NG_KEEP_HOST === '1') await new Promise(() => {}); else await vscode.commands.executeCommand('workbench.action.closeWindow');
  }catch(error){fs.writeFileSync(${JSON.stringify(output)},JSON.stringify({error:String(error),stack:error.stack},null,2));}},${hostDelay});`;
+// A fresh host does not necessarily auto-activate an installed VSIX before
+// the helper's timer runs. Explicitly activate the installed extension so this
+// mode qualifies the packaged artifact rather than silently testing only YAML.
+if (useInstalled) {
+  const marker = "exports.activate=()=>setTimeout(async()=>{try{";
+  const activation = "exports.activate=()=>setTimeout(async()=>{try{const installed=vscode.extensions.getExtension('vanderpol.scap-ng-vscode-metadata');if(installed)await installed.activate();";
+  if (!helperSource.includes(marker)) throw new Error('Installed-host activation marker was not found');
+  helperSource = helperSource.replace(marker, activation);
+}
 writeFileSync(join(helper, 'extension.js'), helperSource);
-const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : []), `--extensionDevelopmentPath=${helper}`, ...(process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
+const args = ['--no-sandbox', '--disable-gpu', '--disable-updates', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', '--new-window', `--user-data-dir=${join(workspace, 'user-data')}`, ...(process.env.SCAP_NG_EXTENSIONS_DIR ? [`--extensions-dir=${resolve(process.env.SCAP_NG_EXTENSIONS_DIR)}`] : []), `--extensionDevelopmentPath=${helper}`, ...(useInstalled || process.env.SCAP_NG_SKIP_SCAP_EXTENSION === '1' ? [] : [`--extensionDevelopmentPath=${extensionPath}`]), workspace];
 const child = spawn(code, args, { detached: true, stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, VSCODE_IPC_HOOK: undefined, VSCODE_IPC_HOOK_CLI: undefined, VSCODE_PID: undefined } });
 const terminateHost = signal => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } } };
 const deadline = Date.now() + Number(process.env.SCAP_NG_HOST_TIMEOUT ?? 90000);
@@ -363,6 +373,7 @@ terminateHost('SIGKILL');
 const receipt = readFileSyncSafe(output) ?? { error: 'VS Code host timed out' };
 const failures = [];
 if (receipt.error) { console.error(receipt.error, receipt.stack || ''); process.exit(1); }
+if (useInstalled && receipt.extensionSource !== 'installed-vsix') failures.push('host probe did not run the installed VSIX');
 if (!receipt.redhatYaml) failures.push('redhat.vscode-yaml is not installed; Red Hat language-service acceptance is unavailable');
 function assertSet(actual, wanted, name) {
   const labels = (actual || []).map(item => item.label).filter(Boolean);
