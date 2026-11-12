@@ -704,6 +704,12 @@ test('Object Variable source is rendered once with the source selector and retai
  assert.match(grid,/const ref=variableReferenceLink\(item\);if\(ref\)entry\.append\(ref\)/);
 });
 
+test('derived presentation helpers never become authored Assessment tree nodes',()=>{
+  const ctx=evaluationHarness({mode:'automated',tests:[{id:'check-test'}],evaluate:{test:'check-test'},title:'Presentation title',evaluationControl:{operations:['and']},evaluationExplanation:'Derived explanation',inputControls:[{name:'policy-input'}]});
+  const root=ctx.treeModel().root;
+  assert.equal(root.children.some(node=>['title','evaluationControl','evaluationExplanation','inputControls'].includes(node.path[1])),false);
+});
+
 test('automated tree presents Evaluate, shared definitions, Inputs and References in authoring order',()=>{
   const ctx=evaluationHarness({mode:'automated',tests:[{id:'check-test'}],evaluate:{test:'check-test'},shared_objects:{'shared-object':{}},variables:{'derived-variable':{}},inputs:{'policy-input':{}},references:[{source:'policy'}],dependencies:{source:{assessment:'source-assessment'}},applicability:{assessment:'source'}});
   const root=ctx.treeModel().root;

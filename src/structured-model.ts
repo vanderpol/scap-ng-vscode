@@ -621,6 +621,11 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   const base: any = modelFor(document, pack); if (!base.ok) return base;
   base.schemaVersion = pack?.pin.schemaVersion; base.packSha256 = pack?.pin.manifestSha256;
   const value: any = parsed.value; const assessment = value.assessment;
+  // Keep the authored root-member names separate from the presentation
+  // object returned below. The graphical tree must not mistake derived
+  // helpers (title, evaluationControl, inputControls, etc.) for YAML keys.
+  base.authoredAssessmentKeys = assessment && typeof assessment === 'object' && !Array.isArray(assessment)
+    ? Object.keys(assessment) : [];
   const referenceAnalysis = assessment && typeof assessment === 'object' && !Array.isArray(assessment)
     ? analyzeAssessmentReferences(assessment) : undefined;
   // Webview models must remain structured-clone serializable; keep the
