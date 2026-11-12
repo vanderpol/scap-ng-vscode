@@ -54,7 +54,7 @@ export async function previewRegexSafe(patterns: readonly string[], input: strin
   if (!pending.length) return results as RegexPreview[];
   return await new Promise(resolve => {
     let settled = false;
-    const worker = new Worker(new URL('./playground-worker.js', import.meta.url), { workerData: { patterns: pending.map(item => item.pattern), input: input.slice(0, MAX_INPUT), flags, matchLimit: MATCH_LIMIT, depthLimit: DEPTH_LIMIT }, execArgv: process.execArgv.filter(argument => argument !== '--input-type=module') });
+    const worker = new Worker(new URL('./playground-worker.js', import.meta.url), { workerData: { patterns: pending.map(item => item.pattern), input: input.slice(0, MAX_INPUT), flags, matchLimit: MATCH_LIMIT, depthLimit: DEPTH_LIMIT }, execArgv: [] });
     const finish = (values?: Array<{ matched: boolean; captures: (string | undefined)[]; namedCaptures?: Record<string, string | undefined>; matchSpan?: [number, number]; spans?: RegexCaptureSpan[]; error?: string }>, timedOut = false, workerError?: string) => {
       if (settled) return; settled = true; clearTimeout(timer); clearTimeout(initializationTimer); void worker.terminate();
       for (let i = 0; i < pending.length; i++) { const item = pending[i]; const value = values?.[i]; results[item.index] = result(item.pattern, input, value?.error ?? workerError ?? (timedOut ? 'Preview timed out and was cancelled.' : undefined), value?.matched ?? false, value?.captures ?? [], timedOut, value?.namedCaptures ?? {}, value?.matchSpan, value?.spans ?? []); }
