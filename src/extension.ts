@@ -265,8 +265,8 @@ async function switchToNativeSource(api: any, document: any, panel: any) {
 
 
 function pinnedSchemaUri(pack: MetadataPack, filename: string): string {
-  // Never send a 0.4.1 document to a silently reused 0.4.0 schema URI.
-  return `https://scap-ng.dev/schema/v${pack.pin.schemaVersion}/${filename}`;
+  if (pack.pin.schemaVersion !== '0.4.1') throw new Error('Unsupported schema version');
+  return `https://scap-ng.dev/schema/v0.4.1/${filename}`;
 }
 function structuralEntityName(collection: string): string {
   return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
@@ -530,12 +530,11 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const variableUri = pinnedSchemaUri(pack, 'variable-expression.schema.json');
     const declaration: any = pack.node(variableUri + '#/$defs/declaration');
-    const required = new Set<string>(declaration.required ?? []);
-    const allowsDatatype = Object.hasOwn(declaration.properties ?? {}, 'datatype');
-    if (required.has('datatype') !== allowsDatatype) throw new Error('Pinned Variable schema is inconsistent about datatype');
+    if (Object.hasOwn(declaration.properties ?? {}, 'datatype') ||
+        (declaration.required ?? []).includes('datatype'))
+      throw new Error('Unsupported 0.4.1 Variable declaration shape');
     const skeleton = {
       kind: 'constant',
-      ...(allowsDatatype ? { datatype: 'string' } : {}),
       expression: { literal: '' }
     } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
