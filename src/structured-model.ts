@@ -591,7 +591,7 @@ function evaluationText(value: any): string {
 export function requireLogicalOperations(pack?: MetadataPack): string[] {
   if (!pack) return [];
   try {
-    const schema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json');
+    const schema: any = pack.resource(`https://scap-ng.dev/schema/v${pack.pin.schemaVersion}/assessment-language.schema.json`);
     const branches = schema.$defs?.canonical_condition?.oneOf;
     if (!Array.isArray(branches)) return [];
     const operations = new Set<string>();
