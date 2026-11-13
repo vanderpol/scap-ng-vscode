@@ -35,11 +35,13 @@ test('Variable result type is inferred from native operation, never declaration 
     'The graphical editor must not invent collected-field types without a qualified schema mapping.');
 });
 
-test('Variable GUI never silently deletes legacy YAML datatype and new Variables omit it', () => {
+test('Variable GUI selects skeleton shape from exact schema and preserves legacy YAML', () => {
   const extension = readFileSync(new URL('../src/extension.ts', import.meta.url),'utf8');
   const graphical = readFileSync(new URL('../src/graphical.ts', import.meta.url),'utf8');
-  assert.match(extension,/const skeleton = \{ kind: 'constant', expression: \{ literal: '' \} \}/);
-  assert.doesNotMatch(extension,/const skeleton = \{ kind: 'constant', datatype:/);
+  assert.match(extension,/pinnedSchemaUri\(pack, 'variable-expression\\.schema\\.json'\)/);
+  assert.match(extension,/required\\.has\('datatype'\) !== allowsDatatype/);
+  assert.match(extension,/allowsDatatype \\? \\{ datatype: 'string' \\} : \\{\\}/);
+  assert.match(extension,/pinnedSchemaUri\(pack, 'assessment\\.schema\\.json'\)/);
   assert.match(graphical,/\['kind','title'\]\.includes/);
   assert.match(graphical,/Explicit migration is required; this editor will not silently delete it/);
   assert.match(graphical,/inference\?\.inferredDatatype/);
