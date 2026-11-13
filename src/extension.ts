@@ -264,6 +264,10 @@ async function switchToNativeSource(api: any, document: any, panel: any) {
 }
 
 
+function pinnedSchemaUri(pack: MetadataPack, filename: string): string {
+  if (pack.pin.schemaVersion !== '0.4.1') throw new Error('Unsupported schema version');
+  return `https://scap-ng.dev/schema/v0.4.1/${filename}`;
+}
 function structuralEntityName(collection: string): string {
   return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
     collection === 'inputs' ? 'Organizational Input' :
@@ -272,8 +276,8 @@ function structuralEntityName(collection: string): string {
 function valueAtPathForGraphical(value: any, path: (string | number)[]) { let current = value; for (const part of path) current = current?.[part as any]; return current; }
 function genericSchemaLocations(pack: MetadataPack, path: (string | number)[], value?: any) {
   const root = value?.assessment?.mode === 'manual'
-    ? 'https://scap-ng.dev/schema/v0.4.0/manual-assessment.schema.json'
-    : 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    ? pinnedSchemaUri(pack, 'manual-assessment.schema.json')
+    : pinnedSchemaUri(pack, 'assessment.schema.json');
   let locations = schemaNodes(pack, root);
   for (const part of path) {
     if (typeof part === 'number') {
@@ -305,7 +309,7 @@ function genericSchemaSeed(pack: MetadataPack, locations: any[]): any {
   return '';
 }
 function validateGraphicalSchemaEdit(pack: MetadataPack, before: any, edit: any, label: string) {
-  const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+  const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
   const beforeErrors = pack.validate(schemaUri, before);
   const afterErrors = pack.validate(schemaUri, edit.document.json());
   const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
@@ -463,12 +467,12 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
   if (last === 'inputs' && path.length === 2 && path[0] === 'assessment') {
     // An Input declares a typed value supplied by the referring policy/Rule.
     // It is not an external Assessment file reference (those use dependencies).
-    const assessmentSchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json');
+    const assessmentSchema: any = pack.resource(pinnedSchemaUri(pack, 'assessment.schema.json'));
     const definition: any = assessmentSchema.properties?.assessment?.properties?.inputs;
     const inputSpec: any = definition?.additionalProperties;
     const nameSpec: any = definition?.propertyNames;
     const cardinalityOptions: string[] = inputSpec?.properties?.cardinality?.enum;
-    const capabilitySchema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/capability-common.schema.json');
+    const capabilitySchema: any = pack.resource(pinnedSchemaUri(pack, 'capability-common.schema.json'));
     const datatypeOptions: string[] = capabilitySchema.$defs?.native_datatype?.enum;
     if (!nameSpec?.pattern || !Array.isArray(cardinalityOptions) || !cardinalityOptions.length ||
         !Array.isArray(datatypeOptions) || !datatypeOptions.length) {
@@ -518,13 +522,21 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const edit = inputs === undefined
       ? insertAssessmentSection(source, 'inputs', { [name]: skeleton } as any, expectedHash)
       : source.insertMapEntry(path, name, skeleton as any, expectedHash);
-    const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+    const errors = pack.validate(pinnedSchemaUri(pack, 'assessment.schema.json'), edit.document.json());
     if (errors.length) throw new Error('Pinned schema rejected the new Input: ' + errors.join('; '));
     return edit;
   }
   if (last === 'variables') {
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
-    const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const variableUri = pinnedSchemaUri(pack, 'variable-expression.schema.json');
+    const declaration: any = pack.node(variableUri + '#/$defs/declaration');
+    if (Object.hasOwn(declaration.properties ?? {}, 'datatype') ||
+        (declaration.required ?? []).includes('datatype'))
+      throw new Error('Unsupported 0.4.1 Variable declaration shape');
+    const skeleton = {
+      kind: 'constant',
+      expression: { literal: '' }
+    } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
   if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'require' && options?.condition === true) {
     const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
@@ -552,7 +564,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
       next[logical] = branches;
       edit = source.replacePathValue(path, next, expectedHash);
     }
-    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
     const before = pack.validate(schemaUri, doc);
     const errors = pack.validate(schemaUri, edit.document.json());
     const introduced = errors.filter((error: string) => !before.includes(error));
@@ -574,7 +586,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const candidate = await promptRequireField(api, catalog, capability, existingFields ?? {}, options);
     if (!candidate) return undefined;
     const [fieldName, predicate] = Object.entries(candidate)[0] as [string, any];
-    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
     let edit: any;
     if (existingFields === undefined) {
       if (requirement.field_requirement === undefined) {
@@ -597,7 +609,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
   }
 
   if (last === 'shared_objects' && path.length === 2) {
-    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
     const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
     const nameRule: any = spec?.propertyNames;
     if (!nameRule?.pattern) throw new Error('Pinned Shared Object naming metadata is unavailable.');
@@ -668,7 +680,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const selected: any = valueAtPathForGraphical(source.json(), path);
     if (!selected || typeof selected !== 'object' || Array.isArray(selected) || !selected.capability)
       throw new Error('Shared Object has no capability. Set a valid capability first.');
-    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
     const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.shared_objects;
     const validId = new RegExp(spec?.propertyNames?.pattern ?? '^$');
     if (!validId.test(String(path[2])))
@@ -709,7 +721,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     if (!extra) return undefined;
     const [fieldName, value] = Object.entries(extra)[0] as [string, any];
     const edit = source.insertMapEntry(path, fieldName, value as any, expectedHash);
-    const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+    const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
     const errors = pack.validate(schemaUri, edit.document.json());
     if (errors.length) throw new Error('Pinned schema rejected the added Object selector: ' + errors.join('; '));
     return edit;
@@ -832,7 +844,7 @@ class AssessmentEditorProvider {
           const pack = this.getPack();
           if (!pack) throw new Error('A verified pinned schema pack is required.');
           const source = new SourceBuffer(document.getText());
-          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
           const before = pack.validate(schemaUri, source.json());
           const edit = source.editRegexList(path, message.action, revision, message.value, message.index);
           const after = pack.validate(schemaUri, edit.document.json());
@@ -876,7 +888,7 @@ class AssessmentEditorProvider {
           }
           if(valueSource==='input' && !Object.hasOwn(before?.assessment?.inputs||{},message.value))throw new Error('Select an existing Organizational Input.');
           const replacementValue=valueSource==='variable'||valueSource==='input'?{[valueSource]:message.value}:message.value;
-          const schemaUri='https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const schemaUri=pinnedSchemaUri(pack, 'assessment.schema.json');
           const earlier=pack.validate(schemaUri,before);
           const edit=source.replaceComparison(path,op,replacementValue,revision);
           const later=pack.validate(schemaUri,edit.document.json());
@@ -918,7 +930,7 @@ class AssessmentEditorProvider {
           const originalOperation = String(Object.keys(original)[0]);
           if (variant === 'variable' && !comparisonVariableCompatible(pack, authored?.assessment, [...path, originalOperation], message.value))
             throw new Error('The selected Variable datatype is incompatible with this Object selector.');
-          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
           const before = pack.validate(schemaUri, source.json());
           const edit = source.replaceSelectorSource(path, variant, message.value, revision);
           const after = pack.validate(schemaUri, edit.document.json());
@@ -967,7 +979,7 @@ class AssessmentEditorProvider {
               // schema-defined logical operator.
               edit = source.replacePathValue(['assessment', 'evaluate'], { [message.operation]: [evaluate, testExpression] } as any, currentRevision);
             }
-            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
             const before = pack.validate(schemaUri, original);
             const afterDocument = edit.document.json();
             const after = pack.validate(schemaUri, afterDocument);
@@ -1054,7 +1066,7 @@ class AssessmentEditorProvider {
             if (confirmation !== 'Remove field') return;
             const pack = this.getPack();
             if (!pack) throw new Error('The verified offline schema pack is required for field edits.');
-            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
             const before = pack.validate(schemaUri, original);
             const edit = source.removePath(fieldPath, currentRevision);
             const errors = pack.validate(schemaUri, edit.document.json());
@@ -1094,9 +1106,9 @@ class AssessmentEditorProvider {
                   ? undefined : 'Use a new member name accepted by the pinned schema.'
             });
             if (!newKey) return;
-            const before = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', original);
+            const before = pack.validate(pinnedSchemaUri(pack, 'assessment.schema.json'), original);
             const edit = source.editMappingKey(mappingPath, oldKey, newKey, currentRevision);
-            const errors = pack.validate('https://scap-ng.dev/schema/v0.4.0/assessment.schema.json', edit.document.json());
+            const errors = pack.validate(pinnedSchemaUri(pack, 'assessment.schema.json'), edit.document.json());
             const introduced = errors.filter((error: string) => !before.includes(error));
             if (introduced.length) throw new Error('Renaming this dynamic field would invalidate the Assessment: ' + introduced.join('; '));
             await applySourceWorkspaceEdit(api, document, edit);
@@ -1131,7 +1143,7 @@ class AssessmentEditorProvider {
             const source = new SourceBuffer(document.getText()), original = source.json();
             const pack = this.getPack();
             if (!pack) throw new Error('The verified offline schema pack is required for structural edits.');
-            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
             const schema: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
             const rule: any = schema?.propertyNames;
             if (!rule?.pattern) throw new Error('The pinned schema does not define the naming rules for ' + entity + '.');
@@ -1191,7 +1203,7 @@ class AssessmentEditorProvider {
             const source = new SourceBuffer(document.getText()); const doc = source.json();
             const value = valueAtPathForGraphical(doc, path);
             if (value === undefined) throw new Error('The selected named definition does not exist.');
-            const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+            const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
             const spec: any = pack.resource(schemaUri).properties?.assessment?.properties?.[collection];
             const rule: any = spec?.propertyNames;
             if (!rule?.pattern) throw new Error('The pinned schema has no naming rule for this collection.');
@@ -1255,7 +1267,7 @@ class AssessmentEditorProvider {
             throw new Error('That operation is not present in the pinned native Variable schema.');
           const variableId = String(path[2]);
           const expression = variableExpressionTemplate(message.operation, authored.assessment, variableId);
-          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
           const before = pack.validate(schemaUri, authored);
           const edit = source.replaceExpression(path, expression, currentRevision, path.slice(0, 3));
           const after = pack.validate(schemaUri, edit.document.json());
@@ -1288,7 +1300,7 @@ class AssessmentEditorProvider {
           }
           const pack = this.getPack();
           if (!pack) throw new Error('The verified offline schema pack is required for Variable expression edits.');
-          const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+          const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
           const before = pack.validate(schemaUri, authored);
           const after = pack.validate(schemaUri, edit.document.json());
           const introduced = after.filter((error: string) => !before.includes(error));
