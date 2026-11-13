@@ -54,6 +54,7 @@ export class MetadataPack {
   private readonly ajv: InstanceType<typeof Ajv2020.default>;
 
   constructor(directory: string, expected: Pin) {
+    if (expected.schemaVersion !== '0.4.1') throw new Error('Only canonical SCAP-NG 0.4.1 is supported; old schema packs are not loaded');
     if (!/^[a-f0-9]{40}$/.test(expected.sourceCommit) || !/^[a-f0-9]{64}$/.test(expected.manifestSha256))
       throw new Error('An exact source commit and external manifest digest are required');
     const raw = readFileSync(resolve(directory, 'manifest.json'));
