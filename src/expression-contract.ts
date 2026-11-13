@@ -42,7 +42,6 @@ export interface VariableDeclarationAnalysis {
   id: string;
   path: (string | number)[];
   declarationValid: boolean;
-  declaredDatatype?: string; // Legacy pinned-schema declaration, if present.
   inferredDatatype?: string; // Read-only static inference; never runtime evidence.
   potentialCardinality: VariableCardinality;
   runtimeStatus: 'not_evaluated';
@@ -55,7 +54,7 @@ export interface VariableAnalysis {
   runtimeEvaluation: 'not_available';
 }
 
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
+const schemaBase = 'https://scap-ng.dev/schema/v0.4.1/';
 const variableIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*-variable$/;
 
 function schemaResource(pack: MetadataPack, suffix: string): string | undefined {
@@ -212,14 +211,9 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
   const variableSchemas = variableSchema(pack);
   const declarationSchema: any = variableSchemas.declaration ? pack.node(variableSchemas.declaration) : undefined;
   const required = declarationSchema?.required ?? ['kind', 'expression'];
-  const declarationDatatypeAllowed = !!declarationSchema?.properties?.datatype;
+  if (required.includes('datatype') || Object.hasOwn(declarationSchema?.properties ?? {}, 'datatype'))
+    throw new Error('Unsupported Variable grammar: only 0.4.1 inferred type declarations are admitted');
   const kinds = enumAt(pack, variableSchemas.declaration, '/properties/kind');
-  const datatypes = (() => {
-    try {
-      const common = schemaResource(pack, '/capability-common.schema.json');
-      return enumAt(pack, common, '/$defs/native_datatype');
-    } catch { return []; }
-  })();
   const severity = draft ? 'warning' : 'error';
   for (const [id, declaration] of Object.entries(variables)) {
     const path: (string | number)[] = ['assessment', 'variables', id];
@@ -244,12 +238,9 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       valid = false;
       diagnostics.push({ code: 'invalid-variable-kind', kind: 'declaration', severity: 'error', path: [...path, 'kind'], message: `Variable kind '${declarationObject.kind}' is not allowed by the pinned schema.` });
     }
-    if (!declarationDatatypeAllowed && Object.hasOwn(declarationObject, 'datatype')) {
+    if (Object.hasOwn(declarationObject, 'datatype')) {
       valid = false;
-      diagnostics.push({ code: 'obsolete-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: 'Variable declaration datatype was removed from canonical 0.4; migrate this value explicitly using typed literals or source provenance. Nothing is silently deleted.' });
-    } else if (declarationDatatypeAllowed && typeof declarationObject.datatype === 'string' && datatypes.length && !datatypes.includes(declarationObject.datatype)) {
-      valid = false;
-      diagnostics.push({ code: 'invalid-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: `Variable datatype '${declarationObject.datatype}' is not allowed by the pinned schema.` });
+      diagnostics.push({ code: 'obsolete-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: 'SCAP-NG 0.4.1 does not allow Variable declaration datatype. Migrate the YAML explicitly; the editor will not delete source fields automatically.' });
     }
     if (!objectValue(declarationObject.expression)) {
       valid = false;
@@ -272,7 +263,7 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       }
     });
     edges.set(id, declarationReferences.filter(reference => ids.has(reference)));
-    declarations.push({ id, path, declarationValid: valid, declaredDatatype: declarationDatatypeAllowed && typeof declarationObject.datatype === 'string' ? declarationObject.datatype : undefined, inferredDatatype: expressionOutputDatatype(declarationObject.expression, variables), potentialCardinality: expressionCardinality(declarationObject.expression), runtimeStatus: 'not_evaluated', references: [...new Set(references)] });
+    declarations.push({ id, path, declarationValid: valid, inferredDatatype: expressionOutputDatatype(declarationObject.expression, variables), potentialCardinality: expressionCardinality(declarationObject.expression), runtimeStatus: 'not_evaluated', references: [...new Set(references)] });
   }
 
   const comparisonLocation = (path: (string | number)[]) => {
@@ -335,12 +326,12 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
     }
     if (!objectValue(variable)) return;
     const declaration = declarations.find(item => item.id === value.variable);
-    const inferredType = declarationDatatypeAllowed ? declaration?.declaredDatatype : declaration?.inferredDatatype;
+    const inferredType = declaration?.inferredDatatype;
     if (!inferredType) return; // Unknown is not a fabricated datatype mismatch.
     const expected = selectorFieldDatatypes(pack, location.capability, location.field, location.requireField);
     if (expected.length && !expected.includes(inferredType)) diagnostics.push({
       code: 'incompatible-variable-datatype', kind: 'datatype', severity: 'error', path: [...valuePath, 'variable'],
-      message: `Variable '${value.variable}' has ${declarationDatatypeAllowed ? 'declared' : 'inferred'} type '${inferredType}', but ${location.capability}.${location.field} permits: ${expected.join(', ')}.`
+      message: `Variable '${value.variable}' has ${'inferred'} type '${inferredType}', but ${location.capability}.${location.field} permits: ${expected.join(', ')}.`
     });
   });
   const visiting = new Set<string>();
