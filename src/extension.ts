@@ -524,7 +524,7 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
   }
   if (last === 'variables') {
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
-    const skeleton = { kind: 'constant', datatype: 'string', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
+    const skeleton = { kind: 'constant', expression: { literal: '' } } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
   if (path.length === 4 && path[0] === 'assessment' && path[1] === 'tests' && path[3] === 'require' && options?.condition === true) {
     const doc: any = source.json(); const test: any = doc.assessment?.tests?.[String(path[2])];
