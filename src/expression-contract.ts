@@ -184,6 +184,15 @@ function expressionOutputDatatype(expression: any, variables: Record<string, any
   return undefined;
 }
 
+/** Best-effort static type only; never evidence or an implicit cast. */
+export function inferredVariableDatatype(assessment: any, id: string): string | undefined {
+  const variables: Record<string, any> = objectValue(assessment?.variables) ? assessment.variables : {};
+  const declaration = variables[id];
+  return objectValue(declaration)
+    ? expressionOutputDatatype(declaration.expression, variables, new Set([id]))
+    : undefined;
+}
+
 function variableSchema(pack: MetadataPack) {
   const uri = schemaResource(pack, '/variable-expression.schema.json');
   return { uri, declaration: uri ? `${uri}#/$defs/declaration` : undefined };
