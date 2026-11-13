@@ -1,0 +1,55 @@
+name: Canonical 0.4.1 schema cascade receiver
+
+on:
+  repository_dispatch:
+    types: [scap-ng-schema-changed]
+  workflow_dispatch:
+    inputs:
+      canonical_sha:
+        description: Exact approved canonical SCAP-NG main SHA to qualify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enforce-current-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ github.event.client_payload.canonical_sha || inputs.canonical_sha }}
+      SOURCE_VERSION: ${{ github.event.client_payload.schema_version || '0.4.1' }}
+      TARGET_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact source SHA and record cascade for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Expected an exact 40-hex canonical SHA"; exit 1; }
+          test "$SOURCE_VERSION" = '0.4.1' || { echo "::error::Only SCAP-NG 0.4.1 is supported"; exit 1; }
+          marker="schema-cascade-sha:$SOURCE_SHA"
+          if ! gh api "repos/$TARGET_REPO/issues/65/comments?per_page=100" --jq '.[].body' | grep -Fq "$marker"; then
+            gh issue comment 65 -R "$TARGET_REPO" --body "Canonical single-version SCAP-NG 0.4.1 schema changed at commit $SOURCE_SHA. Re-pin ONE 0.4.1 contract, regenerate docs/metadata/semantics as needed, run full regression and post exact validation. No 0.4.0 fallback or automatic merge. $marker"
+          fi
+          echo "Canonical SHA: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tracked in https://github.com/$TARGET_REPO/issues/65" >> "$GITHUB_STEP_SUMMARY"
+      - name: Reject stale or missing single-version canonical pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test ! -f canonical-schema-pin.json; then
+            echo "::error::canonical-schema-pin.json missing. Add one reviewed 0.4.1 pin and validate consumer integration."
+            exit 1
+          fi
+          jq -e --arg sha "$SOURCE_SHA" '
+            .schema_version=="0.4.1"
+            and .canonical_sha==$sha
+            and .single_version==true
+          ' canonical-schema-pin.json >/dev/null || {
+            echo "::error::Consumer 0.4.1 canonical pin is stale or invalid; a linked implementation PR is required."
+            exit 1
+          }
