@@ -42,7 +42,8 @@ export interface VariableDeclarationAnalysis {
   id: string;
   path: (string | number)[];
   declarationValid: boolean;
-  declaredDatatype?: string;
+  declaredDatatype?: string; // Legacy pinned-schema declaration, if present.
+  inferredDatatype?: string; // Read-only static inference; never runtime evidence.
   potentialCardinality: VariableCardinality;
   runtimeStatus: 'not_evaluated';
   references: string[];
@@ -126,6 +127,7 @@ function expressionCardinality(expression: any, seen = new Set<any>()): Variable
   if (Object.hasOwn(expression, 'variable')) return 'unknown';
   if (Object.hasOwn(expression, 'values')) return 'many';
   if (Object.hasOwn(expression, 'concat') || Object.hasOwn(expression, 'merge')) return 'many';
+  if (Object.hasOwn(expression, 'count')) return 'one';
   if (Object.hasOwn(expression, 'unique')) return expressionCardinality(expression.unique, seen);
   if (Object.hasOwn(expression, 'regex_capture')) return 'many';
   return 'unknown';
@@ -140,6 +142,46 @@ function valueAt(root: any, path: (string | number)[]): any {
   let current = root;
   for (const part of path) current = current?.[part as any];
   return current;
+}
+
+function expressionOutputDatatype(expression: any, variables: Record<string, any>, seen = new Set<string>()): string | undefined {
+  if (!objectValue(expression)) return undefined;
+  const op = Object.keys(expression);
+  if (op.length !== 1) return undefined;
+  const key = op[0];
+  const payload = expression[key];
+  if (key === 'literal') {
+    if (objectValue(payload) && typeof payload.datatype === 'string') return payload.datatype;
+    const values = Array.isArray(payload) ? payload : [payload];
+    if (!values.length) return undefined; // Untyped empty lists need consumer context.
+    const types = new Set(values.map(value =>
+      typeof value === 'number' ? (Number.isInteger(value) ? 'integer' : 'float') :
+      typeof value === 'string' ? 'string' :
+      typeof value === 'boolean' ? 'boolean' : 'unknown'));
+    return types.size === 1 && !types.has('unknown') ? [...types][0] : undefined;
+  }
+  if (key === 'variable') {
+    if (typeof payload !== 'string' || seen.has(payload)) return undefined;
+    const next = variables[payload];
+    if (!objectValue(next)) return undefined;
+    const recursive = new Set(seen); recursive.add(payload);
+    return expressionOutputDatatype(next.expression, variables, recursive);
+  }
+  if (key === 'count') return 'integer';
+  if (['split', 'substring', 'concat', 'regex_capture', 'begin', 'end', 'merge'].includes(key)) return 'string';
+  if (key === 'unique') {
+    const parts = Array.isArray(payload) ? payload : [payload];
+    const types = new Set(parts.map(part => expressionOutputDatatype(part, variables, seen)));
+    return types.size === 1 ? [...types][0] : undefined;
+  }
+  if (key === 'arithmetic' && objectValue(payload) && Array.isArray(payload.values)) {
+    const types = payload.values.map((part: any) => expressionOutputDatatype(part, variables, seen));
+    if (!types.length || types.some((type: string | undefined) => type !== 'integer' && type !== 'float')) return undefined;
+    return types.includes('float') ? 'float' : 'integer';
+  }
+  // values(Object.field) is typed by the canonical collected Item field.
+  // This editor does not execute the provider or guess from a selector name.
+  return undefined;
 }
 
 function variableSchema(pack: MetadataPack) {
@@ -159,7 +201,9 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
   const ids = new Set(Object.keys(variables));
   const edges = new Map<string, string[]>();
   const variableSchemas = variableSchema(pack);
-  const required = variableSchemas.declaration ? (pack.node(variableSchemas.declaration).required ?? []) : ['kind', 'datatype', 'expression'];
+  const declarationSchema: any = variableSchemas.declaration ? pack.node(variableSchemas.declaration) : undefined;
+  const required = declarationSchema?.required ?? ['kind', 'expression'];
+  const declarationDatatypeAllowed = !!declarationSchema?.properties?.datatype;
   const kinds = enumAt(pack, variableSchemas.declaration, '/properties/kind');
   const datatypes = (() => {
     try {
@@ -179,7 +223,7 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
     }
     if (!declarationObject) {
       valid = false;
-      diagnostics.push({ code: 'incomplete-variable-declaration', kind: 'declaration', severity: draft ? 'info' : 'error', path, message: 'Variable declaration is incomplete; complete kind, datatype, and expression before saving.' });
+      diagnostics.push({ code: 'incomplete-variable-declaration', kind: 'declaration', severity: draft ? 'info' : 'error', path, message: 'Variable declaration is incomplete; complete kind and expression before saving.' });
       declarations.push({ id, path, declarationValid: false, potentialCardinality: 'unknown', runtimeStatus: 'not_evaluated', references });
       continue;
     }
@@ -191,7 +235,10 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       valid = false;
       diagnostics.push({ code: 'invalid-variable-kind', kind: 'declaration', severity: 'error', path: [...path, 'kind'], message: `Variable kind '${declarationObject.kind}' is not allowed by the pinned schema.` });
     }
-    if (typeof declarationObject.datatype === 'string' && datatypes.length && !datatypes.includes(declarationObject.datatype)) {
+    if (!declarationDatatypeAllowed && Object.hasOwn(declarationObject, 'datatype')) {
+      valid = false;
+      diagnostics.push({ code: 'obsolete-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: 'Variable declaration datatype was removed from canonical 0.4; migrate this value explicitly using typed literals or source provenance. Nothing is silently deleted.' });
+    } else if (declarationDatatypeAllowed && typeof declarationObject.datatype === 'string' && datatypes.length && !datatypes.includes(declarationObject.datatype)) {
       valid = false;
       diagnostics.push({ code: 'invalid-variable-datatype', kind: 'declaration', severity: 'error', path: [...path, 'datatype'], message: `Variable datatype '${declarationObject.datatype}' is not allowed by the pinned schema.` });
     }
@@ -216,7 +263,7 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
       }
     });
     edges.set(id, declarationReferences.filter(reference => ids.has(reference)));
-    declarations.push({ id, path, declarationValid: valid, declaredDatatype: typeof declarationObject.datatype === 'string' ? declarationObject.datatype : undefined, potentialCardinality: expressionCardinality(declarationObject.expression), runtimeStatus: 'not_evaluated', references: [...new Set(references)] });
+    declarations.push({ id, path, declarationValid: valid, declaredDatatype: declarationDatatypeAllowed && typeof declarationObject.datatype === 'string' ? declarationObject.datatype : undefined, inferredDatatype: expressionOutputDatatype(declarationObject.expression, variables), potentialCardinality: expressionCardinality(declarationObject.expression), runtimeStatus: 'not_evaluated', references: [...new Set(references)] });
   }
 
   const comparisonLocation = (path: (string | number)[]) => {
@@ -277,11 +324,14 @@ export function analyzeVariables(pack: MetadataPack, assessment: any, draft = tr
         message: `Variable '${value.variable}' is used by comparison '${operation}' without the canonical value_match cardinality control; potential cardinality is ${declaration?.potentialCardinality ?? 'unknown'}.`
       });
     }
-    if (!objectValue(variable) || typeof variable.datatype !== 'string') return;
+    if (!objectValue(variable)) return;
+    const declaration = declarations.find(item => item.id === value.variable);
+    const inferredType = declarationDatatypeAllowed ? declaration?.declaredDatatype : declaration?.inferredDatatype;
+    if (!inferredType) return; // Unknown is not a fabricated datatype mismatch.
     const expected = selectorFieldDatatypes(pack, location.capability, location.field, location.requireField);
-    if (expected.length && !expected.includes(variable.datatype)) diagnostics.push({
+    if (expected.length && !expected.includes(inferredType)) diagnostics.push({
       code: 'incompatible-variable-datatype', kind: 'datatype', severity: 'error', path: [...valuePath, 'variable'],
-      message: `Variable '${value.variable}' has datatype '${variable.datatype}', but ${location.capability}.${location.field} permits: ${expected.join(', ')}.`
+      message: `Variable '${value.variable}' has ${declarationDatatypeAllowed ? 'declared' : 'inferred'} type '${inferredType}', but ${location.capability}.${location.field} permits: ${expected.join(', ')}.`
     });
   });
   const visiting = new Set<string>();
