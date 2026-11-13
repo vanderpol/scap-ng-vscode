@@ -349,11 +349,10 @@ export function comparisonVariableCompatible(pack: MetadataPack | undefined, ass
   const descriptor = comparisonDescriptor(pack, assessment, path);
   const variable = assessment?.variables?.[variableId];
   if (!descriptor || !variable) return false;
-  // Legacy declarations may still be present before an explicit YAML migration.
-  // New native 0.4 Variables derive their type from the expression; never
-  // guess a numeric type from a lexical string or silently cast values.
-  const datatype = typeof variable.datatype === 'string'
-    ? variable.datatype : inferredVariableDatatype(assessment, variableId);
+  // Exactly one active 0.4.1 grammar. Types are inferred from expressions,
+  // never from an obsolete declaration datatype or numeric-looking strings.
+  if (Object.hasOwn(variable, 'datatype')) return false;
+  const datatype = inferredVariableDatatype(assessment, variableId);
   if (!datatype) return false; // Ambiguous collected fields require a type proof.
   const datatypes = selectorFieldDatatypes(pack!, descriptor.capability, descriptor.field, descriptor.requireField);
   return !datatypes.length || datatypes.includes(datatype);
