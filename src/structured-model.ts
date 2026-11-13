@@ -4,7 +4,7 @@ import { SourceBuffer } from './source.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaDynamicPropertyLocations, schemaItemLocations, schemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDatatypes, selectorOperatorChoices, selectorValueChoices, selectorValueSourceChoices } from './completion.js';
-import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
+import { analyzeVariables, expressionContract, inferredVariableDatatype, variableAnalysisSummary } from './expression-contract.js';
 import { analyzeAssessmentReferences } from './reference-graph.js';
 
 type EditPath = (string | number)[];
@@ -348,9 +348,15 @@ function comparisonFixedChoices(pack: MetadataPack | undefined, assessment: any,
 export function comparisonVariableCompatible(pack: MetadataPack | undefined, assessment: any, path: EditPath, variableId: string): boolean {
   const descriptor = comparisonDescriptor(pack, assessment, path);
   const variable = assessment?.variables?.[variableId];
-  if (!descriptor || !variable || typeof variable.datatype !== 'string') return false;
+  if (!descriptor || !variable) return false;
+  // Legacy declarations may still be present before an explicit YAML migration.
+  // New native 0.4 Variables derive their type from the expression; never
+  // guess a numeric type from a lexical string or silently cast values.
+  const datatype = typeof variable.datatype === 'string'
+    ? variable.datatype : inferredVariableDatatype(assessment, variableId);
+  if (!datatype) return false; // Ambiguous collected fields require a type proof.
   const datatypes = selectorFieldDatatypes(pack!, descriptor.capability, descriptor.field, descriptor.requireField);
-  return !datatypes.length || datatypes.includes(variable.datatype);
+  return !datatypes.length || datatypes.includes(datatype);
 }
 
 /** Return contextual authoring help from the exact pinned capability predicate. */
