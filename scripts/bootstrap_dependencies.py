@@ -72,8 +72,9 @@ def verify_pack(directory):
     manifest = json.loads(raw)
     if manifest['source_commit'] != PROFILE['sourceCommit'] or manifest['schema_version'] != PROFILE['schemaVersion']:
         raise ValueError('editor pack version/source commit mismatch')
-    if len(manifest['resources']) != 235 or len(manifest['capabilities']) != 100:
-        raise ValueError('incomplete editor pack')
+    expected_resources = int(PROFILE.get('packResourceCount', 235))
+    if len(manifest['resources']) != expected_resources or len(manifest['capabilities']) != 100:
+        raise ValueError(f'incomplete editor pack: expected {expected_resources} resources')
     for item in manifest['resources']:
         path = Path(item['path'])
         if path.is_absolute() or '..' in path.parts:
@@ -97,14 +98,13 @@ def bootstrap(*, offline=False, with_pack=False):
         output = CACHE / 'editor-pack'
         if not output.exists():
             tools = inputs['scap-ng-tools']
-            env = os.environ.copy()
-            env['PYTHONPATH'] = str(tools / 'src') + os.pathsep + env.get('PYTHONPATH', '')
-            command = [sys.executable, str(tools / 'scripts/build_v04_editor_metadata_pack.py'),
+            command = [sys.executable, str(ROOT / 'scripts/build_v04_editor_metadata_pack_compat.py'),
+                       '--tools-root', str(tools),
                        '--schema-root', str(inputs['scap-ng']),
                        '--oval-root', str(inputs['oval-v5.12.3']),
                        '--source-commit', PROFILE['sourceCommit'], '--output', str(output)]
             try:
-                subprocess.run(command, check=True, env=env)
+                subprocess.run(command, check=True)
             except subprocess.CalledProcessError as error:
                 raise ValueError('metadata export failed; install tools Python dependencies first') from error
         verify_pack(output)

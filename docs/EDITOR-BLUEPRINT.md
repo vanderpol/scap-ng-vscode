@@ -2,7 +2,7 @@
 
 **Status:** implementation guidance for an open-source pre-alpha extension. This document describes product design decisions and a staged delivery strategy; it **does not** change SCAP-NG 0.4 normative grammar or prescribe a future OVAL Board outcome.
 
-See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 canonical Assessment examples](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/examples) for reproducible editor fixtures. The [separate converter and shared authoring-tool contract](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) is not an invitation to reimplement its semantic checks in TypeScript. Canonical schema and behavior are pinned to [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/463675f3b931e596c922352a131cb3c515ab2265/schema).
+See [AGENTS.md](../AGENTS.md) for operating rules, [the SCAP-NG primer](SCAP-NG-PRIMER.md) for domain terminology, and the [current 0.4 canonical Assessment examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) for reproducible editor fixtures. The [separate converter and shared authoring-tool contract](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) is not an invitation to reimplement its semantic checks in TypeScript. Canonical schema and behavior are pinned to [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema).
 
 ## Product goal and audience
 
@@ -44,6 +44,7 @@ Specialized controls are needed for:
 - `and`/`or`/`one`/`xor` nested alternatives with visible operator labels and drag/reorder only when semantics-preserving.
 - Test `require` and multi-Test `evaluate` must be distinct editors.
 - Source/evidence, inputs and provenance without dropping unfamiliar schema-permitted metadata.
+- Object and Require forms provide schema-qualified **Add field** and **Remove field** actions. Edits remain minimal source patches, preserve undo/redo, and reject removals/additions that would invalidate the pinned Assessment schema.
 
 Every accepted native field must be editable. If specialized widget support is missing, fall back to a schema-checked generic property editor rather than hiding the field.
 

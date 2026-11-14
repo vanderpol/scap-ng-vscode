@@ -15,6 +15,8 @@ export interface Context {
   diagnostics: readonly string[];
   mode?: 'source' | 'structured' | 'guided';
   parentValue?: Json;
+  /** Schema URI for the containing object when a child inherits its object default. */
+  parentSchemaUri?: string;
 }
 export type ViewMode = 'show-all' | 'hide-defaults' | 'aggressive-preview';
 export const sha256 = (raw: string | Buffer) => createHash('sha256').update(raw).digest('hex');
@@ -46,6 +48,7 @@ function at(root: any, pointer: string): any {
 
 export class MetadataPack {
   readonly pin: Readonly<Pin>;
+  readonly directory: string;
   readonly manifest: Readonly<Schema>;
   private readonly documents = new Map<string, Schema>();
   private readonly ajv: InstanceType<typeof Ajv2020.default>;
@@ -58,7 +61,7 @@ export class MetadataPack {
     const manifest = JSON.parse(raw.toString());
     if (manifest.format !== 'scap-ng/offline-editor-pack/1' || manifest.schema_version !== expected.schemaVersion ||
         manifest.source_commit !== expected.sourceCommit || manifest.authoring_metadata_version !== 1 || manifest.unpublished_worktree === true) throw new Error('Schema pack version/commit mismatch');
-    const root = realpathSync(directory);
+    const root = realpathSync(directory); this.directory = root;
     this.ajv = new Ajv2020.default({ strict: false, useDefaults: false, coerceTypes: false, allErrors: true, validateFormats: false });
     for (const resource of manifest.resources) {
       if (typeof resource.path !== 'string' || resource.path.includes('\\') || resource.path.split('/').includes('..'))
@@ -82,6 +85,11 @@ export class MetadataPack {
     this.pin = frozen({ ...expected }); this.manifest = frozen(manifest);
   }
 
+  resourcePath(uri: string): string {
+    const resource = this.manifest.resources.find((candidate: any) => candidate.uri === uri);
+    if (!resource) throw new Error('Unavailable offline resource: ' + uri);
+    return resolve(this.directory, resource.path);
+  }
   resource(uri: string): Readonly<Schema> {
     const doc = this.documents.get(uri); if (!doc) throw new Error('Unavailable offline resource: ' + uri);
     return doc;
@@ -113,9 +121,13 @@ export class MetadataPack {
       hasSuggestion: annotation.representation === 'key' ? Object.hasOwn(annotation, 'default_key') : Object.hasOwn(combined, 'default'),
       pin: this.pin, validationLevel: 'schema-metadata-only', assessmentExecution: 'unavailable' });
   }
-  validate(uri: string, value: Json): string[] {
+  validateDetailed(uri: string, value: Json) {
     const validator = this.ajv.compile({ $ref: uri });
-    return validator(value) ? [] : (validator.errors ?? []).map(e => `${e.instancePath}: ${e.message}`);
+    validator(value);
+    return validator.errors ?? [];
+  }
+  validate(uri: string, value: Json): string[] {
+    return this.validateDetailed(uri, value).map(e => `${e.instancePath}: ${e.message}`);
   }
   private keyChoices(uri: string, defaultKey: string): string[] {
     const groups: string[][] = []; const propertyLimits: string[][] = []; const arrayKeys = new Set<string>();
@@ -144,20 +156,55 @@ export class MetadataPack {
   control(uri: string, serializedValue: Json | undefined, context: Context, mode: ViewMode) {
     const help = this.describe(uri, context); const meta = help.annotation;
     let value: Json | undefined = serializedValue;
+    let suggested = help.suggested;
+    let hasSuggestion = help.hasSuggestion;
+    let hidingAnnotation = meta;
+    let wholeParentIsDefault = false;
+    let inheritedParentDefault = false;
     if (meta.representation === 'key') {
       const choices = this.keyChoices(uri, meta.default_key);
       const present = object(serializedValue) ? choices.filter(k => Object.hasOwn(serializedValue, k)) : [];
       value = present.length === 1 ? present[0] : undefined;
+    } else if (!hasSuggestion && object(context.parentValue)) {
+      // Some schema-backed controls (notably field_requirement) declare one
+      // complete object default on the property, while their child scalar
+      // members have no individual defaults. Inherit that suggestion only for
+      // the containing authored object, so the paired control is hidden as a
+      // unit and an explicit sibling override keeps both members visible.
+      const parent = this.parentObjectDefault(uri, context);
+      if (parent && Object.hasOwn(parent.suggested, this.propertyName(uri))) {
+        const name = this.propertyName(uri);
+        suggested = parent.suggested[name];
+        hasSuggestion = true;
+        hidingAnnotation = parent.annotation;
+        inheritedParentDefault = true;
+        wholeParentIsDefault = canonical(context.parentValue) === canonical(parent.suggested);
+      }
     }
     const applicable = !meta.condition_schema || (context.parentValue !== undefined && !this.validate(meta.condition_schema, context.parentValue).length);
     const safe = context.schemaValid === true && context.isOverride === false && Array.isArray(context.diagnostics) && context.diagnostics.length === 0 && applicable;
-    const isDefault = help.hasSuggestion && value !== undefined && canonical(value) === canonical(help.suggested);
-    const eligible = meta.hide_when_default === true || (mode === 'aggressive-preview' && meta.aggressive_preview === true);
+    const isDefault = wholeParentIsDefault || (!inheritedParentDefault && hasSuggestion && value !== undefined && canonical(value) === canonical(suggested));
+    const eligible = hidingAnnotation.hide_when_default === true || (mode === 'aggressive-preview' && hidingAnnotation.aggressive_preview === true);
     const hidden = mode !== 'show-all' && safe && isDefault && eligible;
-    return frozen({ ...help, serializedValue, controlValue: value, hidden, applicable,
-      hiddenScope: meta.hide_scope ?? 'value_control_only',
+    return frozen({ ...help, suggested, hasSuggestion, serializedValue, controlValue: value, hidden, applicable,
+      hiddenScope: hidingAnnotation.hide_scope ?? 'value_control_only',
       reason: hidden ? 'Explicit serialized default; reveal is available' : 'Visible value, exception, absent value or diagnostic',
       assessmentExecution: 'unavailable' });
+  }
+  private propertyName(uri: string): string {
+    const marker = '/properties/'; const index = uri.lastIndexOf(marker);
+    if (index < 0) return '';
+    return uri.slice(index + marker.length).replace(/~1/g, '/').replace(/~0/g, '~');
+  }
+  private parentObjectDefault(uri: string, context: Context): { suggested: Record<string, Json>; annotation: Schema } | undefined {
+    const marker = '/properties/'; const index = uri.lastIndexOf(marker);
+    if (index < 0) return undefined;
+    const parentUri = context.parentSchemaUri ?? uri.slice(0, index);
+    try {
+      const parent = this.describe(parentUri, context);
+      if (parent.annotation.representation !== 'value' || !parent.hasSuggestion || !object(parent.suggested)) return undefined;
+      return { suggested: parent.suggested as Record<string, Json>, annotation: parent.annotation };
+    } catch { return undefined; }
   }
   summarize(controls: readonly ReturnType<MetadataPack['control']>[]) {
     const groups: Record<string, number> = {};
