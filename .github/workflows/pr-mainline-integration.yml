@@ -1,0 +1,115 @@
+name: Mainline PR integration discipline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 13 * * 1-5'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Audit PR integration debt and enforce new stack-depth limit
+        env:
+          GH_API_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GH_REPOSITORY"]
+          token = os.environ["GH_API_TOKEN"]
+          event = os.environ["GH_EVENT_NAME"]
+          pr_number = int(os.environ["GH_PR_NUMBER"])
+          pulls = []
+          # 10 pages permits at most 1000 open PRs. Fail rather than
+          # silently calculating an incomplete dependency graph.
+          for page in range(1, 11):
+              url = f"https://api.github.com/repos/{repo}/pulls?state=open&per_page=100&page={page}"
+              req = Request(url, headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "scap-ng-pr-integration-audit",
+              })
+              with urlopen(req, timeout=20) as response:
+                  batch = json.load(response)
+              pulls.extend(batch)
+              if len(batch) < 100:
+                  break
+          else:
+              raise SystemExit("More than 1000 open PRs: audit truncated; fail closed")
+
+          by_branch = {
+              pr["head"]["ref"]: pr
+              for pr in pulls
+              if pr.get("head", {}).get("repo") and
+                 pr["head"]["repo"]["full_name"] == repo
+          }
+
+          def stack_depth(pr):
+              depth, branch, seen = 1, pr["base"]["ref"], set()
+              while branch != "main":
+                  if branch in seen:
+                      return None, f"dependency cycle at {branch}"
+                  seen.add(branch)
+                  upstream = by_branch.get(branch)
+                  if not upstream:
+                      return None, f"base {branch} has no open parent PR targeting main"
+                  depth += 1
+                  branch = upstream["base"]["ref"]
+              return depth, None
+
+          cutoff = "2026-11-18T00:00:00Z"
+          now = dt.datetime.now(dt.timezone.utc)
+          newly_invalid = []
+          stale = []
+          max_depth = 0
+          for pr in pulls:
+              depth, error = stack_depth(pr)
+              if depth is not None:
+                  max_depth = max(max_depth, depth)
+              created = dt.datetime.fromisoformat(pr["created_at"].replace("Z", "+00:00"))
+              if (now - created).days >= 3:
+                  stale.append(pr)
+              # Existing stacks predate this policy and remain auditable,
+              # but new PRs must not exceed two total dependency levels.
+              if pr["created_at"] >= cutoff and (error or depth > 2):
+                  newly_invalid.append((pr["number"], error or f"depth {depth} > 2"))
+
+          lines = [
+              "## SCAP-NG mainline integration debt",
+              f"- Repository: {repo}",
+              f"- Open PRs: **{len(pulls)}**",
+              f"- PRs open >=3 days: **{len(stale)}**",
+              f"- Maximum resolvable stack depth: **{max_depth}**",
+              "- Policy for PRs opened from 2026-11-18: base must resolve to main in <=2 levels",
+          ]
+          if len(pulls) > 5:
+              lines.append("- **Integration stop signal:** >5 unmerged PRs. Merge/reconcile existing work before starting new feature branches.")
+          for pr in sorted(stale, key=lambda row: row["created_at"])[:20]:
+              lines.append(f"- Stale #{pr['number']}: {pr['title'][:75]}")
+          for number, problem in newly_invalid:
+              lines.append(f"- **Violation #{number}: {problem}**")
+          report = "\n".join(lines) + "\n"
+          print(report)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as file:
+              file.write(report)
+
+          if event == "pull_request" and pr_number:
+              failures = [(n, issue) for n, issue in newly_invalid if n == pr_number]
+              if failures:
+                  raise SystemExit(f"New PR #{pr_number} violates mainline stack policy: {failures[0][1]}")
+          PY
