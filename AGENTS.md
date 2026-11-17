@@ -1,3 +1,19 @@
+## OWNER-DIRECTED MAINLINE INTEGRATION POLICY — 2026-11-17 (takes precedence over older PR workflow)
+
+The owner prioritizes **preserving implemented pre-alpha work in `main`** over accumulating open draft PRs. `main` is the active **development** baseline, not a claim of product readiness. This overrides older instructions to keep all development draft-only; security, source/provenance checks, test honesty, canonical version coordination, and release gates still apply.
+
+- **Default: commit tested, reviewable increments promptly to `main`**, or open a short-lived PR targeting `main` and merge it at the end of the bounded task. Do not leave an implementation PR indefinitely unmerged just because broader runtime qualification is outstanding; document those known holds separately.
+- **Maximum one dependent PR above a main-targeted integration PR** (stack depth two). Exception only with an explicit owner-approved dependency and a named consolidation date. Never start another stacked implementation when current stacked work could be integrated.
+- **Check existing work before coding:** inspect `main`, open PR bases/SHAs and previous implementation before implementing a feature. Reconcile rather than duplicate. Every implementation must have a pushed commit, visible PR/merge receipt, tests/results, and disposition of related older PRs.
+- **Merge promptly; review debt every working session:** inventory open PRs; for any older than 3 days, decide merge, repair, or explicit supersession. Treat more than five unmerged implementation PRs in one repo as an integration stop signal, not permission to begin more work.
+- **Preserve ancestry when consolidating:** prefer merge commits over squash for long preexisting stacks, so Git commit reachability demonstrates what is in `main`. Never close or delete a branch merely because a newer PR exists; first verify the exact work is reachable or consciously superseded, record the evidence in PR comments, and retain divergent fixes.
+- **No false green:** failing CI, pinned schema mismatches, external equivalence holds, and missing real-execution receipts remain visible open defects. A pre-alpha merge can be owner-authorized with such holds; a release qualification cannot. Do not disable tests/checks or fabricate evidence to get the merge through.
+- **No silent cross-repo drift:** after changing canonical language, propagate exact schema digests to converter, RI and VS Code as a separate tracked integration issue. Avoid ad hoc pinned snapshots or parallel active versions.
+
+Current integration checkpoint: **Editor still has active draft stacks; integrate in bounded slices**. Read live GitHub state before acting; all older PR-specific SHA instructions are historical.
+
+---
+
 # AGENTS.md — SCAP-NG VS Code Assessment Studio
 
 ## Current owner handoff — 2026-11-14 (overrides old 0.4.0 assumptions)
