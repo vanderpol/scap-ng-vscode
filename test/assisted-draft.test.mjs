@@ -1,0 +1,157 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { parseDocument } from 'yaml';
+import { MetadataPack } from '../dist/metadata.js';
+import { createAssistedAssessment } from '../dist/assisted-draft.js';
+
+const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
+
+test('assisted registry draft is deterministic, annotated, and pinned-schema valid', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Prevent lock screen slide show',
+    checkText: 'Set the registry value "NoLockScreenSlideshow" under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.match(result.yaml, /best guess only/);
+  assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].capability, 'windows.registry');
+  assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].require.fields.value.equals, 1);
+  assert.deepEqual(parseDocument(result.yaml).errors, []);
+});
+
+test('assisted fallback produces a schema-valid manual procedure instead of inventing automation', () => {
+  const checkText = 'Review the supplied evidence and confirm the requirement with the system owner.';
+  const result = createAssistedAssessment(pack, { title: 'Unrecognized requirement', checkText });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(result.confidence, 'low');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.document.assessment.procedure, checkText);
+  assert.match(result.yaml, /No supported automated selector pattern/);
+});
+
+test('assisted AuditPol rule prefers the native Windows audit capability over manual mode', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The system must be configured to audit Policy Change - Authorization Policy Change successes.',
+    checkText: 'Security Option "Audit: Force audit policy subcategory settings to override audit policy category settings" must be set to "Enabled" (WN11-SO-000030) for the detailed auditing subcategories to be effective.\n\nUse the AuditPol tool to review the current Audit Policy configuration:\n-Open a Command Prompt with elevated privileges ("Run as Administrator").\n-Enter "AuditPol /get /category:*".\n\nCompare the AuditPol settings with the following. If the system does not audit the following, this is a finding.\n\nPolicy Change &gt;&gt; Authorization Policy Change - Success'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.diagnostics.length, 0);
+  const tests = Object.values(result.document.assessment.tests);
+  assert.equal(tests.length, 2);
+  assert.ok(tests.every(test => test.capability === 'windows.auditeventpolicysubcategories'));
+  assert.deepEqual(result.document.assessment.evaluate, { or: tests.map(test => ({ test: Object.keys(result.document.assessment.tests).find(id => result.document.assessment.tests[id] === test) })) });
+  assert.equal(tests[0].require.fields.authorization_policy_change.equals, 'AUDIT_SUCCESS');
+  assert.equal(tests[1].require.fields.authorization_policy_change.equals, 'AUDIT_SUCCESS_FAILURE');
+});
+
+test('assisted labeled Windows registry input infers hive, path, value name, type, and value', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The system must enforce the network selection policy.',
+    checkText: `If the following registry value does not exist or is not configured as specified, this is a finding:\n\nRegistry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\\n\nValue Name: DontDisplayNetworkSelectionUI\n\nValue Type: REG_DWORD\nValue: 1`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.registry');
+  assert.equal(test.object.hive.equals, 'local_machine');
+  assert.equal(test.object.key.equals, 'SOFTWARE\\Policies\\Microsoft\\Windows\\System');
+  assert.equal(test.object.name.equals, 'DontDisplayNetworkSelectionUI');
+  assert.equal(test.require.fields.type.equals, 'dword');
+  assert.equal(test.require.fields.value.equals, 1);
+});
+
+test('assisted common command and policy patterns stay native and schema-valid', () => {
+  const cases = [
+    ['unix.sysctl', 'Restrict kernel pointers', 'Run: $ sudo sysctl kernel.kptr_restrict kernel.kptr_restrict = 1'],
+    ['linux.rpminfo', 'Package must not be installed', 'Verify with: $ dnf list --installed vsftpd Error: No matching Packages to list'],
+    ['linux.systemdunitproperty', 'Service must be active', 'Verify with: $ systemctl is-active systemd-journald active'],
+    ['windows.passwordpolicy', 'Password history must be 24', 'If Enforce password history is less than 24 passwords remembered, this is a finding.'],
+    ['independent.textfilecontent', 'Configuration must be enabled', 'Verify with: $ grep localpkg_gpgcheck /etc/dnf/dnf.conf localpkg_gpgcheck=1 If localpkg_gpgcheck is not set to 1 or True, this is a finding.'],
+    ['independent.shellcommand', 'Directory memberships must be reviewed', 'Open PowerShell and enter "Get-ADGroupMember -Identity EnterpriseAdmins".']
+  ];
+  for (const [capability, title, checkText] of cases) {
+    const result = createAssistedAssessment(pack, { title, checkText });
+    assert.equal(result.generatedMode, 'automated', capability);
+    assert.equal(result.diagnostics.length, 0, capability);
+    assert.ok(Object.values(result.document.assessment.tests).some(test => test.capability === capability), capability);
+  }
+});
+
+test('assisted Unix presence checks remain native and schema-valid', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The Unix passwd file must be present.',
+    checkText: 'Verify that the file /etc/passwd is present on the system.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'unix.file');
+  assert.equal(test.require.item_requirement.items_found, 'one_or_more');
+});
+
+test('package-manager checks take precedence over generic Unix path matching', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Package signing keys must be installed.',
+    checkText: 'Run rpm -q gpg-pubkey --qf "%{NAME}-%{VERSION}-%{RELEASE}" and verify the package is installed.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'linux.rpminfo');
+  assert.equal(test.object.package_name.equals, 'gpg-pubkey');
+});
+
+test('registry presence-only checks serialize a valid Item requirement', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'The browser policy registry value must be present.',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: ExamplePolicy\nThe value must be present.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.registry');
+  assert.deepEqual(test.require, { item_requirement: { items_found: 'one_or_more' } });
+});
+
+test('assisted command families use native capabilities when the pinned contract supports them', () => {
+  const cases = [
+    ['linux.systemdunitproperty', 'Service inactive', 'Run systemctl is-active kdump.service\ninactive If the service is active, this is a finding.'],
+    ['windows.service', 'Windows service state', 'Run sc query W32Time.\n STATE : 4 RUNNING'],
+    ['windows.file', 'Windows file exists', 'Run icacls C:\\Windows\\System32\\foo.exe and verify file permissions.'],
+    ['linux.partition', 'Mount option', 'mount | grep /dev/shm\ntmpfs on /dev/shm type tmpfs (rw,nodev,nosuid)\nThe mount must use the nodev option.'],
+    ['linux.kernelmodule', 'Kernel module', 'lsmod | grep usb-storage\nThe module must not be loaded.'],
+    ['linux.selinuxboolean', 'SELinux boolean', 'getsebool allow_execmem --> off'],
+    ['linux.sestatus', 'SELinux mode', 'getenforce\nEnforcing']
+  ];
+  for (const [capability, title, checkText] of cases) {
+    const result = createAssistedAssessment(pack, { title, checkText });
+    assert.equal(result.generatedMode, 'automated', capability);
+    assert.equal(result.diagnostics.length, 0, capability);
+    assert.ok(Object.values(result.document.assessment.tests).some(test => test.capability === capability), capability);
+  }
+});
+
+test('assisted shell fallback preserves explicit complex command collection without claiming predicates', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Audit rules must be configured',
+    checkText: 'Verify with: $ sudo auditctl -l | grep /etc/sudoers -w /etc/sudoers -p wa'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.document.assessment.tests['audit-rules-must-be-configured-test'].capability, 'independent.shellcommand');
+  assert.match(result.yaml, /command collection only/);
+  assert.deepEqual(result.document.assessment.tests['audit-rules-must-be-configured-test'].require, { item_requirement: { items_found: 'one_or_more' } });
+});
+
+test('assisted draft preserves a selected shared applicability dependency', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Domain registry policy',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: ExamplePolicy\nValue Type: REG_DWORD\nValue: 0',
+    applicability: { alias: 'domain-joined', assessmentId: 'windows-domain-joined-applicability-assessment', expectedVersion: 1 }
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.deepEqual(result.document.assessment.applicability, { assessment: 'domain-joined' });
+  assert.deepEqual(result.document.assessment.dependencies['domain-joined'], { assessment: 'windows-domain-joined-applicability-assessment', expected_version: 1, purpose: 'applicability' });
+  assert.deepEqual(result.diagnostics, []);
+});

@@ -6,7 +6,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/write-build-info.mjs",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:integration": "npm run build && node --test test/integration/*.test.mjs",
@@ -14,7 +14,15 @@
     "bootstrap:pack": "python3 scripts/bootstrap_dependencies.py --with-pack",
     "verify:offline": "python3 scripts/bootstrap_dependencies.py --offline --with-pack",
     "package": "npm run package:vsix",
-    "package:vsix": "node scripts/package-vsix.mjs"
+    "package:vsix": "npm run build && node scripts/package-vsix.mjs",
+    "test:host": "npm run build && node scripts/host-acceptance-probe.mjs",
+    "test:host:mutation": "npm run build && node scripts/schema-mutation-host-probe.mjs",
+    "test:host:redhat": "npm run build && npm run verify:test-deps && node scripts/host-acceptance-probe.mjs",
+    "verify:test-deps": "node scripts/verify-redhat-yaml.mjs",
+    "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs",
+    "test:host:status": "npm run build && node scripts/status-host-probe.mjs",
+    "test:corpus:graphical": "npm run build && node scripts/issue44-corpus-smoke.mjs",
+    "audit:editability": "npm run build && node scripts/audit-editability.mjs"
   },
   "files": [
     "dist",
@@ -26,6 +34,7 @@
   ],
   "dependencies": {
     "ajv": "8.20.0",
+    "pcre2-wasm": "10.49.2",
     "yaml": "2.9.1"
   },
   "devDependencies": {
@@ -44,8 +53,16 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:scapNg.assessmentStudio",
-    "onCommand:scapNg.showPin"
+    "onStartupFinished",
+    "onCommand:scapNg.openAssessmentStudio",
+    "onCommand:scapNg.openAssessmentAuthoringPrototype",
+    "onCommand:scapNg.openAuthoringSidebar",
+    "onCommand:scapNg.showPin",
+    "onLanguage:yaml",
+    "onView:scapNg-assessmentStudio",
+    "onCommand:scapNg.testRegex",
+    "onCommand:scapNg.testObject",
+    "onView:scapNg-authoringSidebar"
   ],
   "contributes": {
     "commands": [
@@ -58,24 +75,74 @@
         "title": "SCAP-NG: Search Assessment Studio"
       },
       {
+        "command": "scapNg.openAuthoringSidebar",
+        "title": "SCAP-NG: Open Authoring Sidebar"
+      },
+      {
+        "command": "scapNg.openAssessmentStudio",
+        "title": "SCAP-NG: Open Graphical Assessment editor"
+      },
+      {
+        "command": "scapNg.openAssessmentAuthoringPrototype",
+        "title": "SCAP-NG: Open Assessment Authoring (tree prototype)"
+      },
+      {
+        "command": "scapNg.configureYamlSchemas",
+        "title": "SCAP-NG: Configure native YAML schemas"
+      },
+      {
         "command": "scapNg.createGuidedAssessment",
         "title": "SCAP-NG: Create Guided Assessment"
+      },
+      {
+        "command": "scapNg.showBuildInfo",
+        "title": "SCAP-NG: Show installed build"
+      },
+      {
+        "command": "scapNg.showYamlStatus",
+        "title": "SCAP-NG: Show YAML status"
+      },
+      {
+        "command": "scapNg.diagnoseYaml",
+        "title": "SCAP-NG: Diagnose native YAML"
+      },
+      {
+        "command": "scapNg.testRegex",
+        "title": "SCAP-NG: Test Regex"
+      },
+      {
+        "command": "scapNg.testObject",
+        "title": "SCAP-NG: Test Object with Sample Items"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "scapNg.assessmentStudio",
+          "id": "scapNg-assessmentStudio",
           "title": "Assessment Studio",
+          "icon": "media/scap-ng.svg"
+        }
+      ],
+      "secondarybar": [
+        {
+          "id": "scapNg-authoring",
+          "title": "SCAP-NG Authoring",
           "icon": "media/scap-ng.svg"
         }
       ]
     },
     "views": {
-      "scapNg.assessmentStudio": [
+      "scapNg-assessmentStudio": [
         {
-          "id": "scapNg.assessmentStudio",
+          "id": "scapNg-assessmentStudio",
           "name": "Assessment Studio"
+        }
+      ],
+      "scapNg-authoring": [
+        {
+          "id": "scapNg-authoringSidebar",
+          "name": "Authoring",
+          "type": "webview"
         }
       ]
     },
@@ -86,6 +153,38 @@
         "scapNg.schemaPackPath": {
           "type": "string",
           "description": "Absolute path to a verified offline SCAP-NG editor metadata pack. The pinned schema-profile.json is always checked."
+        },
+        "scapNg.assessmentEditor": {
+          "type": "string",
+          "enum": [
+            "yaml",
+            "graphical",
+            "split"
+          ],
+          "enumDescriptions": [
+            "Open Assessment YAML files in the native VS Code YAML editor.",
+            "Open Assessment YAML files in the SCAP-NG Graphical editor.",
+            "Open the Graphical editor with the same authoritative YAML document in a native VS Code editor beside it."
+          ],
+          "default": "yaml",
+          "scope": "window",
+          "description": "Default editor for SCAP-NG Assessment YAML files. Use Open With\u2026 for a one-time choice."
+        },
+        "scapNg.objectStyle": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "expanded",
+            "tree"
+          ],
+          "enumDescriptions": [
+            "Write newly authored Object mappings in compact inline flow style when safe.",
+            "Write newly authored Object mappings as readable expanded block YAML.",
+            "Follow the surrounding YAML tree style; this is the default and preserves existing flow/block context."
+          ],
+          "default": "tree",
+          "scope": "resource",
+          "description": "Presentation style for newly authored SCAP-NG Object mappings. Existing YAML is never reformatted on open or save."
         }
       }
     },
@@ -103,6 +202,59 @@
         ],
         "priority": "option"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@5"
+        },
+        {
+          "command": "scapNg.openAssessmentAuthoringPrototype",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@6"
+        },
+        {
+          "command": "scapNg.testRegex",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@10"
+        },
+        {
+          "command": "scapNg.testObject",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@11"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "scapNg.searchIndex",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "scapNg.openAssessmentStudio",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation"
+        },
+        {
+          "command": "scapNg.openAssessmentAuthoringPrototype",
+          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@6"
+        },
+        {
+          "command": "scapNg.testRegex",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@10"
+        },
+        {
+          "command": "scapNg.testObject",
+          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "group": "navigation@11"
+        }
+      ]
+    }
   }
 }

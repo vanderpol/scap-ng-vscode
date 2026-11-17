@@ -1,0 +1,13 @@
+{
+  "format": "scap-ng/vscode-host-test-dependency-pins/1",
+  "dependencies": [
+    {
+      "id": "redhat.vscode-yaml",
+      "publisher": "redhat",
+      "version": "2.0.0",
+      "required_for": "test:host",
+      "network_required": false,
+      "scope": "temporary --extensions-dir only"
+    }
+  ]
+}

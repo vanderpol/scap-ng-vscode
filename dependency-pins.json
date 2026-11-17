@@ -4,7 +4,7 @@
     {
       "name": "scap-ng",
       "repository": "https://github.com/vanderpol/scap-ng.git",
-      "commit": "463675f3b931e596c922352a131cb3c515ab2265",
+      "commit": "7b9b61108aa30a601828268576308e510477094e",
       "required": true
     },
     {
@@ -23,7 +23,9 @@
       "name": "oval-v5.12.3",
       "repository": "https://github.com/OVAL-Community/OVAL.git",
       "commit": "2f140ee5c5dd1ed9606fcd5afc301f6baeb48706",
-      "sparse_checkout": ["oval-schemas"],
+      "sparse_checkout": [
+        "oval-schemas"
+      ],
       "required": false,
       "purpose": "offline editor metadata generation only"
     }
@@ -32,5 +34,11 @@
     "status": "not_yet_regenerated_for_amended_0.4",
     "historical_only": "https://github.com/vanderpol/scap-ng-evidence/tree/main/runs/v04-library/2026-10-30-all65-normalized-review-ff69d46b3",
     "warning": "65-stream/60-editable historical review ZIP predates item_requirement; do not treat as current 0.4 fixture"
+  },
+  "candidate": {
+    "status": "unmerged-draft",
+    "pullRequest": 21,
+    "sourceCommit": "7b9b61108aa30a601828268576308e510477094e",
+    "stableRollback": "dependency-pins.stable.json"
   }
 }

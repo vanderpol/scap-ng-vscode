@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PIN = json.loads((ROOT / 'dependency-pins.json').read_text())
 PROFILE = json.loads((ROOT / 'schema-profile.json').read_text())
 DEPENDENCIES = {r['name']: r for r in PIN['dependencies']}
-LINK = re.compile(r'!?\[[^\]]+\]\((<?[^)\s]+>?)\)')
+# Markdown links are meaningful only in Markdown. Parsing source regexes as links
+# would mistake character classes such as [A-Za-z]\(...\) for paths.
+LINK = re.compile(r'!?\[[^\]\n]+\]\((<?[^)\s]+>?)\)')
 GITHUB_SOURCE = re.compile(r'^/vanderpol/(scap-ng|scap-ng-tools|scap-ng-editor-sample-data)/(blob|tree)/([a-f0-9]{40})(?:/(.*))?$')
 HASH_ROW = re.compile(r'^\| `([^`]+\.json)` \| .+ \| `([a-f0-9]{64})` \|$')
 TEXT_SUFFIXES = {'.md', '.json', '.yaml', '.yml', '.py', '.ts', '.mjs', '.toml'}
@@ -50,7 +52,7 @@ def audit():
             problems.append(f'{rel}: private research URL is not a public Codex input')
         if path.resolve() != Path(__file__).resolve() and re.search(r'github\.com/vanderpol/scap-ng/(?:blob|tree)/[^\s)]+/schema/v0\.4\.0/', body):
             problems.append(f'{rel}: obsolete physical schema/v0.4.0 path')
-        for link in LINK.finditer(body):
+        for link in LINK.finditer(body if path.suffix == '.md' else ''):
             target = link.group(1).strip('<>')
             parsed = urlsplit(target)
             if parsed.scheme in ('http', 'https'):

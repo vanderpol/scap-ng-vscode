@@ -12,6 +12,7 @@ test('indexes logical documents and reverse Assessment usage without path identi
   assert.equal(index.find('assessment-a').length, 1);
   assert.equal(index.usedBy('assessment-a')[0].id, 'rule-r');
   assert.equal(index.search('WINDOWS.REGISTRY')[0].id, 'assessment-a');
+  assert.equal(index.search('a.assessment.yaml')[0].id, 'assessment-a');
   assert.equal(index.diagnostics().length, 0);
 });
 
@@ -42,4 +43,45 @@ test('batch indexing remains bounded for a 10,000-document workspace', () => {
   index.updateMany(Array.from({length: 10_000}, (_, i) => ({uri: `file:///workspace/assessment-${i}.yaml`, text: `assessment:\n  id: assessment-${i}\n  version: 1\n  assessment_title: Assessment ${i}\n`})));
   assert.equal(index.byKind('assessment').length, 10_000);
   assert.equal(index.search('Assessment 9999')[0].id, 'assessment-9999');
+});
+
+test('indexes applicability catalogs and exposes only uniquely resolved Assessment options', () => {
+  const index = new WorkspaceIndex();
+  index.update('catalog.yaml', `applicability:\n  id: windows-conditions\n  conditions:\n    domain-joined:\n      assessment: windows-domain-joined-applicability-assessment\n`);
+  index.update('domain.assessment.yaml', `assessment:\n  id: windows-domain-joined-applicability-assessment\n  version: 1\n  assessment_title: Windows domain member\n  mode: automated\n`);
+  const options = index.applicabilityOptions();
+  assert.equal(options.length, 1);
+  assert.equal(options[0].condition, 'domain-joined');
+  assert.equal(options[0].available, true);
+  assert.equal(options[0].expectedVersion, 1);
+  assert.equal(index.diagnostics().length, 0);
+});
+
+test('tracks applicability Assessment dependencies and reports missing targets', () => {
+  const index = new WorkspaceIndex();
+  index.update('main.assessment.yaml', `assessment:\n  id: main\n  version: 1\n  assessment_title: Main\n  mode: automated\n  dependencies:\n    domain-joined:\n      assessment: missing-applicability\n      expected_version: 1\n      purpose: applicability\n  applicability:\n    assessment: domain-joined\n`);
+  assert.equal(index.applicabilityOptions()[0].available, false);
+  assert.equal(index.diagnostics()[0].code, 'unresolved-assessment');
+  assert.equal(index.diagnostics()[0].path, '/assessment/dependencies/domain-joined/assessment');
+});
+
+test('indexes typed local Assessment references and reports unresolved targets without matching literals', () => {
+  const index = new WorkspaceIndex();
+  index.update('local.assessment.yaml', `assessment:
+  id: local
+  version: 1
+  assessment_title: Local
+  mode: automated
+  tests:
+    check-test:
+      test_title: Check
+      capability: independent.shellcommand
+      object: {command: {equals: first-test}}
+      require: {item_requirement: {items_found: one_or_more}}
+  evaluate: {test: missing-test}
+`);
+  const record = index.get('local.assessment.yaml');
+  assert.equal(record.localReferenceAnalysis.referencesTo('test', 'missing-test').length, 1);
+  assert.equal(record.localReferenceAnalysis.referencesTo('test', 'first-test').length, 0, 'literal selector text is not a Test reference');
+  assert.deepEqual(record.diagnostics.map(diagnostic => diagnostic.code), ['unresolved-local-reference']);
 });

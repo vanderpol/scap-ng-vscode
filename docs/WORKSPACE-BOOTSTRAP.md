@@ -35,7 +35,7 @@ only the exact, public Git commits listed there. It creates ignored resources:
 | `.external/scap-ng-tools/` | Converter, metadata exporter and shared normalizers | Development reference; not editor implementation target |
 | `.external/scap-ng-editor-sample-data/` | Small current fixture library | Source/Structured/YAML edge cases |
 | `.external/oval-v5.12.3/` | Official, sparse OVAL XSDs | Build-time pack generation only |
-| `.external/editor-pack/` | SHA-verified 235-resource pack | Offline metadata/validation integration |
+| `.external/editor-pack/` | SHA-verified 236-resource pack | Offline metadata/validation integration |
 
 The first three checkouts are obtained by `bootstrap:deps`; OVAL and the pack
 are added by `bootstrap:pack`. All checkouts stay at detached exact commit
@@ -43,6 +43,16 @@ pins. A stale, dirty or foreign checkout is **rejected**, not reset or
 overwritten. To move versions, deliberately archive the old `.external`
 resources first and use reviewed replacement pins. No script silently selects
 the latest `main`.
+
+The approved `scap-ng@7b9b611` candidate contains 145 JSON files, 35 root
+schemas and 652 root references, while the pinned public tools exporter still
+freezes the preceding 143-file snapshot. `bootstrap:pack` therefore invokes
+`scripts/build_v04_editor_metadata_pack_compat.py`: it archives the exact
+`scap-ng-tools@1f4f74d` checkout into a temporary directory, applies the
+reviewed 145-file compatibility patch, and runs the exporter without changing
+the ignored checkout. The resulting 236-resource manifest is pinned in
+`schema-profile.json`; the adapter fails closed on any other tools/schema
+revision.
 
 `npm run verify:offline` performs no fetch. It checks all checkout commits,
 origin URLs, manifest identity and each individual pack resource checksum.

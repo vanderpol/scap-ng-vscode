@@ -1,0 +1,24 @@
+{
+  "host": "VS Code 1.128.0 Extension Development Host",
+  "command": "SCAP_NG_OPEN_GRAPHICAL=1 SCAP_NG_GRAPHICAL_EDIT=1 npm run test:host",
+  "result": "PASS",
+  "applied": true,
+  "object_editor_edit": true,
+  "require_editor_edit": true,
+  "baseline_sha256": "8501a018cd98fe1d041e2fd0a4438da3bc4cb031a9087506fcbf1d538bb33b2b",
+  "changed_sha256": "89243e720af5ad631a73a024c7aa6e38252ed29c34aeeb7d93238fa226eec056",
+  "reopened_matches_changed": true,
+  "undo_matches_baseline": true,
+  "redo_matches_changed": true,
+  "changed_ranges": [
+    [
+      536,
+      549
+    ],
+    [
+      889,
+      890
+    ]
+  ],
+  "unified_diff": "--- before.assessment.yaml\n+++ after.assessment.yaml\n@@ -11,11 +11,11 @@\n     verifies-prevent-enabling-screen-slide-show-is-set-enabled-test:\n       test_title: Verifies 'Prevent enabling lock screen slide show' is set to 'Enabled'\n       capability: windows.registry\n-      object: {hive: {equals: local_machine}, key: {equals: 'SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization'}, name: {equals: NoLockScreenSlideshow}}\n+      object: {hive: {equals: current_user}, key: {equals: 'SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization'}, name: {equals: NoLockScreenSlideshow}}\n       require:\n         item_requirement: {items_found: one_or_more, items_satisfying: every}\n         field_requirement: {values_found: one_or_more, values_matching: every}\n-        fields: {type: {equals: dword}, value: {equals: 1}}\n+        fields: {type: {equals: dword}, value: {equals: 2}}\n       reported_elements: all\n   evaluate:\n     test: verifies-prevent-enabling-screen-slide-show-is-set-enabled-test\n"
+}

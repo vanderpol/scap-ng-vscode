@@ -1,0 +1,14 @@
+{
+  "corpusRoot": "/home/u1239716047117002/Documents/scap-ng-vscode/.external/full65-current/automated-subset-7354a24cdbfe18321153ccaef5d772801a10cd71-20261105",
+  "files": 4524,
+  "ok": 4524,
+  "failed": 0,
+  "scalarProperties": 136322,
+  "maximumProperties": 410,
+  "variableDocuments": 268,
+  "filterDocuments": 598,
+  "setDocuments": 379,
+  "elapsedMs": 59661,
+  "schemaProfileSourceCommit": "7b9b61108aa30a601828268576308e510477094e",
+  "qualification": "external stress inventory; not promoted as editor sample data"
+}

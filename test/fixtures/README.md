@@ -19,7 +19,7 @@ scanner data or a benchmark distribution:
 
 The canonical current source for **real converted authoring examples** is
 `vanderpol/scap-ng@463675f3b931e596c922352a131cb3c515ab2265/examples/`,
-loaded from a separate exact checkout in integration tests. The 235-resource
+loaded from a separate exact checkout in integration tests. The 236-resource
 metadata pack is generated from that canonical commit by the separately pinned
 `vanderpol/scap-ng-tools` build script, not copied into this extension repo.
 
