@@ -82,6 +82,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(welcomeSource, /scapNg\.openBenchmarkConditions/);
   assert.match(extensionSource, /Graphical editing writes localized changes/);
   assert.match(extensionSource, /availableAssessments/);
+  assert.match(extensionSource, /selectedPackagePath/);
+  assert.match(extensionSource, /pathWithinIndexedRoot/);
+  assert.match(extensionSource, /If no Benchmark is selected yet, retain the full scan/);
   assert.match(extensionSource, /mode:name==='automated'\|\|name==='manual'\?name:undefined/);
   assert.match(extensionSource, /if\(expectedMode&&item\?\.mode!==expectedMode\)return false/);
   assert.match(extensionSource, /Search existing Assessments by title or ID/);

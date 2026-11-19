@@ -1428,8 +1428,14 @@ class AssessmentEditorProvider {
 
 const INDEX_WORKERS = 8;
 
+function pathWithinIndexedRoot(path: string, root: string): boolean {
+  const normalizedPath = path.replaceAll('\\', '/').replace(/\/+$/, '');
+  const normalizedRoot = root.replaceAll('\\', '/').replace(/\/+$/, '');
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + '/');
+}
+
 /** Index SCAP-NG YAML files from either the open workspace or a user-selected folder. */
-async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri?: any, onBenchmarkIndexed?: () => void) {
+async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri?: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState) {
   if (!api.workspace.findFiles || !api.workspace.openTextDocument) return 0;
   const patterns = workspaceIndexPatterns;
   const relativePattern = folderUri && api.RelativePattern
@@ -1471,26 +1477,37 @@ async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api
   const remainingFound = await findFiles(remainingPatterns);
   const files = [...new Map([...benchmarkFiles, ...remainingFound].map((uri: any) => [uri.toString(), uri])).values()];
   const remainingFiles = files.filter((uri: any) => !benchmarkFiles.some((benchmark: any) => benchmark.toString() === uri.toString()));
-  const remainingEntries = await readFiles(remainingFiles);
+  // A restored Benchmark selection identifies the only package needed by the
+  // Home/source choosers. Do not parse every Benchmark in a large content
+  // root (often tens of thousands of YAML files) before showing that package.
+  // If no Benchmark is selected yet, retain the full scan so the selection
+  // wizard can build complete choices and counts.
+  const selectedPackagePath = state?.activeKey
+    ? benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey)?.packagePath
+    : undefined;
+  const scopedRemainingFiles = selectedPackagePath
+    ? remainingFiles.filter((uri: any) => pathWithinIndexedRoot(uri.fsPath ?? uri.path ?? uri.toString(), selectedPackagePath))
+    : remainingFiles;
+  const remainingEntries = await readFiles(scopedRemainingFiles);
   await index.updateManyAsync(remainingEntries);
   publishIndexDiagnostics(index, indexDiagnostics, api);
   tree.refresh();
   return files.length;
 }
 
-async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, onBenchmarkIndexed?: () => void) {
-  return indexContentLocation(index, tree, api, indexDiagnostics, undefined, onBenchmarkIndexed);
+async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState) {
+  return indexContentLocation(index, tree, api, indexDiagnostics, undefined, onBenchmarkIndexed, state);
 }
 
-async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri: any, onBenchmarkIndexed?: () => void) {
-  return indexContentLocation(index, tree, api, indexDiagnostics, folderUri, onBenchmarkIndexed);
+async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState) {
+  return indexContentLocation(index, tree, api, indexDiagnostics, folderUri, onBenchmarkIndexed, state);
 }
 
 async function indexWorkspaceAndImportedRoots(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
-  let count = await indexWorkspace(index, tree, api, indexDiagnostics, () => state.onChange?.());
+  let count = await indexWorkspace(index, tree, api, indexDiagnostics, () => state.onChange?.(), state);
   for (const root of state.importedRoots) {
     if (!api.Uri?.file) continue;
-    count += await indexSelectedContentFolder(index, tree, api, indexDiagnostics, api.Uri.file(root), () => state.onChange?.());
+    count += await indexSelectedContentFolder(index, tree, api, indexDiagnostics, api.Uri.file(root), () => state.onChange?.(), state);
   }
   return count;
 }
