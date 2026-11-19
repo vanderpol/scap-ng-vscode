@@ -49,7 +49,10 @@ function summaryValue(value: unknown): string {
     if (entries.length === 1) return `${entries[0][0].replaceAll('_', ' ')} ${summaryValue(entries[0][1])}`.trim();
     return entries.map(([name, operand]) => `${name.replaceAll('_', ' ')} ${summaryValue(operand)}`.trim()).join(', ');
   }
-  return String(value);
+  // Values copied from converted selector text can contain indentation and
+  // newlines. Test titles are authored summaries, not a second procedure
+  // field, so keep their source-derived representation on one line.
+  return String(value).replace(/\s+/g, ' ').trim();
 }
 /**
  * Generate only human-facing authored metadata. This never represents an
@@ -67,10 +70,19 @@ export function generatedTestTitle(pack: MetadataPack, draft: Pick<GuidedTestDra
     const value = summaryValue(predicate);
     return value ? `${name.replaceAll('_', ' ')} ${value}` : name.replaceAll('_', ' ');
   });
-  const selectorText = selectors.length ? ` for ${selectors.join(', ')}` : '';
-  const conditionText = draft.presenceOnly ? ' (presence check)' : conditions.length ? `; requires ${conditions.join(' and ')}` : '';
-  return `Check ${capability}${selectorText}${conditionText}`;
+  const firstSelector = selectors[0] ?? '';
+  const firstCondition = conditions[0] ?? '';
+  // Keep generated test_title metadata a concise one-line summary. The full
+  // selectors and predicates remain authoritative in Object/Require below;
+  // putting every field into the title produces a misleading paragraph after
+  // YAML line wrapping (especially for converted text-file checks).
+  let title = `Check ${capability}${firstSelector ? ` for ${firstSelector}` : ''}`;
+  if (title.length > 60 && firstSelector) title = `Check ${capability}`;
+  if (firstCondition && `${title}; ${firstCondition}`.length <= 60) title += `; ${firstCondition}`;
+  if (draft.presenceOnly && title.length <= 44) title += ' (presence check)';
+  return title.length <= 60 ? title : `${title.slice(0, 59).trimEnd()}…`;
 }
+
 function datatypeValues(node: any): string[] { const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const [key, child] of Object.entries(value)) if (key === 'datatype') visit(child); else if (child && typeof child === 'object') visit(child); }; visit(node); return [...values]; }
 function enumValues(node: any): string[] {
   const values = new Set<string>(); const visit = (value: any) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value.enum)) for (const item of value.enum) if (typeof item === 'string') values.add(item); for (const child of Object.values(value)) visit(child); }; visit(node); return [...values];
