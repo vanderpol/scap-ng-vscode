@@ -75,6 +75,7 @@
     "onCommand:scapNg.enterStandaloneMode",
     "onCommand:scapNg.clearBenchmarkContext",
     "onCommand:scapNg.openBenchmarkRules",
+    "onCommand:scapNg.openBenchmarkAutomationGaps",
     "onCommand:scapNg.openBenchmarkAssessments",
     "onCommand:scapNg.openBenchmarkApplicability",
     "onCommand:scapNg.openBenchmarkConditions"
@@ -172,6 +173,10 @@
       {
         "command": "scapNg.openBenchmarkRules",
         "title": "SCAP-NG: Open Benchmark Rules"
+      },
+      {
+        "command": "scapNg.openBenchmarkAutomationGaps",
+        "title": "SCAP-NG: Review Rules needing automation"
       },
       {
         "command": "scapNg.openBenchmarkAssessments",

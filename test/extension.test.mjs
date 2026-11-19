@@ -74,7 +74,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
 });
 
 test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
-  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
+  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
     assert.ok(packageJson.contributes.commands.some(item => item.command === command), command);
   }
   assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
@@ -83,8 +83,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Graphical editing writes localized changes/);
   assert.match(extensionSource, /availableAssessments/);
   assert.match(extensionSource, /automationStatus/);
-  assert.match(welcomeSource, /Review Rules needing automation/);
-  assert.match(welcomeSource, /data-filter=\"needs-automation\"/);
+  assert.match(welcomeSource, /Rules without automation/);
+  assert.match(welcomeSource, /scapNg\.openBenchmarkAutomationGaps/);
+  assert.doesNotMatch(welcomeSource, /data-filter=\"needs-automation\"/);
   assert.match(extensionSource, /selectedPackagePath/);
   assert.match(extensionSource, /pathWithinIndexedRoot/);
   assert.match(extensionSource, /benchmarkContextViewData/);

@@ -2828,6 +2828,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(
     vscode.commands.registerCommand('scapNg.openBenchmarkRules', (filter?: string) => openBenchmarkSection('rules', typeof filter === 'string' ? filter : '')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkAutomationGaps', () => openBenchmarkSection('rules', 'needs-automation')),
     vscode.commands.registerCommand('scapNg.openBenchmarkApplicability', () => openBenchmarkSection('applicability')),
     vscode.commands.registerCommand('scapNg.openBenchmarkConditions', () => openBenchmarkSection('conditions')),
     vscode.commands.registerCommand('scapNg.openBenchmarkAssessments', () => openBenchmarkSection('assessments')),
