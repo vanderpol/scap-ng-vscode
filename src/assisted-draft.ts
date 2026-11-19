@@ -37,6 +37,8 @@ interface Candidate {
   itemFound?: string;
   assumptions: string[];
   confidence: AssistedConfidence;
+  /** The source describes a relationship this single-Test generator cannot safely encode. */
+  manualOnlyReason?: string;
 }
 
 function slug(value: string, suffix: string): string {
@@ -979,6 +981,19 @@ function rhelSemanticCandidate(text: string, platform?: string): Candidate | und
   return undefined;
 }
 
+function interactiveInitializationOwnershipCandidate(text: string): Candidate | undefined {
+  if (!/(?:initialization files?|dot files?).*(?:owned by that user|owned by the user|owner|root)|owned by (?:that user|the user) or root/i.test(text)) return undefined;
+  if (!/\/etc\/passwd|local interactive users?|home director(?:y|ies)/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: {}, presenceOnly: true, confidence: 'low', manualOnlyReason:
+      'This requirement relates each user to that user’s home directory and file owner. A safe automated draft needs a native foreach/shared-Object relationship; the current single-Test best-guess generator does not encode that relationship.',
+    assumptions: [
+      'Recognized a per-user initialization-file ownership requirement from the passwd, home-directory, and owner wording.',
+      'The awk and ls commands enumerate evidence, but their output does not by itself prove the owner relationship.'
+    ]
+  };
+}
+
 function unixFileCandidate(text: string): Candidate | undefined {
   const shosts = /\.shosts\b/i.test(text) && /(?:no|not|without|find|search|exist)/i.test(text);
   const path = text.match(/(?:^|\s)(\/(?:etc|var|usr|opt|home|bin|sbin|boot|tmp|root)\/[A-Za-z0-9_./-]+)/)?.[1]
@@ -1017,7 +1032,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1053,6 +1068,9 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       'No supported automated selector pattern was confidently recognized.',
       'The draft was created as a manual procedure so no scanner semantics were invented.'
     ]);
+  }
+  if (candidate.manualOnlyReason) {
+    return manualDraft(pack, { ...input, title, checkText }, candidate.confidence, [...titleAssumptions, ...candidate.assumptions], [candidate.manualOnlyReason]);
   }
   const catalog = new GuidedCatalog(pack);
   const required = catalog.objectRequirements(candidate.capability);

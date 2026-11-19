@@ -394,3 +394,26 @@ test('automation procedure cleanup removes converter OCIL wrapper boilerplate bu
   assert.match(cleaned, /grep -i remember/);
   assert.match(cleaned, /this is a finding/);
 });
+
+test('assisted interactive initialization ownership checks stay manual until foreach relationships are supported', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel9',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all local initialization files for interactive users are owned by the home directory user or root.',
+    checkText: `Verify the local initialization files of all local interactive users are owned by that user.
+
+Check the home directory assignment for all nonprivileged users on the system with the following command:
+
+# awk -F: '($3>=1000)&&($7 !~ /nologin/){print $1, $3, $6}' /etc/passwd
+
+Check the owner of all local interactive users' initialization files with the following command:
+
+# ls -al /home/smithj/.[^.]* | more
+
+If all local interactive users' initialization files are not owned by that user or root, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.unresolved.some(reason => /per-user|foreach|relationship/i.test(reason)));
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.doesNotMatch(result.yaml, /capability:\s*unix\.file/);
+});
