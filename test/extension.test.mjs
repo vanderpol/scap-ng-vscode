@@ -186,6 +186,13 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(extensionSource, /id="showRelatedData"|textContent='Show all related data'/);
   assert.match(extensionSource, /Applicability \(optional; can be added later\)/);
   assert.match(extensionSource, /The copied check text drives best-guess inference/);
+  assert.match(extensionSource, /Create automated Assessment from Rule/);
+  assert.match(extensionSource, /createAutomationFromRule/);
+  assert.match(extensionSource, /ruleAutomationSeed/);
+  assert.match(extensionSource, /linkAutomatedAssessment/);
+  assert.match(extensionSource, /Create and link automated Assessment/);
+  assert.match(extensionSource, /manual Assessment procedure/);
+  assert.match(extensionSource, /createAutomation/);
   assert.match(extensionSource, /\$\('applicabilitySection'\)\.hidden=assisted/);
   assert.match(extensionSource, /No Benchmark root is selected/);
   assert.doesNotMatch(authoringSidebarSource, /openSettings|workbench\.action\.openSettings/);

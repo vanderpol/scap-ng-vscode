@@ -413,3 +413,25 @@ test('Assessment section insertion supports flow mappings before an authored sib
  assert.equal(edit.document.text,'assessment: {id: demo-assessment, evaluate: {test: demo-test}, tests: {demo-test: {}}, references: [policy]}\n');
  assert.deepEqual(Object.keys(edit.document.json().assessment),['id','evaluate','tests','references']);
 });
+
+test('Rule automation link preserves manual choice and sets automated default with localized undo',()=>{
+ const raw=`# rule note\nrule:\n  id: sample-rule\n  title: Sample rule\n  assessment_choices:\n    manual:\n      assessment: sample-manual\n  default_assessment_choice: manual\n  discussion: Keep this authored discussion.\n`;
+ const source=new SourceBuffer(raw); const edit=source.linkAutomatedAssessment('sample-automated',sha256(raw));
+ const rule=edit.document.json().rule;
+ assert.equal(rule.assessment_choices.manual.assessment,'sample-manual');
+ assert.equal(rule.assessment_choices.automated.assessment,'sample-automated');
+ assert.equal(rule.default_assessment_choice,'automated');
+ assert.match(edit.document.text,/^# rule note/m); assert.match(edit.document.text,/discussion: Keep this authored discussion/);
+ assert.equal(edit.undo().text,raw);
+});
+
+test('Rule automation link creates missing choice mappings and handles compact YAML',()=>{
+ const block=`rule:\n  id: sample-rule\n  title: Sample rule\n`;
+ const blockEdit=new SourceBuffer(block).linkAutomatedAssessment('sample-automated',sha256(block));
+ assert.deepEqual(blockEdit.document.json().rule.assessment_choices,{automated:{assessment:'sample-automated'}});
+ assert.equal(blockEdit.document.json().rule.default_assessment_choice,'automated');
+ const compact='rule: {id: sample-rule, title: Sample rule, assessment_choices: {manual: {assessment: sample-manual}}, default_assessment_choice: manual}\n';
+ const compactEdit=new SourceBuffer(compact).linkAutomatedAssessment('sample-automated',sha256(compact));
+ assert.equal(compactEdit.document.json().rule.assessment_choices.automated.assessment,'sample-automated');
+ assert.equal(compactEdit.document.json().rule.default_assessment_choice,'automated');
+});
