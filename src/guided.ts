@@ -62,6 +62,15 @@ function summaryValue(value: unknown): string {
 export function generatedTestTitle(pack: MetadataPack, draft: Pick<GuidedTestDraft, 'capability' | 'object' | 'fields' | 'presenceOnly'>): string {
   const labels = vocabulary(pack).capabilities ?? {};
   const capability = labels[draft.capability]?.label ?? draft.capability;
+  const compactCapability = capability.replace(/\b(read|match|and|from|a|the|settings?)\b/gi, ' ').replace(/\s+/g, ' ').trim() || capability;
+  const compact = (value: string) => value
+    .replace(/\bequals\b/g, '=')
+    .replace(/\bmatches regex\b/g, 'regex')
+    .replace(/\bgreater than or equal\b/g, '>=')
+    .replace(/\bgreater than\b/g, '>')
+    .replace(/\bless than or equal\b/g, '<=')
+    .replace(/\bless than\b/g, '<')
+    .replace(/\s+/g, ' ').trim();
   const selectors = Object.entries(draft.object ?? {}).map(([name, predicate]) => {
     const value = summaryValue(predicate);
     return value ? `${name.replaceAll('_', ' ')} ${value}` : name.replaceAll('_', ' ');
@@ -70,14 +79,14 @@ export function generatedTestTitle(pack: MetadataPack, draft: Pick<GuidedTestDra
     const value = summaryValue(predicate);
     return value ? `${name.replaceAll('_', ' ')} ${value}` : name.replaceAll('_', ' ');
   });
-  const firstSelector = selectors[0] ?? '';
-  const firstCondition = conditions[0] ?? '';
+  const firstSelector = selectors[0] ? compact(selectors[0]) : '';
+  const firstCondition = conditions[0] ? compact(conditions[0]) : '';
   // Keep generated test_title metadata a concise one-line summary. The full
   // selectors and predicates remain authoritative in Object/Require below;
   // putting every field into the title produces a misleading paragraph after
   // YAML line wrapping (especially for converted text-file checks).
-  let title = `Check ${capability}${firstSelector ? ` for ${firstSelector}` : ''}`;
-  if (title.length > 60 && firstSelector) title = `Check ${capability}`;
+  let title = `Check ${compactCapability}`;
+  if (firstSelector && `${title}: ${firstSelector}`.length <= 60) title += `: ${firstSelector}`;
   if (firstCondition && `${title}; ${firstCondition}`.length <= 60) title += `; ${firstCondition}`;
   if (draft.presenceOnly && title.length <= 44) title += ' (presence check)';
   return title.length <= 60 ? title : `${title.slice(0, 59).trimEnd()}…`;

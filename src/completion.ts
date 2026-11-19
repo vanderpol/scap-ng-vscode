@@ -299,8 +299,14 @@ function declaredSelectorOperators(pack: MetadataPack, uri: string, spec: any): 
   // propertyNames also contains schema metadata keys. Keep only names that
   // the resolved shared selector predicate declares as comparison operators;
   // this prevents metadata and the broad generic vocabulary from leaking into
-  // a field-specific operator completion list.
-  return [...declared].filter(value => genericOperators.has(value));
+  // a field-specific operator completion list. Some canonical capability
+  // fields inherit the selector predicate through an allOf/$ref without an
+  // explicit propertyNames enum. In that shape, the resolved operation
+  // properties plus the predicate's required branches are the same schema
+  // authority and must be used instead of returning an empty list.
+  const properties = schemaPropertyMap(pack, uri, spec);
+  const names = declared.size ? [...declared] : [...genericOperators];
+  return names.filter(value => genericOperators.has(value) && Object.hasOwn(properties, value));
 }
 
 function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ value: string; spec: any }> {
@@ -310,7 +316,16 @@ function selectorOperators(pack: MetadataPack, uri: string, spec: any): Array<{ 
   // offering syntactically possible but semantically unsupported operators.
   const names = declaredSelectorOperators(pack, uri, spec);
   const properties = schemaPropertyMap(pack, uri, spec);
-  return names.map(value => ({ value, spec: properties[value] ?? {} }));
+  const datatypes = new Set<string>();
+  for (const node of schemaNodes(pack, uri, spec)) {
+    for (const value of node.properties?.datatype?.enum ?? []) if (typeof value === 'string') datatypes.add(value);
+  }
+  const typed = operationDatatypeConstraints(pack, uri, spec);
+  const compatible = names.filter(value => {
+    const constraints = typed.get(value);
+    return !constraints || !datatypes.size || [...constraints].some(datatype => datatypes.has(datatype));
+  });
+  return compatible.map(value => ({ value, spec: properties[value] ?? {} }));
 }
 
 function canonicalScalarOperationNames(pack: MetadataPack): Set<string> {

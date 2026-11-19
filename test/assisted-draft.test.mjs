@@ -26,7 +26,7 @@ test('assisted draft can infer its title and test summary from check text', () =
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.document.assessment.assessment_title, checkText);
   const test = Object.values(result.document.assessment.tests)[0];
-  assert.match(test.test_title, /^Check Read Windows Registry/);
+  assert.match(test.test_title, /^Check .*Windows Registry/);
   assert.match(result.yaml, /No Rule title was supplied/);
 });
 
