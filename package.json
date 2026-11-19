@@ -62,7 +62,22 @@
     "onView:scapNg-assessmentStudio",
     "onCommand:scapNg.testRegex",
     "onCommand:scapNg.testObject",
-    "onView:scapNg-authoringSidebar"
+    "onView:scapNg-authoringSidebar",
+    "onCommand:scapNg.openWelcome",
+    "onCommand:scapNg.openAssessmentFile",
+    "onCommand:scapNg.refreshContentIndex",
+    "onCommand:scapNg.createGuidedAssessment",
+    "onCommand:scapNg.selectBenchmarkRoot",
+    "onCommand:scapNg.openBenchmarkContext",
+    "onCommand:scapNg.chooseBenchmarkRoot",
+    "onCommand:scapNg.selectBenchmark",
+    "onCommand:scapNg.createStandaloneAssessment",
+    "onCommand:scapNg.enterStandaloneMode",
+    "onCommand:scapNg.clearBenchmarkContext",
+    "onCommand:scapNg.openBenchmarkRules",
+    "onCommand:scapNg.openBenchmarkAssessments",
+    "onCommand:scapNg.openBenchmarkApplicability",
+    "onCommand:scapNg.openBenchmarkConditions"
   ],
   "contributes": {
     "commands": [
@@ -79,6 +94,14 @@
         "title": "SCAP-NG: Open Authoring Sidebar"
       },
       {
+        "command": "scapNg.openWelcome",
+        "title": "SCAP-NG: Open Home"
+      },
+      {
+        "command": "scapNg.openAssessmentFile",
+        "title": "SCAP-NG: Open Assessment from current context"
+      },
+      {
         "command": "scapNg.openAssessmentStudio",
         "title": "SCAP-NG: Open Graphical Assessment editor"
       },
@@ -93,6 +116,38 @@
       {
         "command": "scapNg.createGuidedAssessment",
         "title": "SCAP-NG: Create Guided Assessment"
+      },
+      {
+        "command": "scapNg.refreshContentIndex",
+        "title": "SCAP-NG: Refresh Benchmark data"
+      },
+      {
+        "command": "scapNg.createStandaloneAssessment",
+        "title": "SCAP-NG: Create Standalone Assessment"
+      },
+      {
+        "command": "scapNg.enterStandaloneMode",
+        "title": "SCAP-NG: Work in Standalone mode"
+      },
+      {
+        "command": "scapNg.clearBenchmarkContext",
+        "title": "SCAP-NG: Clear Benchmark context"
+      },
+      {
+        "command": "scapNg.chooseBenchmarkRoot",
+        "title": "SCAP-NG: Choose Benchmark root"
+      },
+      {
+        "command": "scapNg.selectBenchmark",
+        "title": "SCAP-NG: Select Benchmark"
+      },
+      {
+        "command": "scapNg.selectBenchmarkRoot",
+        "title": "SCAP-NG: Select Benchmark (legacy alias)"
+      },
+      {
+        "command": "scapNg.openBenchmarkContext",
+        "title": "SCAP-NG: View Benchmark details"
       },
       {
         "command": "scapNg.showBuildInfo",
@@ -113,6 +168,22 @@
       {
         "command": "scapNg.testObject",
         "title": "SCAP-NG: Test Object with Sample Items"
+      },
+      {
+        "command": "scapNg.openBenchmarkRules",
+        "title": "SCAP-NG: Open Benchmark Rules"
+      },
+      {
+        "command": "scapNg.openBenchmarkAssessments",
+        "title": "SCAP-NG: Open Benchmark Assessments"
+      },
+      {
+        "command": "scapNg.openBenchmarkApplicability",
+        "title": "SCAP-NG: Open Benchmark Applicability"
+      },
+      {
+        "command": "scapNg.openBenchmarkConditions",
+        "title": "SCAP-NG: Open Benchmark Conditions"
       }
     ],
     "viewsContainers": {
@@ -146,7 +217,12 @@
         }
       ]
     },
-    "viewsWelcome": [],
+    "viewsWelcome": [
+      {
+        "view": "scapNg-assessmentStudio",
+        "contents": "**SCAP-NG Assessment Studio**\n\n[Create an Assessment](command:scapNg.createGuidedAssessment)  [Open an Assessment File](command:scapNg.openAssessmentFile)  [Select Benchmark Root](command:scapNg.chooseBenchmarkRoot)  [Open SCAP-NG Home](command:scapNg.openWelcome)\n\nUse the tree above to browse indexed Rules, Assessments, and STIGs."
+      }
+    ],
     "configuration": {
       "title": "SCAP-NG Assessment Studio",
       "properties": {
@@ -198,6 +274,12 @@
           },
           {
             "filenamePattern": "**/*.assessment.yml"
+          },
+          {
+            "filenamePattern": "**/*-assessment.yaml"
+          },
+          {
+            "filenamePattern": "**/*-assessment.yml"
           }
         ],
         "priority": "option"
@@ -207,51 +289,81 @@
       "editor/title": [
         {
           "command": "scapNg.openAssessmentStudio",
-          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@5"
         },
         {
           "command": "scapNg.openAssessmentAuthoringPrototype",
-          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@6"
         },
         {
           "command": "scapNg.testRegex",
-          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "editorLangId == yaml && resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@10"
         },
         {
           "command": "scapNg.testObject",
-          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "editorLangId == yaml && resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@11"
         }
       ],
       "view/title": [
         {
-          "command": "scapNg.searchIndex",
+          "command": "scapNg.chooseBenchmarkRoot",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@0"
+        },
+        {
+          "command": "scapNg.selectBenchmark",
           "when": "view == scapNg-assessmentStudio",
           "group": "navigation@1"
+        },
+        {
+          "command": "scapNg.openBenchmarkContext",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@2"
+        },
+        {
+          "command": "scapNg.searchIndex",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@3"
+        },
+        {
+          "command": "scapNg.createGuidedAssessment",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@4"
+        },
+        {
+          "command": "scapNg.openAuthoringSidebar",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@5"
+        },
+        {
+          "command": "scapNg.openWelcome",
+          "when": "view == scapNg-assessmentStudio",
+          "group": "navigation@6"
         }
       ],
       "editor/context": [
         {
           "command": "scapNg.openAssessmentStudio",
-          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation"
         },
         {
           "command": "scapNg.openAssessmentAuthoringPrototype",
-          "when": "resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@6"
         },
         {
           "command": "scapNg.testRegex",
-          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "editorLangId == yaml && resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@10"
         },
         {
           "command": "scapNg.testObject",
-          "when": "editorLangId == yaml && resourceFilename =~ /\\.assessment\\.ya?ml$/",
+          "when": "editorLangId == yaml && resourceFilename =~ /[-.]assessment\\.ya?ml$/",
           "group": "navigation@11"
         }
       ]

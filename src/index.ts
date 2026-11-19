@@ -9,3 +9,4 @@ export * from './sample-object.js';
 export * from './expression-contract.js';
 export * from './reference-graph.js';
 export * from './yaml-style.js';
+export * from './schema-contract.js';

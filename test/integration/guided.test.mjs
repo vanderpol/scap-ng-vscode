@@ -10,7 +10,7 @@ test('guided catalog is vocabulary/schema-driven and preserves exact logic disti
   assert.equal(catalog.platforms().find(option => option.value === 'windows').label, 'Windows');
   assert.deepEqual(catalog.objectFields('windows.registry').map(field => field.name), ['hive', 'key', 'name']);
   assert.deepEqual(catalog.objectRequirements('windows.registry').map(requirement => requirement.fields), [['hive', 'key', 'name']]);
-  assert.deepEqual(catalog.objectRequirements('unix.file').map(requirement => requirement.fields), [['full_path'], ['directory', 'name']]);
+  assert.deepEqual(catalog.objectRequirements('unix.file').map(requirement => requirement.fields), [['filepath'], ['filename', 'path']]);
   assert.ok(catalog.objectFields('windows.registry').find(field => field.name === 'hive').enumValues.includes('local_machine'));
   assert.deepEqual(catalog.objectFields('windows.registry').find(field => field.name === 'hive').operations.map(option => option.value), ['equals']);
   assert.ok(catalog.objectFields('windows.registry').find(field => field.name === 'key').operations.some(option => option.value === 'matches_regex'));
@@ -34,8 +34,8 @@ test('guided manual and automated Windows Registry drafts validate against pinne
   ]);
   assert.ok(automated.yaml.indexOf('\n  evaluate:\n') < automated.yaml.indexOf('\n  tests:\n'),
     'new Assessments place Evaluate before Test definitions');
-  const itemUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
-  const fieldUri = 'https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
+  const itemUri = 'https://scap-ng.dev/schema/v0.4.1/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/item_requirement';
+  const fieldUri = 'https://scap-ng.dev/schema/v0.4.1/assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
   const context = { documentVersion: pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] };
   assert.deepEqual(automated.document.assessment.tests['registry-value-test'].require.item_requirement, pack.newObjectDefaults(itemUri, {}, context));
   assert.deepEqual(automated.document.assessment.tests['registry-value-test'].require.field_requirement, pack.describe(fieldUri, context).suggested);

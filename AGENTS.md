@@ -1,6 +1,6 @@
 # P0 OWNER DIRECTIVE — EDITOR MUST USE CURRENT SINGLE SCAP-NG 0.4.1 (2026-11-19)
 
-**Active, mandatory authoring specification: canonical `vanderpol/scap-ng/main` flat `schema/`, version `0.4.1` only.** The editor's present `schema-profile.json` and `dependency-pins.json` both explicitly pin **0.4.0** at `7b9b61108aa30a601828268576308e510477094e`; this is a **known migration defect**, not the proper target for continued feature development. Do **not** claim “0.4.0 is currently correct” because the installed VSIX and local content happen to agree. That only proves the current build is self-consistent **against an obsolete contract**.
+**Active, mandatory authoring specification: canonical `vanderpol/scap-ng/main` flat `schema/`, version `0.4.1` only.** The editor's present `schema-profile.json` and `dependency-pins.json` both explicitly pin **0.4.0** at `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`; this is a **known migration defect**, not the proper target for continued feature development. Do **not** claim “0.4.0 is currently correct” because the installed VSIX and local content happen to agree. That only proves the current build is self-consistent **against an obsolete contract**.
 
 **Immediate task:** complete current source-preserving Graphical Rule changes in [PR #67](https://github.com/vanderpol/scap-ng-vscode/pull/67) without rewriting them, then give [Editor Issue #65](https://github.com/vanderpol/scap-ng-vscode/issues/65) highest priority **before additional substantial GUI/CRUD/wizard features**. Do not interrupt an in-flight installer/test; preserve the current 0.4.0 VSIX only as historical rollback, never current authoring. Merge reviewable completed increments per mainline policy.
 
@@ -31,11 +31,27 @@ Current integration checkpoint: **Editor still has active draft stacks; integrat
 
 ---
 
+## Integrated 0.4.1 baseline and development hold
+
+PRs #67 and #68 are being consolidated on this mainline baseline. The active
+editor contract is exactly SCAP-NG 0.4.1 from
+`scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`, with the official pack
+exporter at `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731`. The verified
+offline pack manifest SHA-256 is
+`4e6caec2f92a0ec35dab0ddf2d6ef88c615f858482e22757cf0326c0945927fb`.
+
+Substantial new editor features are paused pending schema-first converter work
+in `scap-ng-tools#83` and normative language work in `scap-ng#80`. Preserve
+existing editor work, run regression/pack/VSIX gates, and document gaps rather
+than inventing converter or schema semantics.
+
+---
+
 # AGENTS.md — SCAP-NG VS Code Assessment Studio
 
 ## Current owner handoff — 2026-11-14 (overrides old 0.4.0 assumptions)
 
-- Active authoring language is **one 0.4.1 flat canonical schema**, not the historical 0.4.0 pack. Canonical `scap-ng` Issue #66 and draft PR #65 currently identify pinned candidate `aece827964c785be77b088c3c61255a2d07fd9a9`, Assessment-family digest `578315d1e00bd39449ed597ed3d39555384276bd36198a54ca0b1e3c17e72829`. PR #65 is draft, not main; recheck before repinning. Do not update only a label: regenerate/verify the complete offline schema/semantic/vocabulary/editor pack and explicitly reject incompatible old content. Preserve historical 0.4.0 only via Git/archive; do not ship dual active versions.
+- Active authoring language is **one 0.4.1 flat canonical schema**, not the historical 0.4.0 pack. Canonical `scap-ng` Issue #66 and draft PR #65 currently identify pinned candidate `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`, Assessment-family digest `88fc59791f9cb5055d2a8dc27bb458bcf6699b5820061ce68af1a355bd33a84f`. PR #65 is draft, not main; recheck before repinning. Do not update only a label: regenerate/verify the complete offline schema/semantic/vocabulary/editor pack and explicitly reject incompatible old content. Preserve historical 0.4.0 only via Git/archive; do not ship dual active versions.
 - Owner priority is **real scanner core capabilities + Sets/Filters + 20–30 native gatherers**, executed in `scap-ng-ri`, not more UI documentation reports. VS Code continues its own bounded [Issue #61](https://github.com/vanderpol/scap-ng-vscode/issues/61) and PR #59 work **independently** without blocking scanner progress. Work Codex may proceed autonomously through self-contained GitHub tasks and draft PR increments, except genuine owner semantic/security/release/merge decisions.
 - **Source YAML is authoritative.** Graphical Structured and Guided wizard use the same schema-driven transaction engine, targeted mutations and undo/redo; no full-file formatting, no silent new grammar. Preserve comments, multiline/inline Object+Require, anchors/quoting and no-op byte identity. Display Evaluate at top with Tests nested; Variables and shared References are visible in purposeful order, less-common Organizational Input lower; detailed tree placement is an editor UI decision, **serialization must remain correct**. Support complete schema-driven CRUD (dynamic keys, arrays, nested objects, references), guarded literal/Variable/Input controls, field-specific operators and Item/Field cardinality, contextual help, Variable dereference, renamed/referenced node integrity.
 - Schema/OVAL parity: `scap-ng` owns normative documentation and all native field/operator enum constraints; `scap-ng-tools` owns converted YAML and native applicability/shared Assessment outputs. Read-only qualified conversion corpus in editor only after explicit pin and provenance; never use stale 65-benchmark archives as current examples or invent PASS/FAIL.
@@ -61,8 +77,8 @@ The editor's **sole authoring grammar and examples** come from the exact canonic
 
 ## Canonical contracts and version pinning
 
-- Canonical public source: [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e), especially the **flat** [0.4 schema directory](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema), [schema README](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/README.md), [authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/authoring-vocabulary.en.json), [current examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) and [generated reference](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/docs/generated/schema-reference.md).
-- Shared offline converter/authoring utilities and the [editor-pack export procedure](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/EDITOR-PACK-CUTOVER.md) live in public `vanderpol/scap-ng-tools`. The previous research repository is private and **must not** be required to build, test, or implement this extension.
+- Canonical public source: [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a), especially the **flat** [0.4 schema directory](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema), [schema README](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/README.md), [authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/authoring-vocabulary.en.json), [current examples](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/examples) and [generated reference](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/docs/generated/schema-reference.md).
+- Shared offline converter/authoring utilities and the [editor-pack export procedure](https://github.com/vanderpol/scap-ng-tools/blob/bacb360b9d4a688b8658b8303f439b83a91ef731/docs/EDITOR-PACK-CUTOVER.md) live in public `vanderpol/scap-ng-tools`. The previous research repository is private and **must not** be required to build, test, or implement this extension.
 - **Pin the exact upstream Git commit used for each editor build** and expose the version/SHA in About/diagnostics. Do not treat moving `main` as a release version; never mix schema, mappings and vocabulary from different commits. Avoid old 0.3 or historical 0.4-A examples.
 - Canonical **owner-amended pre-release 0.4** uses Test-local `capability` and `require`. A comparison Test serializes `item_requirement: {items_found: one_or_more, items_satisfying: every}` before sibling `field_requirement: {values_found: one_or_more, values_matching: every}`. Presence-only Tests retain only `item_requirement.items_found`; Result wire fields are separate and unchanged. These controls are schema-driven, never hidden runtime defaults. Logical `and`, `or`, `one`, `xor` are different: `one` means exactly one, `xor` means odd parity. Do not reintroduce named `states` or `states_match`, `select`/`collect` wrappers, or old ungrouped Item keys.
 - **Presentation order is an editor acceptance contract**, reflected in the pinned schema property declarations and current examples: show `item_requirement`, then `field_requirement`, then `fields`. Prefer a one-line complete `fields` map for short simple predicates (e.g. `fields: {type: {equals: dword}, value: {equals: 1}}`), but keep complex regex/logic readable as a block. Never reorder an existing valid document merely by opening/saving it. Regression tests cover the declared and actual layout.

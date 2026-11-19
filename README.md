@@ -2,7 +2,7 @@
 
 An open-source, offline-first VS Code extension for drafting and reviewing **SCAP-NG** security Assessments, Rules and STIG content.
 
-The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
+The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/bacb360b9d4a688b8658b8303f439b83a91ef731/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
 
 Current editor samples deliberately display the comparison order **Item requirement → Field requirement → fields**. Short predicates can be a compact single `fields: {...}` mapping; long regex or logic groups remain multiline. This is new-authoring presentation guidance, never an instruction to reformat an existing document on open/save.
 
@@ -51,7 +51,7 @@ Do not clone private research or commit downloaded corpora into this repo.
 - Distinguish YAML/schema/graph/compile checks, draft/proof warnings and genuine runtime scanner results.
 - Reuse suitable permissively licensed components where it reduces risk, but **do not copy third-party source-available code or unlicensed upstream material**.
 
-The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 236-resource metadata manifest.
+The authoritative SCAP-NG 0.4 schema and assessment contracts are maintained in [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema) under flat `schema/`; editor builds must pin the exact upstream commit and 236-resource metadata manifest.
 
 ## License
 
@@ -75,7 +75,7 @@ npm run lint
 npm test
 ```
 
-The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical candidate `7b9b611` and manifest SHA-256 `2aa28f99…` (236 reviewed derived resources). CI reconstructs the pack using the exact public `scap-ng-tools@1f4f74d` exporter plus the reviewed 145-file compatibility adapter, tests bootstrap again with networking disabled, and checks real canonical examples plus small reviewed synthetic Result A/selector fixtures. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`). The installed build can be confirmed from the Command Palette with **SCAP-NG: Show installed build**; it displays the short commit and UTC build timestamp.
+The adapter reads an explicitly selected local pack; no upstream schemas/content are bundled. `schema-profile.json` pins canonical SCAP-NG 0.4.1 commit `cb82e6b` and manifest SHA-256 `4e6caec2…` (236 derived resources). CI reconstructs the pack with the official public `scap-ng-tools@bacb360` exporter, tests bootstrap again with networking disabled, and checks canonical 0.4.1 examples plus reviewed synthetic Result A/selector fixtures. 0.4.0 documents are unsupported and are never silently rewritten. `npm run package:vsix` produces a locally installable VSIX (`scap-ng-vscode-0.0.1.vsix`); run `unzip -t` to verify the archive. Full Assessment evaluation is unavailable. For disconnected P0 deployment, `npm run package:offline-bundle` packages that VSIX with the pinned editor pack and Red Hat YAML v2.0.0 (supplied through `SCAP_NG_REDHAT_YAML_DIR`). The installed build can be confirmed from the Command Palette with **SCAP-NG: Show installed build**; it displays the short commit and UTC build timestamp.
 
 The current pinned 0.4 schema pack adopts native Result A (`require_*` source
 locations and Field Results). Offline integration checks supplied synthetic

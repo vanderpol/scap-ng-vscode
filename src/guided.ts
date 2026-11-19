@@ -5,6 +5,8 @@ import { styleGeneratedObjects, type YamlObjectStyle } from './yaml-style.js';
 import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 import { orderGeneratedAssessment } from './assessment-order.js';
 
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedObjectField {
   name: string;
@@ -16,10 +18,9 @@ export interface GuidedObjectField {
   enumValues: string[];
 }
 export interface GuidedObjectRequirement { fields: string[]; description?: string; }
-export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; }
+export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; itemFound?: string; itemsSatisfying?: string; }
 export interface GuidedApplicabilitySelection { alias: string; assessmentId: string; expectedVersion: string | number; }
-export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor'; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
+export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor' | Json; dependencies?: Record<string, Json>; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
 function schemaDefaultOrObjectDefaults(pack: MetadataPack, uri: string): Json {
@@ -196,10 +197,11 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   if (!draft.title.trim()) throw new Error('Assessment title is required');
   if (!draft.platform) throw new Error('Choose a target platform authoring context');
   const assessment: Record<string, Json> = { id: draft.id, version: 1, assessment_title: draft.title, mode: draft.mode, class: draft.className };
+  if (draft.dependencies && object(draft.dependencies)) assessment.dependencies = draft.dependencies;
   if (draft.applicability) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.applicability.alias)) throw new Error('Applicability alias must use lowercase kebab-case.');
     if (!draft.applicability.assessmentId.trim()) throw new Error('Applicability Assessment ID is required.');
-    assessment.dependencies = { [draft.applicability.alias]: { assessment: draft.applicability.assessmentId, expected_version: draft.applicability.expectedVersion, purpose: 'applicability' } };
+    assessment.dependencies = { ...(object(assessment.dependencies) ? assessment.dependencies as Record<string, Json> : {}), [draft.applicability.alias]: { assessment: draft.applicability.assessmentId, expected_version: draft.applicability.expectedVersion, purpose: 'applicability' } };
     assessment.applicability = { assessment: draft.applicability.alias };
   }
   if (draft.mode === 'manual') {
@@ -209,7 +211,7 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   }
   else {
     if (!draft.tests?.length) throw new Error('Add at least one automated Test');
-    assessment.specification = { id: 'scap-ng.pre-alpha.assessment', version: '0.4.0' };
+    assessment.specification = { id: 'scap-ng.pre-alpha.assessment', version: SCHEMA_VERSION };
     const tests: Record<string, Json> = {};
     for (const test of draft.tests) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*-test$/.test(test.id)) throw new Error(`Test ID must be lowercase kebab-case and end in -test: ${test.id}`);
@@ -217,11 +219,11 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
       const fieldRequirementUri = schemaBase + 'assessment-language.schema.json#/$defs/canonical_all_items_requirement/properties/field_requirement';
       const itemDefaults = schemaDefaultOrObjectDefaults(pack, itemRequirementUri);
       const require: Record<string, Json> = { item_requirement: test.presenceOnly
-        ? { items_found: (itemDefaults as Record<string, Json>).items_found }
-        : itemDefaults };
+        ? { items_found: test.itemFound ?? (itemDefaults as Record<string, Json>).items_found }
+        : { ...(itemDefaults as Record<string, Json>), ...(test.itemFound ? { items_found: test.itemFound } : {}), ...(test.itemsSatisfying ? { items_satisfying: test.itemsSatisfying } : {}) } };
       if (!test.presenceOnly) {
         require.field_requirement = schemaDefaultOrObjectDefaults(pack, fieldRequirementUri);
-        if (test.fields && Object.keys(test.fields).length) require.fields = test.fields;
+        if (test.fields && Object.keys(test.fields).length) require.fields = structuredClone(test.fields);
       }
       const testTitle = test.title?.trim() || generatedTestTitle(pack, test);
       tests[test.id] = { test_title: testTitle, capability: test.capability, reported_elements: 'all', object: test.object, require };
@@ -230,7 +232,9 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
     // This is a presentation/layout choice only: existing documents are never
     // reserialized, and the native schema remains order-insensitive.
     const ids = draft.tests.map(test => ({ test: test.id }) as Json);
-    assessment.evaluate = draft.evaluate ? { [draft.evaluate]: ids } : ids[0];
+    if (draft.evaluate && typeof draft.evaluate === 'object' && !Array.isArray(draft.evaluate)) assessment.evaluate = draft.evaluate;
+    else if (typeof draft.evaluate === 'string' && ['and', 'or', 'one', 'xor'].includes(draft.evaluate)) assessment.evaluate = { [draft.evaluate]: ids };
+    else assessment.evaluate = ids[0];
     assessment.tests = tests;
   }
   const document = { assessment: orderGeneratedAssessment(assessment, draft.mode) } as Json;

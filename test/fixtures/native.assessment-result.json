@@ -1,6 +1,6 @@
 {
   "assessment_result": {
-    "result_schema_version": "0.4.0",
+    "result_schema_version": "0.4.1",
     "execution_id": "supplied-native-result-review",
     "assessment": {
       "id": "windows-server-2025-shows-on-lock-screen-sv-278080-assessment",

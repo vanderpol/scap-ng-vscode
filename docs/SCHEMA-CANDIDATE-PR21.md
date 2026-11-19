@@ -7,7 +7,7 @@ The active integration profile uses the exact head of coordinated draft PR #21:
 
 - Repository: `vanderpol/scap-ng`
 - Pull request: [#21](https://github.com/vanderpol/scap-ng/pull/21)
-- Candidate commit: `7b9b61108aa30a601828268576308e510477094e`
+- Candidate commit: `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`
 - Candidate schema snapshot: 145 JSON files, 35 root schemas, 652 root `$ref`s  
 - Candidate schema aggregate SHA-256: `2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843`
 - Candidate editor-pack resource count: 236
@@ -29,8 +29,6 @@ cross-repository compatibility gaps.
 
 The previous stable pin remains preserved in:
 
-- `schema-profile.stable.json`
-- `dependency-pins.stable.json`
 - ignored local checkout `.external/scap-ng-stable-463675f3b931e596c922352a131cb3c515ab2265`
 - ignored local pack `.external/editor-pack-stable-0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`
 
