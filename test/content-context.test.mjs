@@ -21,6 +21,9 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].benchmark.version, '001.002.003');
   assert.deepEqual(contexts[0].profiles, [{ id: 'product-profile', title: 'Product profile', disabledRuleCount: 1 }]);
   assert.equal(contexts[0].ruleCount, 1);
+  assert.equal(contexts[0].rules[0].automationStatus, 'automated');
+  assert.equal(contexts[0].automation.automated, 1);
+  assert.equal(contexts[0].automation.needsAutomation, 0);
   assert.equal(contexts[0].assessmentCount, 3);
   assert.equal(contexts[0].assessments.find(item => item.id === 'manual-assessment')?.mode, 'manual');
   assert.equal(benchmarkContextLabels(contexts).get(contexts[0].key), 'Product Benchmark — direct-slice · v001.002.003');

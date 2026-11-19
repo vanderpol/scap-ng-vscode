@@ -82,6 +82,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(welcomeSource, /scapNg\.openBenchmarkConditions/);
   assert.match(extensionSource, /Graphical editing writes localized changes/);
   assert.match(extensionSource, /availableAssessments/);
+  assert.match(extensionSource, /automationStatus/);
+  assert.match(welcomeSource, /Review Rules needing automation/);
+  assert.match(welcomeSource, /data-filter=\"needs-automation\"/);
   assert.match(extensionSource, /selectedPackagePath/);
   assert.match(extensionSource, /pathWithinIndexedRoot/);
   assert.match(extensionSource, /benchmarkContextViewData/);
