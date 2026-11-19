@@ -18,7 +18,7 @@ import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
 import { assessmentCustomEditorId, isAssessmentEditorMode, isAssessmentFilePath, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
-import { createAssistedAssessment } from './assisted-draft.js';
+import { cleanProcedureForAutomation, createAssistedAssessment } from './assisted-draft.js';
 import { readAutomationDispositions, writeAutomationDispositions, type AutomationDisposition } from './automation-metadata.js';
 import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
@@ -228,7 +228,7 @@ async function ruleAutomationSeed(api: any, context: BenchmarkContextSummary | u
       const assessment = new SourceBuffer(assessmentDocument.getText()).json() as any;
       const procedure = assessment?.assessment?.procedure;
       if (typeof procedure === 'string' && procedure.trim()) {
-        return { ruleId, ruleTitle, checkText: procedure.trim(), sourceLabel: `manual Assessment procedure (${manual.id ?? manual.path})`, revision: sha256(ruleDocument.getText()), existingAutomatedAssessmentId: ruleBody.assessment_choices?.automated?.assessment };
+        return { ruleId, ruleTitle, checkText: cleanProcedureForAutomation(procedure), sourceLabel: `manual Assessment procedure (${manual.id ?? manual.path})`, revision: sha256(ruleDocument.getText()), existingAutomatedAssessmentId: ruleBody.assessment_choices?.automated?.assessment };
       }
     } catch { /* Fall back to the Rule's authored discussion below. */ }
   }

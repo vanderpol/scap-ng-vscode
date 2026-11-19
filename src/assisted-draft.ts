@@ -52,6 +52,24 @@ function slug(value: string, suffix: string): string {
 function firstPlatform(pack: MetadataPack): string { return new GuidedCatalog(pack).platforms()[0]?.value ?? 'unknown'; }
 function firstClass(pack: MetadataPack): string { return new GuidedCatalog(pack).classes().find(value => value.value === 'compliance')?.value ?? new GuidedCatalog(pack).classes()[0]?.value ?? 'compliance'; }
 function cleanText(value: string | undefined): string { return (value ?? '').replace(/\r\n?/g, '\n').trim(); }
+
+/**
+ * Remove converter-added OCIL wrapper prose before using a manual procedure
+ * as automation input. The actual commands, conditions and finding criteria
+ * remain intact; this only strips known provenance boilerplate that otherwise
+ * gets copied into the generated Assessment's review comments.
+ */
+export function cleanProcedureForAutomation(value: string | undefined): string {
+  const text = cleanText(value);
+  if (!text) return '';
+  const boilerplate = [
+    /^Manual alternative preserved from the original OCIL check\. Follow the source procedure; this Assessment does not execute OCIL\.?$/i,
+    /^Complete the source OCIL procedure and record the result\.?$/i
+  ];
+  const paragraphs = text.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean);
+  const kept = paragraphs.filter(paragraph => !boilerplate.some(pattern => pattern.test(paragraph)));
+  return kept.join('\n\n').trim();
+}
 /** Recover the original source text when an author pastes a prior annotated draft back into the prompt. */
 function unwrapAssistedDraft(value: string, depth = 0): { text: string; unwrapped: boolean } {
   if (depth > 3) return { text: value, unwrapped: false };
