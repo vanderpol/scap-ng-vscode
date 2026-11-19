@@ -88,7 +88,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /event\.data\.type==='contexts'/);
   assert.match(extensionSource, /Selecting a different Benchmark must explicitly hydrate its package/);
   assert.match(extensionSource, /Could not load the selected Benchmark content/);
-  assert.match(extensionSource, /If no Benchmark is selected yet, retain the full scan/);
+  assert.match(extensionSource, /selection page shows identity only/);
+  assert.doesNotMatch(extensionSource, /profileCount: context\.profiles\.length/);
+  assert.doesNotMatch(extensionSource, /item\.profileCount\+' profiles'/);
   assert.match(extensionSource, /mode:name==='automated'\|\|name==='manual'\?name:undefined/);
   assert.match(extensionSource, /if\(expectedMode&&item\?\.mode!==expectedMode\)return false/);
   assert.match(extensionSource, /Search existing Assessments by title or ID/);
