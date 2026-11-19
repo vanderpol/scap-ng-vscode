@@ -7,6 +7,8 @@ import { predicateOperatorChoices, predicateValueSourceChoices, selectorFieldDat
 import { analyzeVariables, expressionContract, variableAnalysisSummary } from './expression-contract.js';
 import { analyzeAssessmentReferences } from './reference-graph.js';
 
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
   if (Array.isArray(value)) return value.flatMap((entry, index) => scalarEntries(entry, [...path, index]));
@@ -120,7 +122,7 @@ function schemaHelp(pack: MetadataPack | undefined, root: string | undefined, pa
   try {
     const uri = schemaForPath(pack, root, path); if (!uri) return undefined;
     const parentUri = path.length > 1 ? schemaForPath(pack, root, path.slice(0, -1)) : undefined;
-    const help = pack.describe(uri, { documentVersion: '0.4.0', schemaValid: !draft, isOverride: false, diagnostics: [] });
+    const help = pack.describe(uri, { documentVersion: SCHEMA_VERSION, schemaValid: !draft, isOverride: false, diagnostics: [] });
     const vocabulary = vocabularyHelp(pack, path);
     const facts = schemaFacts(pack, uri);
     const key = String(path.at(-1));
@@ -585,7 +587,7 @@ function evaluationText(value: any): string {
 export function requireLogicalOperations(pack?: MetadataPack): string[] {
   if (!pack) return [];
   try {
-    const schema: any = pack.resource('https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json');
+    const schema: any = pack.resource(schemaBase + 'assessment-language.schema.json');
     const branches = schema.$defs?.canonical_condition?.oneOf;
     if (!Array.isArray(branches)) return [];
     const operations = new Set<string>();

@@ -2,7 +2,19 @@
 
 ## Mission and required reading
 
-Build a **standalone, open-source, offline-first VS Code editor** for drafting, inspecting and maintaining SCAP-NG 0.4.0 content. The editor is **not** the compliance scanner, OVAL evaluator, converter, standards authority or source-of-truth for Assessment semantics.
+## P0 single-version 0.4.1 directive (Issue #65)
+
+This branch targets the canonical public SCAP-NG 0.4.1 contract only:
+`scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`. The matching official
+pack is generated with `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731`;
+OVAL remains pinned to `2f140ee5c5dd1ed9606fcd5afc301f6baeb48706`. Do not add a
+0.4.0 fallback, dual-version editor path, label-only retag, or silent rewrite.
+Documents declaring 0.4.0 must fail clearly as unsupported and remain byte
+preserved. Every schema/tools/sample-data pin, validator, test, help surface and
+VSIX receipt must agree with the one 0.4.1 profile.
+
+
+Build a **standalone, open-source, offline-first VS Code editor** for drafting, inspecting and maintaining SCAP-NG 0.4.1 content. The editor is **not** the compliance scanner, OVAL evaluator, converter, standards authority or source-of-truth for Assessment semantics.
 
 Before coding, read this file, [SCAP-NG primer](docs/SCAP-NG-PRIMER.md), [editor blueprint](docs/EDITOR-BLUEPRINT.md), [one-clone workspace setup](docs/WORKSPACE-BOOTSTRAP.md) and the numbered GitHub implementation issues. Use their acceptance criteria for incremental working deliveries.
 
@@ -18,8 +30,8 @@ The editor's **sole authoring grammar and examples** come from the exact canonic
 
 ## Canonical contracts and version pinning
 
-- Canonical public source: [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e), especially the **flat** [0.4 schema directory](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/schema), [schema README](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/README.md), [authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/authoring-vocabulary.en.json), [current examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples) and [generated reference](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/docs/generated/schema-reference.md).
-- Shared offline converter/authoring utilities and the [editor-pack export procedure](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/EDITOR-PACK-CUTOVER.md) live in public `vanderpol/scap-ng-tools`. The previous research repository is private and **must not** be required to build, test, or implement this extension.
+- Canonical public source: [vanderpol/scap-ng](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a), especially the **flat** [0.4 schema directory](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema), [schema README](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/README.md), [authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/authoring-vocabulary.en.json), [current examples](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/examples) and [generated reference](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/docs/generated/schema-reference.md).
+- Shared offline converter/authoring utilities and the [editor-pack export procedure](https://github.com/vanderpol/scap-ng-tools/blob/bacb360b9d4a688b8658b8303f439b83a91ef731/docs/EDITOR-PACK-CUTOVER.md) live in public `vanderpol/scap-ng-tools`. The previous research repository is private and **must not** be required to build, test, or implement this extension.
 - **Pin the exact upstream Git commit used for each editor build** and expose the version/SHA in About/diagnostics. Do not treat moving `main` as a release version; never mix schema, mappings and vocabulary from different commits. Avoid old 0.3 or historical 0.4-A examples.
 - Canonical **owner-amended pre-release 0.4** uses Test-local `capability` and `require`. A comparison Test serializes `item_requirement: {items_found: one_or_more, items_satisfying: every}` before sibling `field_requirement: {values_found: one_or_more, values_matching: every}`. Presence-only Tests retain only `item_requirement.items_found`; Result wire fields are separate and unchanged. These controls are schema-driven, never hidden runtime defaults. Logical `and`, `or`, `one`, `xor` are different: `one` means exactly one, `xor` means odd parity. Do not reintroduce named `states` or `states_match`, `select`/`collect` wrappers, or old ungrouped Item keys.
 - **Presentation order is an editor acceptance contract**, reflected in the pinned schema property declarations and current examples: show `item_requirement`, then `field_requirement`, then `fields`. Prefer a one-line complete `fields` map for short simple predicates (e.g. `fields: {type: {equals: dword}, value: {equals: 1}}`), but keep complex regex/logic readable as a block. Never reorder an existing valid document merely by opening/saving it. Regression tests cover the declared and actual layout.

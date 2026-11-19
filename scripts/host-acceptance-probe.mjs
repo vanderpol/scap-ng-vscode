@@ -20,10 +20,32 @@ if (!packDir || !sampleRoot) throw new Error('SCAP_NG_METADATA_PACK and SCAP_NG_
 const pin = JSON.parse(readFileSync(process.env.SCAP_NG_PROFILE_PATH ?? new URL('../schema-profile.json', import.meta.url)));
 const pack = new MetadataPack(packDir, pin);
 const catalog = new GuidedCatalog(pack);
-const sample = resolve(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml');
+const sample = process.env.SCAP_NG_SOURCE_ROOT
+  ? resolve(process.env.SCAP_NG_SOURCE_ROOT, 'examples/windows-server-2025-lock-screen.assessment.yaml')
+  : resolve(sampleRoot, 'fixtures/native-041/assessments/optional-input-presence.assessment.yaml');
 const source = readFileSync(sample, 'utf8');
-const variableInput = resolve(sampleRoot, 'fixtures/current-v04/windows-server-2025-sysvol-permissions.assessment.yaml');
-const variableSource = readFileSync(variableInput, 'utf8');
+const variableInput = process.env.SCAP_NG_SOURCE_ROOT
+  ? resolve(process.env.SCAP_NG_SOURCE_ROOT, 'examples/windows-server-2025-sysvol-permissions.assessment.yaml')
+  : resolve(sampleRoot, 'fixtures/native-041/assessments/shared-object-reuse.assessment.yaml');
+const variableSource = (() => {
+  try { return readFileSync(variableInput, 'utf8'); } catch {
+    return `assessment:
+  id: host-variable-completion-assessment
+  version: 1
+  assessment_title: Host variable completion
+  mode: automated
+  class: compliance
+  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.1}
+  variables:
+    example-variable:
+      kind: local
+      expression:
+        concat:
+        - literal: first
+        - literal: second
+  tests: {}`;
+  }
+})();
 const variableIncomplete = variableSource.replace(/\n        concat:\n[\s\S]*?\n  tests:/, '\n        concat:\n        - \n  tests:');
 const fixtureRoot = resolve(process.env.SCAP_NG_P0_FIXTURE_ROOT ?? 'test/fixtures');
 const canonicalInputs = {
@@ -395,7 +417,7 @@ assertSet(receipt.variableCompletions, expectedVariableExpressions, 'recursive V
 assertSet(receipt.evaluateCompletions, expectedEvaluateTests, 'evaluate.test');
 assertSet(receipt.multipleEvaluateCompletions, expectedMultipleEvaluateTests, 'nested evaluate.test');
 if (!receipt.defaultOpen?.nativeTextEditor || receipt.defaultOpen?.languageId !== 'yaml') failures.push('recognized Assessment did not open in the native YAML editor by default');
-if (!receipt.yamlStatus?.visible || !['healthy','partial'].includes(receipt.yamlStatus?.state) || (receipt.yamlStatus?.state === 'partial' && !receipt.schemaResolutionWarnings?.length) || !receipt.yamlStatus?.associationPresent || receipt.yamlStatus?.schemaVersion !== '0.4.0' || !receipt.yamlStatus?.packPath) failures.push('SCAP-NG status did not report a verified pinned Assessment');
+if (!receipt.yamlStatus?.visible || !['healthy','partial'].includes(receipt.yamlStatus?.state) || (receipt.yamlStatus?.state === 'partial' && !receipt.schemaResolutionWarnings?.length) || !receipt.yamlStatus?.associationPresent || receipt.yamlStatus?.schemaVersion !== '0.4.1' || !receipt.yamlStatus?.packPath) failures.push('SCAP-NG status did not report a verified pinned Assessment');
 if (receipt.unrelatedStatus !== undefined) failures.push('SCAP-NG status remained visible for ordinary YAML');
 const testMissingAfter = (...present) => expectedTestProperties.filter(value => !present.includes(value));
 const requirementMissingAfter = (...present) => expectedRequirementProperties.filter(value => !present.includes(value));

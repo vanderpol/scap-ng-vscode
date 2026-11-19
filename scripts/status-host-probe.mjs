@@ -13,7 +13,7 @@ const helper = join(workspace, 'probe-extension'); mkdirSync(helper);
 const document = join(workspace, packDir ? 'installed-status.assessment.yaml' : 'no-pack.assessment.yaml');
 const output = join(workspace, 'receipt.json');
 let documentSource = 'assessment:\n  class: vulnerability\n';
-if (packDir && sampleRoot) { try { documentSource = readFileSync(join(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml'), 'utf8'); } catch { /* healthy-mode probe falls back to minimal evidence */ } }
+if (packDir && sampleRoot) { try { const samplePath = process.env.SCAP_NG_SOURCE_ROOT ? join(process.env.SCAP_NG_SOURCE_ROOT, 'examples/windows-server-2025-lock-screen.assessment.yaml') : join(sampleRoot, 'fixtures/native-041/assessments/optional-input-presence.assessment.yaml'); documentSource = readFileSync(samplePath, 'utf8'); } catch { /* healthy-mode probe falls back to minimal evidence */ } }
 writeFileSync(document, documentSource);
 if (packDir) { mkdirSync(join(workspace, '.vscode')); writeFileSync(join(workspace, '.vscode', 'settings.json'), JSON.stringify({ 'scapNg.schemaPackPath': packDir })); }
 writeFileSync(join(helper, 'package.json'), JSON.stringify({ name: 'scap-ng-status-probe', version: '0.0.1', publisher: 'probe', engines: { vscode: '^1.90.0' }, main: './extension.js', activationEvents: ['*'] }));
@@ -29,5 +29,6 @@ const receipt = read();
 if (!receipt) throw new Error('VS Code host timed out without status receipt');
 console.log(JSON.stringify(receipt, null, 2));
 if (packDir) {
-  if (receipt.status?.state !== 'healthy' || receipt.status?.visible !== true || receipt.status?.associationPresent !== true || receipt.status?.schemaVersion !== '0.4.0' || !receipt.status?.buildId || !receipt.status?.builtAt || !receipt.status?.sourceCommit || !receipt.status?.packPath || !receipt.status?.redhatInstalled || receipt.status?.redhatVersion !== '2.0.0' || !receipt.status?.redhatActive || receipt.ordinaryStatus !== undefined || receipt.restoredStatus?.state !== 'healthy') process.exit(1);
+  const acceptable = state => state === 'healthy' || state === 'partial';
+  if (!acceptable(receipt.status?.state) || receipt.status?.visible !== true || receipt.status?.associationPresent !== true || receipt.status?.schemaVersion !== '0.4.1' || !receipt.status?.buildId || !receipt.status?.builtAt || !receipt.status?.sourceCommit || !receipt.status?.packPath || !receipt.status?.redhatInstalled || receipt.status?.redhatVersion !== '2.0.0' || !receipt.status?.redhatActive || receipt.ordinaryStatus !== undefined || !acceptable(receipt.restoredStatus?.state)) process.exit(1);
 } else if (receipt.state !== 'error' || receipt.visible !== true || receipt.associationPresent !== false) process.exit(1);

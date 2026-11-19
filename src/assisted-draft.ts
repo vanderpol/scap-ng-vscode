@@ -2,7 +2,8 @@ import { MetadataPack, type Json } from './metadata.js';
 import { GuidedCatalog, createGuidedAssessment, generatedTestTitle, type GuidedApplicabilitySelection } from './guided.js';
 import type { YamlObjectStyle } from './yaml-style.js';
 
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 
 export interface AssistedDraftInput {
   title?: string;
@@ -998,7 +999,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1037,7 +1038,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   }
   const catalog = new GuidedCatalog(pack);
   const required = catalog.objectRequirements(candidate.capability);
-  const authoredObjectFields = new Set(Object.keys(candidate.object).map(field => field === 'filepath' ? 'full_path' : field));
+  const authoredObjectFields = new Set(Object.keys(candidate.object));
   const complete = candidate.presenceOnly || authoredObjectFields.size === 0 || required.some(branch => branch.fields.every(field => authoredObjectFields.has(field)));
   if (!complete) {
     return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], ['The inferred Object does not satisfy a complete schema-required selector branch.']);

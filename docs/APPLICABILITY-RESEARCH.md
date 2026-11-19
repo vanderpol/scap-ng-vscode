@@ -6,7 +6,7 @@ This note records the applicability model found in the pinned SCAP-NG 0.4 contra
 
 ## Findings from the SCAP-NG contract
 
-The current editor pack (`scap-ng@7b9b61108aa30a601828268576308e510477094e`, candidate PR #21) and stable rollback (`463675f3b931e596c922352a131cb3c515ab2265`) contain the same relevant applicability shape:
+The current editor pack (`scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`, candidate PR #21) and stable rollback (`463675f3b931e596c922352a131cb3c515ab2265`) contain the same relevant applicability shape:
 
 - `assessment.applicability` is optional and is either an `expression` or `null`.
 - An Assessment declares external Assessment dependencies in `assessment.dependencies`. Each dependency has a local kebab-case alias, target Assessment ID, required version, and optional `purpose: applicability`.

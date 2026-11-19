@@ -34,7 +34,7 @@ The editor must never infer one of these from another.
 4. Reject draft/private/unpublished packs as editor build dependencies.
 5. Validate a no-op load, a valid document, a malformed document, and an
    intentional schema-negative document against the candidate pack.
-6. Keep the current pack available as the rollback baseline.
+6. Archive superseded packs outside the editor checkout for forensic rollback only; never ship or auto-select them as a second editor mode.
 
 **Deliverable:** a reviewed versioned pack receipt. No editor code should be
 updated before this receipt exists.
@@ -51,14 +51,14 @@ contract.validate(uri, value)
 contract.provenance
 ```
 
-Replace literal `https://scap-ng.dev/schema/v0.4.0/...` strings throughout the
+Replace literal `https://scap-ng.dev/schema/v0.4.1/...` strings throughout the
 extension with this module. This includes completion, guided authoring,
 structured editing, graphical editing, diagnostics, and schema associations.
 
 The UI should consume the active pack contract rather than a compile-time
 version constant.
 
-## Phase 2 — explicit compatibility adapters
+## Phase 2 — explicit contract boundary
 
 For each supported document contract, define a small adapter containing only
 actual differences:
@@ -73,10 +73,7 @@ Do not branch on scattered version strings. Do not silently normalize a newer
 document into an older contract. Unsupported versions must produce an
 actionable diagnostic with the required pack version.
 
-Initially support:
-
-- the current pinned contract as the rollback baseline;
-- the next approved contract as an opt-in migration candidate.
+Support exactly one contract per editor build. The current build supports only SCAP-NG 0.4.1. Old 0.4.0 documents are diagnosed as unsupported; migration is an explicit user-directed operation outside normal save.
 
 ## Phase 3 — converter boundary
 
@@ -129,8 +126,8 @@ specific controls where the pack can describe the shape.
 For a new approved version:
 
 1. Add the candidate pack and profile receipt.
-2. Add the contract adapter and dynamic URI access.
-3. Run the dual-version test matrix.
+2. Update the single contract module and regenerate the pack.
+3. Run the one-version test matrix plus explicit rejection tests for the prior version.
 4. Run source-preservation and graphical edit probes.
 5. Run converter corpus validation and inspect receipts.
 6. Update documentation and build/About output.
@@ -143,8 +140,6 @@ Rollback must be a pack/profile selection change, not a source rewrite.
 
 ## Immediate next work
 
-1. Add `SchemaContract` and remove hardcoded 0.4.0 URI construction.
-2. Add a pack-provenance diagnostic and a version compatibility test.
-3. Add a second-contract fixture harness without changing the active pin.
-4. Obtain the authoritative 0.4.1 pack and receipt.
-5. Run 0.4.1 as an opt-in candidate before changing the default.
+1. Keep `src/schema-contract.ts` as the only URI/version construction point.
+2. Keep the exact 0.4.1 pack receipt and explicit 0.4.0 rejection test green.
+3. For each upstream schema change, update pins, regenerate one pack, refresh fixtures/tests, and package a verified VSIX before editor work resumes.

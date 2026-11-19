@@ -7,7 +7,7 @@
     "class": "compliance",
     "specification": {
       "id": "scap-ng.pre-alpha.assessment",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     "tests": {
       "independent-environmentvariable-test": {
@@ -111,7 +111,7 @@
         "capability": "windows.fileeffectiverights",
         "reported_elements": "all",
         "object": {
-          "full_path": {
+          "filepath": {
             "equals": "C:\\Data\\Policy.txt"
           },
           "trustee_sid": {

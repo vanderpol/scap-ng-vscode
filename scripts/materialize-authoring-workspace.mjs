@@ -24,10 +24,10 @@ if (existsSync(destination) && readdirSync(destination).length) {
 const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import.meta.url), 'utf8'));
 const pack = new MetadataPack(resolve(process.env.SCAP_NG_METADATA_PACK ?? '.external/editor-pack'), profile);
 const schemas = {
-  assessment: 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json',
-  rule: 'https://scap-ng.dev/schema/v0.4.0/rule.schema.json',
-  benchmark: 'https://scap-ng.dev/schema/v0.4.0/benchmark.schema.json',
-  applicability: 'https://scap-ng.dev/schema/v0.4.0/applicability.schema.json'
+  assessment: 'https://scap-ng.dev/schema/v0.4.1/assessment.schema.json',
+  rule: 'https://scap-ng.dev/schema/v0.4.1/rule.schema.json',
+  benchmark: 'https://scap-ng.dev/schema/v0.4.1/benchmark.schema.json',
+  applicability: 'https://scap-ng.dev/schema/v0.4.1/applicability.schema.json'
 };
 
 function files(root) {
