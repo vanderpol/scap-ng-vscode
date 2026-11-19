@@ -33,6 +33,14 @@ function title(value: any): string | undefined {
   }
   return undefined;
 }
+/** Normalize the two authoring modes used by Assessment choices. Unknown
+ * values remain visible for diagnostics/search, but casing and surrounding
+ * whitespace must not make a valid mode appear in the wrong picker group. */
+function assessmentMode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLocaleLowerCase();
+  return normalized || undefined;
+}
 function benchmarkProfiles(value: any): BenchmarkProfile[] {
   if (!Array.isArray(value)) return [];
   return value.filter(object).map(profile => ({
@@ -85,7 +93,7 @@ export class WorkspaceIndex {
       }
       const capabilities = kind === 'assessment' && object(body.tests) ? Object.values(body.tests).flatMap(test => object(test) && typeof test.capability === 'string' ? [test.capability] : []) : [];
       const localReferenceAnalysis = kind === 'assessment' ? analyzeAssessmentReferences(body) : undefined;
-      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
+      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: assessmentMode(body.mode), capabilities: [...new Set(capabilities)], references, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
     }
     this.documents.set(uri, record); if (rebuild) this.rebuildDiagnostics(); return this.get(uri)!;
   }

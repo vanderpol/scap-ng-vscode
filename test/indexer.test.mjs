@@ -16,6 +16,24 @@ test('indexes logical documents and reverse Assessment usage without path identi
   assert.equal(index.diagnostics().length, 0);
 });
 
+test('normalizes Assessment authoring modes for exact graphical choice filtering', () => {
+  const index = new WorkspaceIndex();
+  index.update('auto.assessment.yaml', `assessment:
+  id: auto
+  version: 1
+  assessment_title: Automated
+  mode: ' AUTOMATED '
+`);
+  index.update('manual.assessment.yaml', `assessment:
+  id: manual
+  version: 1
+  assessment_title: Manual
+  mode: MANUAL
+`);
+  assert.equal(index.get('auto.assessment.yaml').mode, 'automated');
+  assert.equal(index.get('manual.assessment.yaml').mode, 'manual');
+});
+
 test('reports duplicate, unresolved, wrong-kind and incompatible-version references deterministically', () => {
   const index = new WorkspaceIndex();
   index.update('C:\\content\\a.assessment.yaml', assessment('same', 1));
