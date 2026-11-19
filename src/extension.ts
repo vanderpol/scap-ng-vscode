@@ -1726,6 +1726,12 @@ async function openBenchmarkSetupPanel(extensionContext: vscode.ExtensionContext
       const selected = current.find(context => context.key === message.key);
       if (!selected) { panel.webview.postMessage({ type: 'status', error: true, message: 'That Benchmark is no longer available. Wait for indexing to finish, then choose it again.' }); return; }
       selectBenchmarkContext(state, selected.key);
+      // The startup fast path indexes only the restored Benchmark package.
+      // Selecting a different Benchmark must explicitly hydrate its package;
+      // otherwise the intentionally lazy index would leave its counters at 0.
+      void refreshContentIndex(index, tree, api, indexDiagnostics, state).catch(error => {
+        void api.window.showErrorMessage(`Could not load the selected Benchmark content: ${error instanceof Error ? error.message : String(error)}`);
+      });
       panel.dispose();
       await api.window.showInformationMessage(`Benchmark context selected: ${selected.benchmark.title ?? selected.benchmark.id ?? selected.packagePath}`);
     }
@@ -1985,7 +1991,14 @@ async function openBenchmarkContextPanel(extensionContext: vscode.ExtensionConte
   const listener = (key: string | undefined) => panel.webview.postMessage({ type: 'selected', key });
   state.listeners.add(listener);
   panel.webview.onDidReceiveMessage(async (message: any) => {
-    if (message.type === 'select') { selectBenchmarkContext(state, typeof message.key === 'string' ? message.key : undefined); return; }
+    if (message.type === 'select') {
+      const key = typeof message.key === 'string' ? message.key : undefined;
+      selectBenchmarkContext(state, key);
+      if (key) void refreshContentIndex(index, tree, api, indexDiagnostics, state).catch(error => {
+        void api.window.showErrorMessage(`Could not load the selected Benchmark content: ${error instanceof Error ? error.message : String(error)}`);
+      });
+      return;
+    }
     if (message.type === 'section' && ['rules', 'applicability', 'conditions', 'assessments'].includes(message.section)) {
       panel.dispose();
       await api.commands.executeCommand(message.section === 'rules' ? 'scapNg.openBenchmarkRules' : message.section === 'applicability' ? 'scapNg.openBenchmarkApplicability' : message.section === 'conditions' ? 'scapNg.openBenchmarkConditions' : 'scapNg.openBenchmarkAssessments');
