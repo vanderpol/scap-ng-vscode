@@ -44,15 +44,7 @@ overwritten. To move versions, deliberately archive the old `.external`
 resources first and use reviewed replacement pins. No script silently selects
 the latest `main`.
 
-The approved `scap-ng@7b9b611` candidate contains 145 JSON files, 35 root
-schemas and 652 root references, while the pinned public tools exporter still
-freezes the preceding 143-file snapshot. `bootstrap:pack` therefore invokes
-`scripts/build_v04_editor_metadata_pack_compat.py`: it archives the exact
-`scap-ng-tools@1f4f74d` checkout into a temporary directory, applies the
-reviewed 145-file compatibility patch, and runs the exporter without changing
-the ignored checkout. The resulting 236-resource manifest is pinned in
-`schema-profile.json`; the adapter fails closed on any other tools/schema
-revision.
+The official 0.4.1 pack is generated directly by `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731` from the exact `scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a` checkout. The exporter checks the flat schema family, OVAL pin, source commit and deterministic 236-resource identity; `schema-profile.json` records the resulting manifest SHA-256. There is one supported editor grammar: SCAP-NG 0.4.1. Older 0.4.0 documents fail with an actionable version/schema diagnostic and are not rewritten.
 
 `npm run verify:offline` performs no fetch. It checks all checkout commits,
 origin URLs, manifest identity and each individual pack resource checksum.
@@ -78,7 +70,7 @@ content hashes before accepting it. Runtime remains offline-first.
   `field_requirement`, then `fields`; simple predicates may use compact flow
   YAML. Before runtime UI packaging, preserve that ordering through reviewed,
   generated metadata, never a competing hardcoded list.
-- The canonical JSON `$id` prefix includes `v0.4.0` **by design** even though
+- The canonical JSON `$id` prefix includes `v0.4.1` **by design** even though
   file paths are physically flat under `schema/`. Do not change `$id` URIs to
   match filesystem locations.
 - This repository still contains a TypeScript metadata/source-buffer
@@ -109,7 +101,7 @@ Before work-company Codex is tasked, CI must prove the same workflow:
 3. Build/lint/test the editor foundation; validate current Linux/Windows
    examples, selector/API contracts and synthetic native Result A fixtures.
 4. Audit **every tracked file and link** for missing paths, private-research
-   dependencies and obsolete `schema/v0.4.0/` filesystem assumptions, using
+   dependencies and obsolete `schema/v0.4.1/` filesystem assumptions, using
    `python3 scripts/audit_repository.py`; CI checks its exact local/pinned
    upstream links and all three fixture hashes on every PR.
 5. Confirm only current, public GitHub issues are necessary for the company

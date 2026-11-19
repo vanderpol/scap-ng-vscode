@@ -6,7 +6,7 @@ The repository now contains an installable VS Code extension skeleton. `Assessme
 
 `schema-profile.json` is the contract descriptor:
 
-- SCAP-NG schema version: `0.4.0`
+- SCAP-NG schema version: `0.4.1`
 - canonical source commit: `463675f3b931e596c922352a131cb3c515ab2265`
 - verified metadata manifest SHA-256: `0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`
 

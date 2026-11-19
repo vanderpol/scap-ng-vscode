@@ -8,6 +8,8 @@ import {
   selectorValueSourceChoices,
   type CompletionChoice
 } from './completion.js';
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 
 export type ExpressionLocation = 'object' | 'require';
 export type PredicateDefinition = 'scalar_field_predicate' | 'record_field_predicate' | 'object_record_field_predicate';
@@ -54,7 +56,6 @@ export interface VariableAnalysis {
   runtimeEvaluation: 'not_available';
 }
 
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.1/';
 const variableIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*-variable$/;
 
 function schemaResource(pack: MetadataPack, suffix: string): string | undefined {

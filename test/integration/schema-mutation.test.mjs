@@ -100,7 +100,7 @@ test('schema mutation drives native completion, Graphical controls, hover metada
     assert.ok(completionChoices(pack, hiveValuePrefix, hiveValuePrefix.length).some(choice => choice.value === 'fixture-hive'));
     const fieldsPrefix = 'assessment:\n  tests:\n    check-test:\n      capability: windows.registry\n      require:\n        fields: {';
     assert.ok(completionChoices(pack, fieldsPrefix, fieldsPrefix.length).some(choice => choice.value === 'fixture_state'));
-    const sample = readFileSync(join(sampleRoot, 'fixtures/current-v04/windows-server-2025-lock-screen.assessment.yaml'), 'utf8');
+    const sample = readFileSync(join(sampleRoot, 'fixtures/native-041/assessments/optional-input-presence.assessment.yaml'), 'utf8');
     const model = modelFor({ getText: () => sample, version: 1 }, pack);
     const classField = model.fields.find(field => field.path.join('.') === 'assessment.class');
     assert.deepEqual(classField.choices, ['compliance', 'vulnerability', 'patch', 'inventory', 'miscellaneous', 'fixture-class']);

@@ -31,7 +31,7 @@ The committed tree contains no generated `assessment.json`/`assessment.yaml` pay
 | Snapshot | Commit | JSON files | Root schemas | Root `$ref`s | Family SHA-256 |
 | --- | --- | ---: | ---: | ---: | --- |
 | Historical tool snapshot | `463675f3b931e596c922352a131cb3c515ab2265` | 143 | 34 | 242 | `ab1933f2d9171ee0af70c0fab855b00f5faf78bf59ad4924fbf24b402ac4072a` |
-| VS Code editor pin | `7b9b61108aa30a601828268576308e510477094e` | 145 | 35 | 652 | `2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843` |
+| VS Code editor pin | `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a` | 145 | 35 | 652 | `2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843` |
 | 6,473 ledger converter pin | `a0363570dff78fd0520f84801d635593ce5c8146` | 145 | 35 | 675 | `094cc95219a0fad3640c5fda366b8ff865eb73e255013d92f46edd24cb579c6b` |
 
 The 143-to-145 inventory difference is exact: the two added JSON members are:

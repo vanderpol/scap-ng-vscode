@@ -29,7 +29,7 @@ frozen; existing Graphical entry remains an explicit optional command.
 Using the installed Red Hat YAML extension and the pinned local pack:
 
 - canonical Registry Assessment: status `healthy`, `yaml`, schema association
-  present, schema `0.4.0`, pack manifest SHA
+  present, schema `0.4.1`, pack manifest SHA
   `0b8df930cb25ce173138a759449dcf437a6ac3f3d3d680ecfaee6cb0024b464f`;
 - ordinary `ordinary.yaml`: SCAP-NG status hidden;
 - deleting rows and invoking completion in real host: missing-only menus for

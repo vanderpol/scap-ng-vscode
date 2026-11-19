@@ -3,7 +3,8 @@ import { MetadataPack } from './metadata.js';
 import { GuidedCatalog } from './guided.js';
 import { schemaCapabilityObjectProperties, schemaNodes as resolveSchemaNodes, schemaPropertiesAtPath, schemaPropertyEntries } from './schema-resolver.js';
 
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 
 export interface CompletionChoice {
   value: string;

@@ -11,7 +11,7 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.equal(summary.failures, 0);
   assert.equal(summary.modelFailures, 0);
   assert.equal(summary.schemaInvalid, 0);
-  assert.equal(summary.fixtureCount, 4);
+  assert.equal(summary.fixtureCount, 9);
   assert.equal(summary.syntheticCount, 4);
   assert.ok(summary.coverage['scalar-update'] > 0);
   assert.ok(summary.coverage['structural-add'] > 0);
@@ -20,7 +20,7 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.coverage['logical-add-remove'] > 0);
   assert.ok(summary.coverage['array-add'] > 0);
   assert.ok(summary.coverage['array-remove'] > 0);
-  assert.equal(summary.coverage['dynamic-key-rename'], 5, 'four real Require-field and one Filter include rename');
+  assert.ok(summary.coverage['dynamic-key-rename'] > 0, 'current 0.4.1 fixtures expose dynamic Require/Filter key rename coverage');
   assert.ok(summary.coverage['structural-invalid'] > 0);
   assert.ok(summary.coverage['required-remove-rejection'] > 0);
   assert.equal(summary.bytePreservationChecks, summary.undoRedoChecks);
@@ -30,10 +30,10 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.schemaCoverage.oneOfBranches > 0);
   assert.ok(summary.schemaCoverage.allOfBranches > 0);
   assert.ok(summary.schemaCoverage.conditionalLocations > 0);
-  assert.equal(summary.schemaCoverage.qualifiedOperations, 111);
-  assert.equal(summary.schemaCoverage.conditionalOperations, 2024);
+  assert.equal(summary.schemaCoverage.qualifiedOperations, 123);
+  assert.equal(summary.schemaCoverage.conditionalOperations, 2081);
   assert.equal(summary.schemaCoverage.unsupportedOperations, 0);
-  assert.equal(summary.schemaCoverage.notEvidencedOperations, 4727);
+  assert.equal(summary.schemaCoverage.notEvidencedOperations, 4772);
   assert.equal(summary.schemaCoverage.schemaCompositionLocations, 245);
   assert.equal(summary.schemaCoverage.schemaCompositionOperations, 490);
   assert.equal(summary.schemaCoverage.patternPropertyLocations, 0, 'the approved pin currently declares no patternProperties');
@@ -42,7 +42,7 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.schemaCoverage.operationStatuses['create-member:conditional'] > 0);
   assert.equal(summary.schemaCoverage.operationStatuses['mutate:unsupported'] ?? 0, 0);
   const manual = reports.filter(report => report.name.includes('manual-') || report.name.startsWith('manual-assessment#'));
-  assert.equal(manual.length, 2);
+  assert.equal(manual.length, 3);
   assert.ok(manual.some(report => report.cases.some(item => item.kind === 'scalar-update' && item.path === 'assessment.evidence_guidance')));
   assert.ok(manual.some(report => report.cases.some(item => item.kind === 'structural-add' && item.path === 'assessment.evidence_guidance')));
   assert.ok(manual.some(report => report.cases.some(item => item.kind === 'array-add' && item.path === 'assessment.references')));

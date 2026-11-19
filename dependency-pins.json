@@ -4,19 +4,19 @@
     {
       "name": "scap-ng",
       "repository": "https://github.com/vanderpol/scap-ng.git",
-      "commit": "7b9b61108aa30a601828268576308e510477094e",
+      "commit": "cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a",
       "required": true
     },
     {
       "name": "scap-ng-tools",
       "repository": "https://github.com/vanderpol/scap-ng-tools.git",
-      "commit": "1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42",
+      "commit": "bacb360b9d4a688b8658b8303f439b83a91ef731",
       "required": true
     },
     {
       "name": "scap-ng-editor-sample-data",
       "repository": "https://github.com/vanderpol/scap-ng-editor-sample-data.git",
-      "commit": "950b9f6ac75e51fbe0bf20a1a8713ca2f1d27136",
+      "commit": "990a1bff999f4f82c603bca1de36353c1cb08f01",
       "required": true
     },
     {
@@ -31,14 +31,13 @@
     }
   ],
   "full_library": {
-    "status": "not_yet_regenerated_for_amended_0.4",
+    "status": "not_yet_regenerated_for_0.4.1",
     "historical_only": "https://github.com/vanderpol/scap-ng-evidence/tree/main/runs/v04-library/2026-10-30-all65-normalized-review-ff69d46b3",
     "warning": "65-stream/60-editable historical review ZIP predates item_requirement; do not treat as current 0.4 fixture"
   },
   "candidate": {
-    "status": "unmerged-draft",
-    "pullRequest": 21,
-    "sourceCommit": "7b9b61108aa30a601828268576308e510477094e",
-    "stableRollback": "dependency-pins.stable.json"
+    "status": "current-single-version-0.4.1",
+    "sourceCommit": "cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a",
+    "toolsCommit": "bacb360b9d4a688b8658b8303f439b83a91ef731"
   }
 }

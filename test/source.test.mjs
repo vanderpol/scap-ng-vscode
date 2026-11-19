@@ -14,7 +14,7 @@ test('unsafe aliases, anchored scalars, block scalars, malformed and duplicate Y
  for(const [raw,path] of [['a: &anchor old\nb: *anchor\n',['a']],['a: &anchor old\nb: *anchor\n',['b']],['a: |\n  text\n',['a']],['a: [\n',['a']],['a: 1\na: 2\n',['a']]])assert.throws(()=>new SourceBuffer(raw).editScalar(path,'x',sha256(raw)));
 });
 test('current 0.4 requirement fields edit as minimal source patches',()=>{
- const raw=`version: 0.4.0
+ const raw=`version: 0.4.1
 assessment:
   tests:
     - capability: registry
@@ -134,7 +134,7 @@ test('manual Assessment and Shared Object Filter CRUD preserve source and refere
  assert.equal(addedReference.document.json().assessment.references.length,3); assert.equal(addedReference.undo().text,manual);
  const removedReference=manualSource.removePath(['assessment','references',0],sha256(manual));
  assert.equal(removedReference.document.json().assessment.references.length,1); assert.equal(removedReference.undo().text,manual);
- const shared=`assessment:\n  id: shared-filter-assessment\n  version: 1\n  assessment_title: Shared filter\n  mode: automated\n  class: compliance\n  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.0}\n  shared_objects:\n    shared-filter-object:\n      object_title: Registry object\n      capability: windows.registry\n      filters:\n        - include:\n            type: {values_found: one_or_more, values_matching: every, equals: dword}\n  tests:\n    shared-filter-test:\n      capability: windows.registry\n      object: shared-filter-object\n      require: {item_requirement: {items_found: one_or_more, items_satisfying: every}}\n  evaluate: {test: shared-filter-test}\n`;
+ const shared=`assessment:\n  id: shared-filter-assessment\n  version: 1\n  assessment_title: Shared filter\n  mode: automated\n  class: compliance\n  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.1}\n  shared_objects:\n    shared-filter-object:\n      object_title: Registry object\n      capability: windows.registry\n      filters:\n        - include:\n            type: {values_found: one_or_more, values_matching: every, equals: dword}\n  tests:\n    shared-filter-test:\n      capability: windows.registry\n      object: shared-filter-object\n      require: {item_requirement: {items_found: one_or_more, items_satisfying: every}}\n  evaluate: {test: shared-filter-test}\n`;
  const sharedSource=new SourceBuffer(shared); const include=['assessment','shared_objects','shared-filter-object','filters',0,'include'];
  const added=sharedSource.insertMapEntry(include,'name',{values_found:'one_or_more',values_matching:'every',equals:'NoLockScreenSlideshow'},sha256(shared));
  assert.equal(added.document.json().assessment.tests['shared-filter-test'].object,'shared-filter-object'); assert.equal(added.undo().text,shared);

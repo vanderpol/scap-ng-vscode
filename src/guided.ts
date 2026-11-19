@@ -5,6 +5,8 @@ import { styleGeneratedObjects, type YamlObjectStyle } from './yaml-style.js';
 import { selectorOperatorChoices, selectorValueChoices } from './completion.js';
 import { orderGeneratedAssessment } from './assessment-order.js';
 
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 export interface GuidedOption { value: string; label: string; description?: string; isDefault?: boolean; }
 export interface GuidedObjectField {
   name: string;
@@ -19,7 +21,6 @@ export interface GuidedObjectRequirement { fields: string[]; description?: strin
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; itemFound?: string; itemsSatisfying?: string; }
 export interface GuidedApplicabilitySelection { alias: string; assessmentId: string; expectedVersion: string | number; }
 export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor' | Json; dependencies?: Record<string, Json>; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
-const schemaBase = 'https://scap-ng.dev/schema/v0.4.0/';
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
 function schemaDefaultOrObjectDefaults(pack: MetadataPack, uri: string): Json {
@@ -210,7 +211,7 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   }
   else {
     if (!draft.tests?.length) throw new Error('Add at least one automated Test');
-    assessment.specification = { id: 'scap-ng.pre-alpha.assessment', version: '0.4.0' };
+    assessment.specification = { id: 'scap-ng.pre-alpha.assessment', version: SCHEMA_VERSION };
     const tests: Record<string, Json> = {};
     for (const test of draft.tests) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*-test$/.test(test.id)) throw new Error(`Test ID must be lowercase kebab-case and end in -test: ${test.id}`);

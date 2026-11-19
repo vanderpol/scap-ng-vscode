@@ -7,17 +7,17 @@
 SCAP-NG is an evolving pre-alpha replacement for parts of the SCAP 1.4 ecosystem. The editor must **consume a pinned version** of the real project, never invent its own dialect.
 
 - [Canonical SCAP-NG repository](https://github.com/vanderpol/scap-ng)
-- [Frozen 0.4 schema README](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/README.md)
-- [0.4 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/assessment.schema.json)
-- [0.4 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/rule.schema.json)
-- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/authoring-vocabulary.en.json)
-- [Package identity and integrity schema](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/schema/package-manifest.schema.json)
-- [Specification status](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/specification/README.md)
-- [Generated structural reference](https://github.com/vanderpol/scap-ng/blob/7b9b61108aa30a601828268576308e510477094e/docs/generated/schema-reference.md)
-- [Current 0.4 YAML authoring examples](https://github.com/vanderpol/scap-ng/tree/7b9b61108aa30a601828268576308e510477094e/examples)
-- [Separate 0.4 converter and authoring-tool boundary](https://github.com/vanderpol/scap-ng-tools/blob/1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42/docs/CONVERTER-CUTOVER.md)
+- [Frozen 0.4 schema README](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/README.md)
+- [0.4 Assessment JSON Schema](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/assessment.schema.json)
+- [0.4 Rule JSON Schema](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/rule.schema.json)
+- [Versioned authoring vocabulary](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/authoring-vocabulary.en.json)
+- [Package identity and integrity schema](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/schema/package-manifest.schema.json)
+- [Specification status](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/specification/README.md)
+- [Generated structural reference](https://github.com/vanderpol/scap-ng/blob/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/docs/generated/schema-reference.md)
+- [Current 0.4 YAML authoring examples](https://github.com/vanderpol/scap-ng/tree/cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a/examples)
+- [Separate 0.4 converter and authoring-tool boundary](https://github.com/vanderpol/scap-ng-tools/blob/bacb360b9d4a688b8658b8303f439b83a91ef731/docs/CONVERTER-CUTOVER.md)
 
-At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After an official 0.4.0 release, explicitly upgrade from the pinned candidate to its tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The new canonical repository physically stores 0.4 directly under flat `schema/`, even though the logical JSON Schema `$id` continues to contain `v0.4.0`.
+At initial implementation, record the exact upstream SHA and verify hashes of schema, mappings, examples and vocabulary. After an official 0.4.1 release, explicitly upgrade from the pinned candidate to its tag. **Do not mix current v0.4 files with historical 0.3 or early 0.4-A sample content.** The new canonical repository physically stores 0.4 directly under flat `schema/`, even though the logical JSON Schema `$id` continues to contain `v0.4.1`.
 
 ## 2. Mental model: policy is not a check
 
@@ -36,7 +36,7 @@ At initial implementation, record the exact upstream SHA and verify hashes of sc
 
 ## 3. Actual 0.4 grammar (never guess from old examples)
 
-Authoring files are YAML/JSON with a single document root such as `assessment:` or `rule:`. The v0.4.0 JSON Schema is the formal contract. Many complete Rule fields are required; do **not** infer a complete valid Rule from the small conceptual fragments below.
+Authoring files are YAML/JSON with a single document root such as `assessment:` or `rule:`. The v0.4.1 JSON Schema is the formal contract. Many complete Rule fields are required; do **not** infer a complete valid Rule from the small conceptual fragments below.
 
 **Illustrative fragment only (not a full schema-valid document):**
 

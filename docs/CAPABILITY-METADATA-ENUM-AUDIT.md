@@ -1,6 +1,6 @@
 # Capability metadata enum audit
 
-Updated 2026-11-03 for the SCAP-NG 0.4.0 native YAML acceptance work.
+Updated 2026-11-03 for the SCAP-NG 0.4.1 native YAML acceptance work.
 
 ## Decision
 
@@ -24,7 +24,7 @@ this audit.
 ## Evidence that the fields are canonical
 
 The pinned 0.4 mapping records use format
-`scap-ng-capability-mapping-0.2`, carry `specification_version: 0.4.0`, and
+`scap-ng-capability-mapping-0.2`, carry `specification_version: 0.4.1`, and
 ship these fields under `native` in the canonical SCAP-NG repository. They are
 also referenced by the pinned `authoring-vocabulary.en.json`:
 

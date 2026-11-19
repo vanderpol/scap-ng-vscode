@@ -21,7 +21,7 @@ import {
   schemaPropertyEntries
 } from '../dist/schema-resolver.js';
 
-const schemaUri = 'https://scap-ng.dev/schema/v0.4.0/assessment.schema.json';
+const schemaUri = 'https://scap-ng.dev/schema/v0.4.1/assessment.schema.json';
 const logicalOperators = new Set(['and', 'or', 'one', 'xor']);
 const contextFor = pack => ({
   documentVersion: pack.pin.schemaVersion,
@@ -534,7 +534,7 @@ const sharedFilterAuthoringFixture = `assessment:
   assessment_title: Shared filter Assessment
   mode: automated
   class: compliance
-  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.0}
+  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.1}
   shared_objects:
     shared-filter-object:
       object_title: Registry object
@@ -572,7 +572,7 @@ export function auditEditability({ packRoot = process.env.SCAP_NG_METADATA_PACK,
   if (!packRoot) throw new Error('SCAP_NG_METADATA_PACK is required');
   const pin = JSON.parse(readFileSync(new URL('../schema-profile.json', import.meta.url)));
   const pack = new MetadataPack(resolve(packRoot), pin);
-  const fixtureRoot = resolve(sampleRoot, 'fixtures/current-v04');
+  const fixtureRoot = resolve(sampleRoot, 'fixtures/native-041/assessments');
   const files = readdirSync(fixtureRoot).filter(name => /\.assessment\.ya?ml$/.test(name)).sort();
   const reports = [];
   for (const name of files) reports.push(auditDocument(pack, name, readFileSync(join(fixtureRoot, name), 'utf8')));

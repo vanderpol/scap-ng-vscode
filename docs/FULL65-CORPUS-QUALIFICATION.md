@@ -25,7 +25,7 @@ All 65 source ZIPs are present and their recorded SHA-256 and Git blob pins veri
 
 ## Regeneration result and blocker
 
-A regeneration was deliberately not performed with mixed pins. This checkout currently pins `scap-ng@7b9b61108aa30a601828268576308e510477094e` and `scap-ng-tools@1f4f74d215ecb6ac16ded2da9bfe447a9dc45a42`.
+A regeneration was deliberately not performed with mixed pins. This checkout currently pins `scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a` and `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731`.
 
 The exact fail-closed checks are:
 

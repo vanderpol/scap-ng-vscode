@@ -24,6 +24,8 @@ import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } f
 import { assessmentSectionBeforeKey } from './assessment-order.js';
 import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 
+import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+const schemaBase = SCHEMA_BASE;
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
 class StudioNode extends vscode.TreeItem {
@@ -342,7 +344,7 @@ async function switchToNativeSource(api: any, document: any, panel: any) {
 
 function pinnedSchemaUri(pack: MetadataPack, filename: string): string {
   if (pack.pin.schemaVersion !== '0.4.1') throw new Error('Unsupported schema version');
-  return `https://scap-ng.dev/schema/v0.4.1/${filename}`;
+  return `${schemaBase}${filename}`;
 }
 function structuralEntityName(collection: string): string {
   return collection === 'tests' ? 'Test' : collection === 'variables' ? 'Variable' :
@@ -606,11 +608,13 @@ async function graphicalAdd(api: any, document: any, pack: MetadataPack | undefi
     const id = await api.window.showInputBox({ prompt: 'New Variable name', value: 'new-variable' }); if (!id) return undefined;
     const variableUri = pinnedSchemaUri(pack, 'variable-expression.schema.json');
     const declaration: any = pack.node(variableUri + '#/$defs/declaration');
-    if (Object.hasOwn(declaration.properties ?? {}, 'datatype') ||
-        (declaration.required ?? []).includes('datatype'))
-      throw new Error('Unsupported 0.4.1 Variable declaration shape');
+    const allowsDatatype = Object.hasOwn(declaration.properties ?? {}, 'datatype');
+    const required = new Set<string>(declaration.required ?? []);
+    if (required.has('datatype') !== allowsDatatype)
+      throw new Error('Inconsistent Variable declaration metadata in the pinned schema.');
     const skeleton = {
       kind: 'constant',
+      ...(allowsDatatype ? { datatype: 'string' } : {}),
       expression: { literal: '' }
     } as any; const collection = valueAtPathForGraphical(source.json(), path); return collection === undefined ? insertAssessmentSection(source, 'variables', { [id]: skeleton } as any, expectedHash) : source.insertMapEntry(path, id, skeleton, expectedHash);
   }
@@ -1792,7 +1796,7 @@ async function openBenchmarkGraphicalEditor(extensionContext: vscode.ExtensionCo
       const before = source.json();
       const edit = message.replace ? source.replacePathValue(message.path, message.value, revision) : source.editScalar(message.path, message.value, revision);
       const pack = getPack();
-      const schemaUri = kind === 'rule' ? 'https://scap-ng.dev/schema/v0.4.0/rule.schema.json' : 'https://scap-ng.dev/schema/v0.4.0/applicability.schema.json';
+      const schemaUri = kind === 'rule' ? schemaBase + 'rule.schema.json' : schemaBase + 'applicability.schema.json';
       if (pack) {
         const beforeErrors = pack.validate(schemaUri, before);
         const afterErrors = pack.validate(schemaUri, edit.document.json());

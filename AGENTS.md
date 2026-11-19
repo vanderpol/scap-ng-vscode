@@ -31,11 +31,27 @@ Current integration checkpoint: **Editor still has active draft stacks; integrat
 
 ---
 
+## Integrated 0.4.1 baseline and development hold
+
+PRs #67 and #68 are being consolidated on this mainline baseline. The active
+editor contract is exactly SCAP-NG 0.4.1 from
+`scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`, with the official pack
+exporter at `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731`. The verified
+offline pack manifest SHA-256 is
+`4e6caec2f92a0ec35dab0ddf2d6ef88c615f858482e22757cf0326c0945927fb`.
+
+Substantial new editor features are paused pending schema-first converter work
+in `scap-ng-tools#83` and normative language work in `scap-ng#80`. Preserve
+existing editor work, run regression/pack/VSIX gates, and document gaps rather
+than inventing converter or schema semantics.
+
+---
+
 # AGENTS.md — SCAP-NG VS Code Assessment Studio
 
 ## Current owner handoff — 2026-11-14 (overrides old 0.4.0 assumptions)
 
-- Active authoring language is **one 0.4.1 flat canonical schema**, not the historical 0.4.0 pack. Canonical `scap-ng` Issue #66 and draft PR #65 currently identify pinned candidate `aece827964c785be77b088c3c61255a2d07fd9a9`, Assessment-family digest `578315d1e00bd39449ed597ed3d39555384276bd36198a54ca0b1e3c17e72829`. PR #65 is draft, not main; recheck before repinning. Do not update only a label: regenerate/verify the complete offline schema/semantic/vocabulary/editor pack and explicitly reject incompatible old content. Preserve historical 0.4.0 only via Git/archive; do not ship dual active versions.
+- Active authoring language is **one 0.4.1 flat canonical schema**, not the historical 0.4.0 pack. Canonical `scap-ng` Issue #66 and draft PR #65 currently identify pinned candidate `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`, Assessment-family digest `88fc59791f9cb5055d2a8dc27bb458bcf6699b5820061ce68af1a355bd33a84f`. PR #65 is draft, not main; recheck before repinning. Do not update only a label: regenerate/verify the complete offline schema/semantic/vocabulary/editor pack and explicitly reject incompatible old content. Preserve historical 0.4.0 only via Git/archive; do not ship dual active versions.
 - Owner priority is **real scanner core capabilities + Sets/Filters + 20–30 native gatherers**, executed in `scap-ng-ri`, not more UI documentation reports. VS Code continues its own bounded [Issue #61](https://github.com/vanderpol/scap-ng-vscode/issues/61) and PR #59 work **independently** without blocking scanner progress. Work Codex may proceed autonomously through self-contained GitHub tasks and draft PR increments, except genuine owner semantic/security/release/merge decisions.
 - **Source YAML is authoritative.** Graphical Structured and Guided wizard use the same schema-driven transaction engine, targeted mutations and undo/redo; no full-file formatting, no silent new grammar. Preserve comments, multiline/inline Object+Require, anchors/quoting and no-op byte identity. Display Evaluate at top with Tests nested; Variables and shared References are visible in purposeful order, less-common Organizational Input lower; detailed tree placement is an editor UI decision, **serialization must remain correct**. Support complete schema-driven CRUD (dynamic keys, arrays, nested objects, references), guarded literal/Variable/Input controls, field-specific operators and Item/Field cardinality, contextual help, Variable dereference, renamed/referenced node integrity.
 - Schema/OVAL parity: `scap-ng` owns normative documentation and all native field/operator enum constraints; `scap-ng-tools` owns converted YAML and native applicability/shared Assessment outputs. Read-only qualified conversion corpus in editor only after explicit pin and provenance; never use stale 65-benchmark archives as current examples or invent PASS/FAIL.

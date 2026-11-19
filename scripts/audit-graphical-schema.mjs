@@ -38,7 +38,7 @@ for(const definition of ['scalar_field_predicate','record_field_predicate','obje
     operatorSources:Object.fromEntries(choices.map(choice=>[choice.value,predicateValueSourceChoices(pack,definition,choice.value)])),
     operatorDocumentation:Object.fromEntries(choices.map(choice=>[choice.value,choice.description||choice.label||choice.value])),
     cardinalityControls:definition==='object_record_field_predicate'?['value_match']:['values_found','values_matching','value_match'],
-    schemaUri:`https://scap-ng.dev/schema/v0.4.0/assessment-language.schema.json#/$defs/${definition}`,
+    schemaUri:`https://scap-ng.dev/schema/v0.4.1/assessment-language.schema.json#/$defs/${definition}`,
     mappingUri:undefined,help:'Canonical predicate definition; member datatype constraints are resolved by the enclosing capability schema.',missing:choices.length?'': 'operator metadata'});
 }
 // Variable declarations and nested expression branches are contracts in their

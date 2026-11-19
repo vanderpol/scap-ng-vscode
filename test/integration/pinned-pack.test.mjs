@@ -17,15 +17,16 @@ const source=process.env.SCAP_NG_SOURCE_ROOT;
 if(!directory||!source)throw new Error('Select SCAP_NG_METADATA_PACK and SCAP_NG_SOURCE_ROOT explicitly');
 const pin=JSON.parse(readFileSync(new URL('../../schema-profile.json',import.meta.url)));
 const fixtureRoot=fileURLToPath(new URL('../fixtures/',import.meta.url));
-const currentSamples=fileURLToPath(new URL('../../.external/scap-ng-editor-sample-data/fixtures/current-v04/',import.meta.url));
+const currentSamples=join(source,'examples');
+const nativeSamples=fileURLToPath(new URL('../../.external/scap-ng-editor-sample-data/fixtures/native-041/assessments/',import.meta.url));
 const sourceCommit=execFileSync('git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
 if(sourceCommit!==pin.sourceCommit)throw new Error('Canonical schema checkout differs from the editor profile pin');
 const pack=new MetadataPack(directory,pin);
-const base='https://scap-ng.dev/schema/v0.4.0/';
+const base='https://scap-ng.dev/schema/v0.4.1/';
 
 test('adopted optional Input guard shape preserves source without inventing bindings or defaults',()=>{
  const raw=readFileSync(join(source,'examples/windows-optional-organizational-input.assessment.yaml'),'utf8');
- assert.equal(raw,readFileSync(join(currentSamples,'windows-optional-organizational-input.assessment.yaml'),'utf8'));
+ assert.equal(raw,readFileSync(join(nativeSamples,'optional-input-presence.assessment.yaml'),'utf8'));
  const buffer=new SourceBuffer(raw);const doc=buffer.json();
  assert.equal(buffer.openOrSave(),raw);
  assert.deepEqual(pack.validate(base+'assessment.schema.json',doc),[]);
@@ -201,8 +202,8 @@ test('schema-driven model exposes canonical Registry enum help and revision',()=
 });
 test('Variable graphical operations come only from the active native expression schema',()=>{
  const operations=variableExpressionOperations(pack).map(option=>option.value);
- assert.deepEqual(operations,['literal','variable','values','concat','regex_capture','unique','merge']);
- assert.equal(operations.includes('count'),false);
+ assert.deepEqual(operations, ['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge']);
+ assert.ok(operations.includes('count'));
  const assessment=pack.resource(base+'assessment.schema.json');
  assert.equal(assessment.properties.assessment.properties.variables.additionalProperties.$ref,'variable-expression.schema.json');
  const inactive=pack.resource(base+'variable-function-expression.schema.json');
@@ -327,7 +328,7 @@ test('current sysvol sample separates scalar comparison, value matching, and exi
  assert.equal(invalidModel.fields.find(field=>field.path.join('.')==='assessment.tests.invalid-test.require.fields.mount_point.float_equals')?.operatorCompatible,false);
 });
 
-test('all current-v04 sample Assessments have no false-invalid graphical operator warnings',()=>{
+test('all canonical 0.4.1 sample Assessments have no false-invalid graphical operator warnings',()=>{
  const reports=[];
  for(const name of readdirSync(currentSamples).filter(item=>item.endsWith('.assessment.yaml'))){
   const raw=readFileSync(join(currentSamples,name),'utf8');
@@ -395,11 +396,9 @@ test('Object and Require Variable contracts stay schema-backed and datatype-comp
   variables:
     registry-string-variable:
       kind: local
-      datatype: string
       expression: {literal: {datatype: string, value: local_machine}}
     registry-integer-variable:
       kind: local
-      datatype: integer
       expression: {literal: {datatype: integer, value: 1}}
   tests:
     registry-test:
@@ -582,7 +581,7 @@ test('recursive Variable expression completion follows schema oneOf and array it
     example-variable:
       expression:
         `;
- const alternatives=['literal','variable','values','concat','regex_capture','unique','merge'];
+ const alternatives=['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge'];
  assert.deepEqual(completionChoices(pack,prefix,prefix.length).map(choice=>choice.value),alternatives);
  const concat=`assessment:
   variables:
@@ -646,4 +645,25 @@ test('generic graphical CRUD metadata exposes schema-authorized collections with
  const require=model.structuralNodes.find(node=>node.path.at(-1)==='require');
  assert.ok(require?.properties.some(property=>property.name==='item_requirement'&&property.object));
  assert.equal(model.structuralNodes.some(node=>node.properties?.some(property=>property.name==='new-property')),false);
+});
+
+test('legacy 0.4.0 Assessment is rejected without source rewriting', () => {
+ const raw = `assessment:
+  id: legacy-040-assessment
+  version: 1
+  assessment_title: Legacy document
+  mode: automated
+  class: compliance
+  specification: {id: scap-ng.pre-alpha.assessment, version: 0.4.0}
+  tests: {}
+`;
+ const sourceBuffer = new SourceBuffer(raw);
+ assert.equal(sourceBuffer.openOrSave(), raw);
+ const errors = pack.validate(base+'assessment.schema.json', sourceBuffer.json());
+ assert.ok(errors.length > 0);
+ assert.ok(errors.some(error => /version|const|valid/i.test(error)));
+ const model = modelFor({getText:()=>raw, version:1}, pack);
+ assert.equal(model.schemaValid, false);
+ assert.ok(model.schemaDiagnostics.length > 0);
+ assert.equal(new SourceBuffer(raw).openOrSave(), raw);
 });
