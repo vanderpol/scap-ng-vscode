@@ -1,3 +1,20 @@
+# P0 OWNER DIRECTIVE — EDITOR MUST USE CURRENT SINGLE SCAP-NG 0.4.1 (2026-11-19)
+
+**Active, mandatory authoring specification: canonical `vanderpol/scap-ng/main` flat `schema/`, version `0.4.1` only.** The editor's present `schema-profile.json` and `dependency-pins.json` both explicitly pin **0.4.0** at `7b9b61108aa30a601828268576308e510477094e`; this is a **known migration defect**, not the proper target for continued feature development. Do **not** claim “0.4.0 is currently correct” because the installed VSIX and local content happen to agree. That only proves the current build is self-consistent **against an obsolete contract**.
+
+**Immediate task:** complete current source-preserving Graphical Rule changes in [PR #67](https://github.com/vanderpol/scap-ng-vscode/pull/67) without rewriting them, then give [Editor Issue #65](https://github.com/vanderpol/scap-ng-vscode/issues/65) highest priority **before additional substantial GUI/CRUD/wizard features**. Do not interrupt an in-flight installer/test; preserve the current 0.4.0 VSIX only as historical rollback, never current authoring. Merge reviewable completed increments per mainline policy.
+
+**The official 0.4.1 pack must be generated, not requested as a separate mystery artifact.** Use exact current canonical `vanderpol/scap-ng/main` commit and its full `schema/` JSON Schemas, capability mappings, vocabulary, native selector metadata and current reviewed examples. Use the public Tools editor-pack exporter or repair it to reproduce current canonical 0.4.1 resources. Verify the pack's manifest/commit/digests, offline dependency closure, resource identities, schemas/URIs, validators, enum/field help and examples. **No manual change of the version label**, no reuse of the obsolete 0.4.0 pack with a 0.4.1 string, no private research dependency, no moving-`main` pin, no silent dual-version fallback.
+
+1. First audit `schema-profile.json`, `dependency-pins.json`, generated metadata, VSIX contents and displayed About/diagnostics against the canonical `0.4.1` main SHA. Detect every stale `0.4.0`, obsolete `v0.4.0` schema URI, and old variable declaration datatype assumption.
+2. Produce one reproducible 0.4.1 pack from exact canonical commit; record SHA-256 and all resource counts. Repin atomically in `schema-profile.json`, `dependency-pins.json`, pack manifest and editor runtime. Any genuine exporter incompatibility is a bounded Tools fix, not reason to continue developing against 0.4.0 indefinitely.
+3. Qualify current `0.4.1` native Benchmarks, Rules, Assessments, applicability, organizational Inputs, Variables without declaration datatype, Evaluate/Require/Objects, results, and compact Graphical edits with both positive/negative JSON/YAML tests, comment/ordering/undo roundtrip, offline bootstrap, extension-host and real installed VSIX. Old 0.4.0 documents fail gracefully with a clear actionable migration diagnosis; never silently reinterpret or rewrite them.
+4. Prevent recurrence: CI compares the **exact canonical version and pinned schema family** to the offline pack, fails on stale 0.4.0 runtime profiles/examples, and reports source commit and schema version at runtime. Schema-valid output **is not** RI execution proof.
+5. Coordinate with [schema-first normative language audit #80](https://github.com/vanderpol/scap-ng/issues/80); the editor is a consumer of the canonical SCAP-NG language, **not** the authority that decides what OVAL features exist. Prioritize normative schema-driven editor behavior and current qualified converted content over historical sample ZIPs.
+6. Every future Codex session MUST read this directive before continuing any older editor PR task. An older instruction that calls the 0.4.0 pack “correct”, or that advises developing more editor features on 0.4.0, is superseded. Report exact canonical SHA, source pack SHA, tests, installed VSIX build and unresolved blockers in the PR.
+
+---
+
 ## OWNER-DIRECTED MAINLINE INTEGRATION POLICY — 2026-11-17 (takes precedence over older PR workflow)
 
 The owner prioritizes **preserving implemented pre-alpha work in `main`** over accumulating open draft PRs. `main` is the active **development** baseline, not a claim of product readiness. This overrides older instructions to keep all development draft-only; security, source/provenance checks, test honesty, canonical version coordination, and release gates still apply.
@@ -28,7 +45,7 @@ Current integration checkpoint: **Editor still has active draft stacks; integrat
 
 ## Mission and required reading
 
-Build a **standalone, open-source, offline-first VS Code editor** for drafting, inspecting and maintaining SCAP-NG 0.4.0 content. The editor is **not** the compliance scanner, OVAL evaluator, converter, standards authority or source-of-truth for Assessment semantics.
+Build a **standalone, open-source, offline-first VS Code editor** for drafting, inspecting and maintaining **current SCAP-NG 0.4.1** content. Historical 0.4.0 is readable only under an explicitly diagnosed legacy/migration boundary and is not a supported authoring target. The editor is **not** the compliance scanner, OVAL evaluator, converter, standards authority or source-of-truth for Assessment semantics.
 
 Before coding, read this file, [SCAP-NG primer](docs/SCAP-NG-PRIMER.md), [editor blueprint](docs/EDITOR-BLUEPRINT.md), [one-clone workspace setup](docs/WORKSPACE-BOOTSTRAP.md) and the numbered GitHub implementation issues. Use their acceptance criteria for incremental working deliveries.
 
