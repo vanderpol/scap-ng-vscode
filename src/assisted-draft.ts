@@ -39,6 +39,8 @@ interface Candidate {
   confidence: AssistedConfidence;
   /** The source describes a relationship this single-Test generator cannot safely encode. */
   manualOnlyReason?: string;
+  /** Candidate-specific review items, when the heuristic has an explicit caveat. */
+  review?: string[];
 }
 
 function slug(value: string, suffix: string): string {
@@ -949,6 +951,27 @@ function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
   return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern is intentionally broad; replace it with the exact requirement predicate before use.'] };
 }
 
+function nmcliWirelessCandidate(text: string): Candidate | undefined {
+  if (!/\bnmcli\s+(?:device|dev)\b/i.test(text) || !/(?:wireless|\bwifi\b|network interfaces?|network adapters?)/i.test(text)) return undefined;
+  const command = text.match(/\bnmcli\s+(?:device|dev)(?:\s+status)?\b/i)?.[0] ?? 'nmcli device';
+  return {
+    capability: 'independent.shellcommand',
+    object: {
+      shell: 'bash', command, pattern: '^\\s*\\S+\\s+[Ww][Ii][Ff][Ii]\\s+',
+      error_if_exit_status_not_0: false, error_if_stderr_exists: false
+    },
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [
+      `Inferred the nmcli wireless-interface inventory command '${command}'.`,
+      'Inferred that matching wifi rows represent wireless interfaces that must be absent.'
+    ],
+    review: [
+      'The source permits an ISSO-documented exception; this draft models only the no-wireless-interface branch and does not encode organizational approval.',
+      'Confirm the nmcli output format and wireless-interface predicate on the target platform.'
+    ]
+  };
+}
+
 function rhelSemanticCandidate(text: string, platform?: string): Candidate | undefined {
   const contextual = /(?:rhel|oracle[_ -]?linux|toss)/i.test(platform ?? '');
   if (!contextual && !/(?:RHEL|Red Hat|Linux|system-auth|password-auth|auditd|SSH daemon|\bOL\s*[0-9]+)/i.test(text)) return undefined;
@@ -1032,7 +1055,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? nmcliWirelessCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1106,7 +1129,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       `The best automated guess failed pinned schema validation: ${generated.diagnostics.join('; ')}`
     ]);
   }
-  const unresolved = candidate.conditionalBranches ? [`Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.'];
+  const unresolved = candidate.conditionalBranches ? [`Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
   const notes = annotation({ title, checkText }, candidate.confidence, assumptions, unresolved);
   return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated' };

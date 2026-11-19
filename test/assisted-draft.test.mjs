@@ -417,3 +417,33 @@ If all local interactive users' initialization files are not owned by that user 
   assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
   assert.doesNotMatch(result.yaml, /capability:\s*unix\.file/);
 });
+
+test('assisted RHEL nmcli wireless checks infer a filtered absence test and preserve exceptions', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all wireless network adapters are disabled.',
+    checkText: `Verify that there are no wireless interfaces configured on the system.
+
+This is N/A for systems that do not have wireless network adapters.
+
+Check for the presence of active wireless interfaces with the following command:
+
+# nmcli device
+DEVICE TYPE STATE
+eth0 ethernet connected
+wlp3s0 wifi disconnected
+lo loopback unmanaged
+
+If a wireless interface is configured and its use on the system is not documented with the Information System Security Officer (ISSO), this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.equal(test.object.command, 'nmcli device');
+  assert.match(test.object.pattern, /\[Ww\].*\[Ii\].*\[Ff\].*\[Ii\]/);
+  assert.equal(test.require.item_requirement.items_found, 'none');
+  assert.ok(result.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
+});
