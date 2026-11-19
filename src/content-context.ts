@@ -63,6 +63,7 @@ function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<Benchm
 function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
   const automated = document.assessmentChoices.find(choice => choice.choice === 'automated');
   const manual = document.assessmentChoices.find(choice => choice.choice === 'manual');
+  if (document.automationDisposition === 'manual-only') return { automationStatus: 'manual-only', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
   const resolve = (choice: { targetId: string } | undefined) => {
     if (!choice) return undefined;
     const targets = assessmentsById.get(choice.targetId)?.filter(candidate => candidate.kind === 'assessment') ?? [];
@@ -76,8 +77,11 @@ function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, 
     return { automationStatus: 'automated', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
   }
   const manualTarget = resolve(manual);
-  if (manual && !manualTarget) return { automationStatus: 'unresolved', manualAssessmentId: manual?.targetId };
-  if (manualTarget) return { automationStatus: 'manual-only', manualAssessmentId: manual?.targetId };
+  if (manual && !manualTarget) return { automationStatus: 'unresolved', manualAssessmentId: manual.targetId };
+  // A linked manual Assessment is not proof that a Rule is intentionally
+  // manual-only. Until the author flags it in editor metadata, keep it in
+  // the automation work queue.
+  if (manualTarget || manual) return { automationStatus: 'needs-automation', manualAssessmentId: manual?.targetId };
   return { automationStatus: 'needs-automation' };
 }
 

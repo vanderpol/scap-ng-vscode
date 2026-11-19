@@ -1,6 +1,7 @@
 import { parseDocument } from 'yaml';
 import { sha256, type Json } from './metadata.js';
 import { analyzeAssessmentReferences, type AssessmentReferenceAnalysis } from './reference-graph.js';
+import type { AutomationDisposition } from './automation-metadata.js';
 
 export type DocumentKind = 'assessment' | 'rule' | 'benchmark' | 'applicability' | 'unknown';
 export type IndexDiagnosticCode = 'parse-error' | 'duplicate-id' | 'unresolved-assessment' | 'ambiguous-assessment' | 'wrong-reference-kind' | 'incompatible-version' | 'unresolved-local-reference';
@@ -12,7 +13,7 @@ export interface ApplicabilityOption { key: string; value: string; label: string
 export interface BenchmarkProfile { id?: string; title?: string; disabledRuleCount: number; }
 export interface IndexedDocument {
   uri: string; path: string; kind: DocumentKind; id?: string; version?: string | number; title?: string;
-  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; assessmentChoices: readonly AssessmentChoiceReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
+  mode?: string; automationDisposition?: AutomationDisposition; capabilities: readonly string[]; references: readonly AssessmentReference[]; assessmentChoices: readonly AssessmentChoiceReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
   diagnostics: readonly IndexDiagnostic[];
 }
 
@@ -123,6 +124,17 @@ export class WorkspaceIndex {
     return this.all();
   }
 
+  setAutomationDisposition(uri: string, disposition: AutomationDisposition | undefined) {
+    this.setAutomationDispositions(new Map([[uri, disposition]]));
+  }
+  setAutomationDispositions(values: ReadonlyMap<string, AutomationDisposition | undefined>) {
+    for (const [uri, disposition] of values) {
+      const document = this.documents.get(uri);
+      if (!document || document.kind !== 'rule') continue;
+      document.automationDisposition = disposition;
+    }
+    this.rebuildDiagnostics();
+  }
   remove(uri: string) { this.documents.delete(uri); this.rebuildDiagnostics(); }
   get(uri: string): IndexedDocument | undefined { const document = this.documents.get(uri); return document ? this.withDiagnostics(document) : undefined; }
   all(): IndexedDocument[] { return [...this.documents.values()].sort((a, b) => a.uri.localeCompare(b.uri)).map(document => this.withDiagnostics(document)); }
