@@ -101,6 +101,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /if\(expectedMode&&item\?\.mode!==expectedMode\)return false/);
   assert.match(extensionSource, /Search existing Assessments by title or ID/);
   assert.match(extensionSource, /Search applicability conditions or Assessment IDs/);
+  assert.doesNotMatch(extensionSource, /automationFilter/);
+  assert.match(extensionSource, /No Rules needing automation were found/);
   assert.match(extensionSource, /assessmentTitle/);
   assert.match(extensionSource, /Search and add existing conditions/);
   assert.match(extensionSource, /picker-results/);
