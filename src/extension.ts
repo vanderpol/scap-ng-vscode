@@ -24,6 +24,7 @@ import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js'
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
 import { assessmentSectionBeforeKey } from './assessment-order.js';
 import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
+import { assessmentFileName } from './assessment-filename.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
 const schemaBase = SCHEMA_BASE;
@@ -163,10 +164,6 @@ async function openGeneratedAssessment(api: any, document: any) {
   await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
 }
 
-function safeAssessmentStem(value: unknown): string {
-  const stem = String(value ?? 'new-assessment').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return stem || 'new-assessment';
-}
 function pathWithinRoot(root: string, candidate: string): boolean {
   const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
   const normalizedRoot = normalize(root); const normalizedCandidate = normalize(candidate);
@@ -183,7 +180,7 @@ async function saveGeneratedAssessmentForBenchmark(api: any, document: any, cont
   const directory = existingAssessment && existingMarker >= 0
     ? existingAssessment.path.slice(0, existingMarker + '/assessments'.length)
     : join(dirname(context.benchmark.path), 'assessments');
-  const defaultUri = api.Uri.file(join(directory, `${safeAssessmentStem(suggestedStem)}-assessment.yaml`));
+  const defaultUri = api.Uri.file(join(directory, assessmentFileName(suggestedStem)));
   const picked = await api.window.showSaveDialog({
     defaultUri,
     saveLabel: 'Save Benchmark Assessment',
