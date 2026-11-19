@@ -105,7 +105,7 @@ test('Assessment and contextual help share a left pane without a third grid colu
   assert.match(html, /flex:2 1 0/);
   assert.match(html, /function setHelpOpen\(open\)/);
   assert.match(html, /function renderAuthoringWarnings\(\)/);
-  assert.match(html, /Show authoring concerns/);
+  assert.match(html, /Review best-guess notes/);
   assert.match(html, /const target=menuPath\?\.slice\(\);hideMenu\(\)/);
   assert.match(html, /const resolved=testPathForSelection\(target\)\|\|target/);
 });
@@ -229,9 +229,9 @@ test('Evaluate group UI adds authored Tests through a schema-backed wizard', () 
   assert.match(html, /Add Test to Evaluate/);
   assert.match(html, /action:'addEvaluateTest'/);
   assert.match(html, /control\?\.editable===false/);
-  assert.match(html, /Resolve authoring concerns before continuing/);
-  assert.match(html, /Skip review and continue/);
-  assert.match(html, /window\.confirm\('Skip the authoring review/);
+  assert.match(html, /Resolve authoring issues before continuing/);
+  assert.match(html, /Continue without review/);
+  assert.doesNotMatch(html, /window\.confirm\('Skip the authoring review/);
   assert.match(html, /Edit Evaluate in YAML/);
   assert.match(html, /conditional Evaluate tree/);
   assert.match(html, /fillEvalTree\(evalRoot,current\?\.assessment\?\.evaluate/);
