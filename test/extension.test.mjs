@@ -84,6 +84,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /availableAssessments/);
   assert.match(extensionSource, /selectedPackagePath/);
   assert.match(extensionSource, /pathWithinIndexedRoot/);
+  assert.match(extensionSource, /benchmarkContextViewData/);
+  assert.match(extensionSource, /event\.data\.type==='contexts'/);
   assert.match(extensionSource, /Selecting a different Benchmark must explicitly hydrate its package/);
   assert.match(extensionSource, /Could not load the selected Benchmark content/);
   assert.match(extensionSource, /If no Benchmark is selected yet, retain the full scan/);
