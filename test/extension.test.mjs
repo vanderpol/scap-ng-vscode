@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
 const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import.meta.url)));
 const authoringSidebarSource = readFileSync(new URL('../src/authoring-sidebar.ts', import.meta.url), 'utf8');
+const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
+const welcomeSource = readFileSync(new URL('../src/welcome.ts', import.meta.url), 'utf8');
 test('P0 extension manifest exposes offline Assessment Studio and exact pin descriptor', () => {
   assert.equal(packageJson.main, './dist/extension.js');
   assert.equal(packageJson.publisher, 'vanderpol');
@@ -18,6 +20,19 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.searchIndex'));
   assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.searchIndex' && menu.when === 'view == scapNg-assessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.createGuidedAssessment'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openBenchmarkContext'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openWelcome'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentFile'));
+  assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open an Assessment File/);
+  assert.doesNotMatch(packageJson.contributes.viewsWelcome[0].contents, /Open Authoring tools/);
+  assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open SCAP-NG Home/);
+  assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.openBenchmarkContext' && menu.when === 'view == scapNg-assessmentStudio'));
+  assert.equal(packageJson.contributes.viewsWelcome[0].view, 'scapNg-assessmentStudio');
+  assert.match(packageJson.contributes.viewsWelcome[0].contents, /Create an Assessment/);
+  assert.match(packageJson.contributes.viewsWelcome[0].contents, /Select Benchmark Root/);
+  assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.createGuidedAssessment' && menu.when === 'view == scapNg-assessmentStudio'));
+  assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.openAuthoringSidebar' && menu.when === 'view == scapNg-assessmentStudio'));
+  assert.ok(packageJson.contributes.menus['view/title'].some(menu => menu.command === 'scapNg.openWelcome' && menu.when === 'view == scapNg-assessmentStudio'));
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enum, ['yaml', 'graphical', 'split']);
   assert.match(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].enumDescriptions[2], /same authoritative YAML.*native VS Code.*beside/i);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
@@ -36,10 +51,54 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.testObject'));
   assert.ok(packageJson.contributes.menus['editor/context'].some(menu => menu.command === 'scapNg.testObject'));
   assert.ok(packageJson.contributes.menus['editor/title'].some(menu => menu.command === 'scapNg.openAssessmentStudio'));
-  assert.deepEqual(packageJson.contributes.customEditors[0].selector.map(s => s.filenamePattern), ['**/*.assessment.yaml', '**/*.assessment.yml']);
+  assert.deepEqual(packageJson.contributes.customEditors[0].selector.map(s => s.filenamePattern), ['**/*.assessment.yaml', '**/*.assessment.yml', '**/*-assessment.yaml', '**/*-assessment.yml']);
+  assert.ok(packageJson.contributes.menus['editor/title'].some(menu => menu.when.includes('[-.]assessment')));
   assert.equal(profile.schemaVersion, '0.4.0');
   assert.match(profile.sourceCommit, /^[a-f0-9]{40}$/);
   assert.match(profile.manifestSha256, /^[a-f0-9]{64}$/);
+});
+
+test('Home page prioritizes Assessment navigation without redundant sidebar action', () => {
+  assert.doesNotMatch(welcomeSource, /Author compliance content with confidence/);
+  assert.match(welcomeSource, /SCAP-NG Home/);
+  assert.match(welcomeSource, /Open an Assessment File/);
+  assert.match(welcomeSource, /scapNg\.openAssessmentFile/);
+  assert.match(welcomeSource, /data-benchmark-section/);
+  assert.match(welcomeSource, /scapNg\.openBenchmarkContext/);
+  assert.doesNotMatch(welcomeSource, /source files/);
+  assert.doesNotMatch(welcomeSource, /sourceLinks/);
+  assert.match(extensionSource, /openBenchmarkSourceChooserPanel/);
+  assert.match(extensionSource, /without an Assessment, Home is the actionable creation surface/);
+  assert.match(extensionSource, /section === 'assessments'/);
+  assert.doesNotMatch(welcomeSource, /Open Authoring Sidebar/);
+});
+
+test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
+  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
+    assert.ok(packageJson.contributes.commands.some(item => item.command === command), command);
+  }
+  assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
+  assert.match(welcomeSource, /scapNg\.openBenchmarkApplicability/);
+  assert.match(welcomeSource, /scapNg\.openBenchmarkConditions/);
+  assert.match(extensionSource, /Graphical editing writes localized changes/);
+  assert.match(extensionSource, /availableAssessments/);
+  assert.match(extensionSource, /Search existing Assessments by title or ID/);
+  assert.match(extensionSource, /Search and add existing conditions/);
+  assert.match(extensionSource, /picker-results/);
+  assert.match(extensionSource, /id=\"yaml\"/);
+  assert.match(extensionSource, /script-src 'nonce-scap-ng-entity-editor'/);
+  assert.doesNotMatch(extensionSource, /id=\"initialFallback\"/);
+  assert.match(extensionSource, /message.type === 'webviewError'/);
+});
+
+test('workspace index discovers converted suffixes and applicability catalogs', async () => {
+  const { workspaceIndexPatterns } = await import('../dist/workspace-index-files.js');
+  assert.ok(workspaceIndexPatterns.includes('**/*assessment.yaml'));
+  assert.ok(workspaceIndexPatterns.includes('**/*rule.yaml'));
+  assert.ok(workspaceIndexPatterns.includes('**/*benchmark.yaml'));
+  assert.ok(workspaceIndexPatterns.includes('**/*applicability.yaml'));
+  assert.match(extensionSource, /workspaceIndexPatterns/);
+  assert.match(extensionSource, /native viewsWelcome surface own the empty state/);
 });
 
 test('offline VSIX runtime dependency closure is present for cold activation', () => {
@@ -56,6 +115,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /data-tab=\"about\"/);
   assert.match(authoringSidebarSource, /id=\"aboutBody\"/);
   assert.match(authoringSidebarSource, /function renderAbout\(model\)/);
+  assert.match(authoringSidebarSource, /Built at/);
+  assert.match(authoringSidebarSource, /build\?\.builtAt/);
   assert.doesNotMatch(authoringSidebarSource, /\['Default Assessment editor',/);
   assert.doesNotMatch(authoringSidebarSource, /\['Source editing',/);
   assert.match(authoringSidebarSource, /yaml-only/);
@@ -65,16 +126,28 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);
   assert.match(authoringSidebarSource, /saveSchemaPackPath/);
-  assert.match(authoringSidebarSource, /id=\"openGuided\"/);
-  assert.match(authoringSidebarSource, /type:'openGuided'/);
+  assert.match(authoringSidebarSource, /id="actionStatus"/);
+  assert.doesNotMatch(authoringSidebarSource, /welcome-panel|welcomeGuided|welcomeBenchmark|welcomeOptions/);
+  assert.match(authoringSidebarSource, /actionStatus/);
+  assert.match(extensionSource, /Automated Assessments/);
+  assert.match(extensionSource, /vscode\.openWith/);
+  assert.match(extensionSource, /workbench\.action\.openView/);
+  assert.match(extensionSource, /initialWorkspacePath/);
+  assert.match(extensionSource, /showOpenDialog/);
+  assert.match(extensionSource, /canSelectFolders/);
+  assert.match(extensionSource, /importedRoots/);
+  assert.match(extensionSource, /folder containing SCAP-NG Benchmarks or Assessments/);
+  assert.match(extensionSource, /On every workspace activation/);
+  assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
+  assert.match(authoringSidebarSource, /id=\"openHome\"/);
+  assert.doesNotMatch(authoringSidebarSource, /Open native YAML beside sidebar/);
   assert.match(authoringSidebarSource, /type:'saveOptions'/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /promptRequireField/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /message\.action === 'removeField'/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /removeField/);
   assert.match(authoringSidebarSource, /revealPath/);
   assert.match(authoringSidebarSource, /Reveal in YAML/);
-  const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
   assert.match(extensionSource, /Authoring workflow/);
   assert.match(extensionSource, /assistedDraft/);
   assert.match(extensionSource, /createAssistedAssessment/);
@@ -86,7 +159,14 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /id=\"workflow\"/);
   assert.match(extensionSource, /id=\"assistedTitle\"/);
   assert.match(extensionSource, /id=\"assistedCheckText\"/);
-  assert.match(extensionSource, /Generate annotated draft/);
+  assert.match(extensionSource, /Generate from check text/);
+  assert.match(extensionSource, /Rule title \(optional\)/);
+  assert.match(extensionSource, /Leave blank to infer from check text/);
+  assert.doesNotMatch(extensionSource, /id="showRelatedData"|textContent='Show all related data'/);
+  assert.match(extensionSource, /Applicability \(optional; can be added later\)/);
+  assert.match(extensionSource, /The copied check text drives best-guess inference/);
+  assert.match(extensionSource, /\$\('applicabilitySection'\)\.hidden=assisted/);
+  assert.match(extensionSource, /No Benchmark root is selected/);
   assert.doesNotMatch(authoringSidebarSource, /openSettings|workbench\.action\.openSettings/);
 });
 
