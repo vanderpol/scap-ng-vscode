@@ -598,10 +598,17 @@ export function requireLogicalOperations(pack?: MetadataPack): string[] {
 function evaluationControl(value: any, pack?: MetadataPack) {
   if (!pack) return undefined;
   const operations = new GuidedCatalog(pack).logicalOperators().map(option => option.value);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return { path: ['assessment', 'evaluate'], operations };
-  if (value.if) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { path: ['assessment', 'evaluate'], operations, editable: true };
+  // Conditional Evaluate trees are valid native expressions, but the small
+  // add-Test wizard only edits a direct logical group. Keep the schema's
+  // operations visible so the UI can explain that distinction instead of
+  // falsely reporting that the pinned schema has no logical operations.
+  if (Object.prototype.hasOwnProperty.call(value, 'if')) return {
+    path: ['assessment', 'evaluate'], operations, editable: false,
+    reason: 'This is a conditional Evaluate expression. It already controls when its Test runs; edit the if/then/else branches in YAML instead of adding a Test at the root.'
+  };
   const operation = Object.keys(value).find(key => operations.includes(key));
-  return { path: ['assessment', 'evaluate'], operation, operations };
+  return { path: ['assessment', 'evaluate'], operation, operations, editable: true };
 }
 function samePath(left: (string | number)[], right: (string | number)[]) { return left.length === right.length && left.every((part, index) => part === right[index]); }
 function fieldAt(fields: any[], path: (string | number)[]) { return fields.find(field => samePath(field.path, path)); }
@@ -641,12 +648,34 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
   base.variableDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) ? (assessment.variables ?? {}) : {};
   base.variableExpressionOperations = variableExpressionOperations(pack);
   base.requireLogicalOperations = requireLogicalOperations(pack);
+  const authoringConcerns: any[] = [];
+  for (const message of base.parseDiagnostics ?? []) authoringConcerns.push({ code: 'yaml-parse', category: 'parse', title: 'YAML cannot be parsed', message: String(message), blocking: true, resolver: 'yaml' });
+  const schemaConcernByPath = new Map<string, any>();
+  for (const diagnostic of base.schemaDiagnostics ?? []) {
+    const path = Array.isArray(diagnostic?.path) ? diagnostic.path : [];
+    const key = path.map(String).join('/');
+    const existing = schemaConcernByPath.get(key);
+    if (existing) existing.count = (existing.count ?? 1) + 1;
+    else schemaConcernByPath.set(key, { code: 'schema-invalid', category: 'schema', title: 'Schema validation issue', message: String(diagnostic?.message ?? diagnostic), path, blocking: true, resolver: 'yaml', count: 1 });
+  }
+  for (const concern of schemaConcernByPath.values()) {
+    if (concern.count > 1) concern.message += ` (${concern.count} related schema diagnostics at this location.)`;
+    delete concern.count;
+    authoringConcerns.push(concern);
+  }
+  if (referenceAnalysis) {
+    for (const reference of referenceAnalysis.unresolved) authoringConcerns.push({ code: 'unresolved-reference', category: 'reference', title: 'Reference does not resolve', message: `The ${reference.kind} reference "${reference.targetId}" does not match a declared local definition.`, path: reference.path, blocking: true, resolver: 'yaml' });
+    const evaluatedTests = new Set(referenceAnalysis.references.filter(reference => reference.kind === 'test' && reference.context === 'evaluate').map(reference => reference.targetId));
+    if (assessment.tests && typeof assessment.tests === 'object' && !Array.isArray(assessment.tests)) for (const testId of Object.keys(assessment.tests)) if (!evaluatedTests.has(testId)) authoringConcerns.push({ code: 'unreferenced-test', category: 'evaluation', title: 'Test is not included in Evaluate', message: `The authored Test "${testId}" does not contribute to this Assessment until it is added to Evaluate.`, path: ['assessment', 'tests', testId], testId, blocking: true, resolver: 'evaluate' });
+  }
   if (pack && assessment && typeof assessment === 'object' && !Array.isArray(assessment)) {
     const variableAnalysis = analyzeVariables(pack, assessment, Boolean(base.draft));
     base.variableAnalysis = variableAnalysis;
     base.variableDiagnostics = variableAnalysis.diagnostics;
     base.variableAnalysisSummary = variableAnalysisSummary(variableAnalysis);
+    for (const diagnostic of variableAnalysis.diagnostics.filter(item => item.severity !== 'info')) authoringConcerns.push({ code: String(diagnostic.code || 'variable-diagnostic'), category: 'variable', title: 'Variable authoring issue', message: String(diagnostic.message || diagnostic), path: diagnostic.path, blocking: true, resolver: 'yaml' });
   }
+  base.authoringConcerns = authoringConcerns;
   // Preserve the authored Require hierarchy for explanation of population, predicates
   // and ordered regex arrays. Edits still target original source scalar paths.
   base.requireDefinitions = assessment && typeof assessment === 'object' && !Array.isArray(assessment) && assessment.tests && typeof assessment.tests === 'object' ? Object.fromEntries(Object.entries(assessment.tests).map(([testId, test]: [string, any]) => [testId, test?.require ?? {}])) : {};

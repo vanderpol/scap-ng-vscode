@@ -11,15 +11,18 @@ import { WorkspaceIndex, type IndexedDocument, type ApplicabilityOption } from '
 import { GuidedCatalog, createGuidedAssessment, generatedTestTitle } from './guided.js';
 import { completionChoices, inlineMappingPath, propertyChoicesForPath } from './completion.js';
 import { registerYamlDefinitionProvider, registerYamlHoverProvider } from './yaml-help.js';
+import { workspaceIndexPatterns } from './workspace-index-files.js';
+import { applicabilityForBenchmark, benchmarkContextForKey, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, packageRootForPath, type BenchmarkContextSummary } from './content-context.js';
 import { schemaDynamicPropertyLocations, schemaCapabilityObjectProperties, schemaItemLocations, schemaNodes, schemaPropertyEntries } from './schema-resolver.js';
 import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
-import { assessmentCustomEditorId, isAssessmentEditorMode, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
+import { assessmentCustomEditorId, isAssessmentEditorMode, isAssessmentFilePath, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
 import { createAssistedAssessment } from './assisted-draft.js';
 import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
 import { assessmentSectionBeforeKey } from './assessment-order.js';
+import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -40,6 +43,10 @@ class StudioTree implements vscode.TreeDataProvider<StudioNode> {
   setQuery(query: string) { this.query = query; this.refresh(); }
   getTreeItem(node: StudioNode) { return node; }
   getChildren(node?: StudioNode) {
+    // Let the native viewsWelcome surface own the empty state.  Returning
+    // category nodes here would prevent VS Code from showing the discoverable
+    // first-run actions contributed in package.json.
+    if (!node && this.index.all().length === 0) return [];
     if (node) return node.children;
     return [
       new StudioNode('STIG Library', vscode.TreeItemCollapsibleState.Collapsed, 'stig-library', this.contentTree('benchmark')),
@@ -130,6 +137,75 @@ async function openConfiguredSplitSource(api: any) {
   if (!custom?.input?.uri || !api.workspace.openTextDocument) return;
   const document = await api.workspace.openTextDocument(custom.input.uri);
   await openNativeYamlBeside(api, document);
+}
+
+/** Explicit chooser actions override the global Assessment editor preference. */
+async function openAssessmentInMode(api: any, uri: any, mode: 'yaml' | 'graphical') {
+  if (mode === 'yaml') {
+    const document = await api.workspace.openTextDocument(uri);
+    return api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+  }
+  return api.commands.executeCommand('vscode.openWith', uri, assessmentCustomEditorId, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+}
+
+/** Open generated Assessments using the user's configured editor preference. */
+async function openGeneratedAssessment(api: any, document: any) {
+  const mode = configuredAssessmentEditor(api, document);
+  if (mode === 'graphical' || mode === 'split') {
+    try {
+      await api.commands.executeCommand('vscode.openWith', document.uri, assessmentCustomEditorId, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+      return;
+    } catch { /* Fall back to native YAML if this host cannot custom-open an untitled document. */ }
+  }
+  await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
+}
+
+function safeAssessmentStem(value: unknown): string {
+  const stem = String(value ?? 'new-assessment').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return stem || 'new-assessment';
+}
+function pathWithinRoot(root: string, candidate: string): boolean {
+  const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
+  const normalizedRoot = normalize(root); const normalizedCandidate = normalize(candidate);
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + '/');
+}
+/** Save a new Assessment inside the selected Benchmark's authoring slice. */
+async function saveGeneratedAssessmentForBenchmark(api: any, document: any, context: BenchmarkContextSummary, suggestedStem: unknown): Promise<any | undefined> {
+  if (typeof api.window.showSaveDialog !== 'function' || !api.Uri?.file || !api.workspace.fs?.writeFile) {
+    await api.window.showWarningMessage('Saving a Benchmark Assessment requires a VS Code workspace file system.');
+    return undefined;
+  }
+  const existingAssessment = context.assessments.find(assessment => /[\/]assessments[\/]/i.test(assessment.path));
+  const existingMarker = existingAssessment ? existingAssessment.path.replaceAll('\\', '/').toLocaleLowerCase().lastIndexOf('/assessments/') : -1;
+  const directory = existingAssessment && existingMarker >= 0
+    ? existingAssessment.path.slice(0, existingMarker + '/assessments'.length)
+    : join(dirname(context.benchmark.path), 'assessments');
+  const defaultUri = api.Uri.file(join(directory, `${safeAssessmentStem(suggestedStem)}-assessment.yaml`));
+  const picked = await api.window.showSaveDialog({
+    defaultUri,
+    saveLabel: 'Save Benchmark Assessment',
+    title: 'Save Assessment in the selected Benchmark',
+    filters: { 'Assessment YAML': ['yaml'] }
+  });
+  if (!picked) return undefined;
+  if (!pathWithinRoot(directory, picked.fsPath ?? '')) {
+    await api.window.showWarningMessage('Save the new Assessment in the selected Benchmark content folder.');
+    return undefined;
+  }
+  try { await api.workspace.fs.createDirectory?.(api.Uri.file(directory)); } catch { /* The directory normally exists in a converted Benchmark; write reports any real failure. */ }
+  await api.workspace.fs.writeFile(picked, new TextEncoder().encode(document.getText()));
+  const saved = await api.workspace.openTextDocument(picked);
+  await openGeneratedAssessment(api, saved);
+  return saved;
+}
+
+function assistedDraftWarnings(document: any): { confidence?: string; assumptions: string[]; review: string[] } | undefined {
+  const lines = String(document?.getText?.() ?? '').split(/\r?\n/);
+  if (!lines.some(line => /^# Assisted Assessment draft\b/.test(line))) return undefined;
+  const confidence = lines.find(line => /^# Confidence:/i.test(line))?.replace(/^# Confidence:\s*/i, '').trim();
+  const assumptions = lines.filter(line => /^# Assumption:/i.test(line)).map(line => line.replace(/^# Assumption:\s*/i, '').trim());
+  const review = lines.filter(line => /^# Review needed:/i.test(line)).map(line => line.replace(/^# Review needed:\s*/i, '').trim());
+  return { confidence, assumptions, review };
 }
 
 /** Keep the default Assessment editor in sync without touching unrelated user associations. */
@@ -760,8 +836,9 @@ async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
   for (const item of replacements) workspaceEdit.replace(document.uri, new api.Range(document.positionAt(item.start), document.positionAt(item.end)), item.replacement);
   if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
 }
+type AssessmentEditorScope = { mode: 'benchmark' | 'standalone'; benchmarkLabel?: string };
 class AssessmentEditorProvider {
-  constructor(private readonly getPack: () => MetadataPack | undefined) {}
+  constructor(private readonly getPack: () => MetadataPack | undefined, private readonly getScope: (document: any) => AssessmentEditorScope = () => ({ mode: 'standalone' })) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
     const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = graphicalHtml();
     let editorMode = configuredAssessmentEditor(api, document);
@@ -771,13 +848,13 @@ class AssessmentEditorProvider {
     const send = () => {
       try {
         const model = assessmentEditorModel(document, this.getPack());
-        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode } });
+        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode, scope: this.getScope(document), authoringWarnings: assistedDraftWarnings(document) } });
       } catch (error) {
         // A malformed/exotic YAML document must never strand the custom editor
         // on its loading placeholder. Keep the native YAML editor available
         // and expose the exact model-building failure in the webview/status bar.
         const message = error instanceof Error ? error.message : String(error);
-        void panel.webview.postMessage({ type: 'model', model: { ok: false, error: message, fields: [], sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document' } });
+        void panel.webview.postMessage({ type: 'model', model: { ok: false, error: message, fields: [], sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', scope: this.getScope(document) } });
         void panel.webview.postMessage({ type: 'error', message: `Unable to load the graphical model: ${message}` });
       }
     };
@@ -954,6 +1031,8 @@ class AssessmentEditorProvider {
                 !Object.prototype.hasOwnProperty.call(assessment.tests, message.testId))
               throw new Error('Choose an authored Test from this Assessment.');
             const evaluate = assessment.evaluate;
+            if (evaluate && typeof evaluate === 'object' && !Array.isArray(evaluate) && Object.prototype.hasOwnProperty.call(evaluate, 'if'))
+              throw new Error('This Assessment uses a conditional Evaluate tree. Edit its if/then/else branches in YAML; the Add Test wizard does not change conditional roots.');
             const testExpression = { test: message.testId } as any;
             let edit: any;
             if (evaluate === undefined) {
@@ -1332,21 +1411,86 @@ class AssessmentEditorProvider {
 }
 
 const INDEX_WORKERS = 8;
-async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection) {
-  if (!api.workspace.findFiles || !api.workspace.openTextDocument) return;
-  const patterns = ['**/*.assessment.yaml', '**/*.assessment.yml', '**/*.rule.yaml', '**/*.rule.yml', '**/*.benchmark.yaml', '**/*.benchmark.yml'];
-  const found = (await Promise.all(patterns.map(pattern => api.workspace.findFiles(pattern, '**/{node_modules,.git}/**')))).flat();
-  const files = [...new Map(found.map((uri: any) => [uri.toString(), uri])).values()];
-  const entries: { uri: string; text: string; path: string }[] = []; let cursor = 0;
-  const worker = async () => {
-    while (cursor < files.length) {
-      const uri = files[cursor++];
-      try { const document = await api.workspace.openTextDocument(uri); entries.push({ uri: uri.toString(), text: document.getText(), path: uri.fsPath }); } catch { /* unreadable files remain outside the index */ }
-    }
+
+/** Index SCAP-NG YAML files from either the open workspace or a user-selected folder. */
+async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri?: any, onBenchmarkIndexed?: () => void) {
+  if (!api.workspace.findFiles || !api.workspace.openTextDocument) return 0;
+  const patterns = workspaceIndexPatterns;
+  const relativePattern = folderUri && api.RelativePattern
+    ? (pattern: string) => new api.RelativePattern(folderUri, pattern)
+    : (pattern: string) => folderUri ? `${folderUri.fsPath ?? folderUri}/${pattern}` : pattern;
+  const findFiles = async (patternsToFind: readonly string[]) =>
+    (await Promise.all(patternsToFind.map(pattern => api.workspace.findFiles(relativePattern(pattern), '**/{node_modules,.git}/**')))).flat();
+  const benchmarkPatterns = patterns.filter(pattern => /benchmark\.ya?ml$/i.test(pattern));
+  const remainingPatterns = patterns.filter(pattern => !benchmarkPatterns.includes(pattern));
+  const decoder = new TextDecoder();
+  const readFiles = async (batch: readonly any[]) => {
+    const entries: { uri: string; text: string; path: string }[] = []; let cursor = 0;
+    const worker = async () => {
+      while (cursor < batch.length) {
+        const uri = batch[cursor++];
+        try {
+          // Read large corpora through the filesystem API rather than opening
+          // every YAML file as a VS Code TextDocument.
+          const bytes = await api.workspace.fs?.readFile?.(uri);
+          const text = bytes ? decoder.decode(bytes) : (await api.workspace.openTextDocument(uri)).getText();
+          entries.push({ uri: uri.toString(), text, path: uri.fsPath });
+        } catch { /* unreadable files remain outside the index */ }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(INDEX_WORKERS, batch.length) }, worker));
+    return entries;
   };
-  await Promise.all(Array.from({ length: Math.min(INDEX_WORKERS, files.length) }, worker));
-  index.updateMany(entries); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh();
+  // Benchmarks are the only information needed to populate the context
+  // wizard. Find and index their small set of globs before even starting the
+  // potentially expensive Rules/Assessments globs, so the wizard can become
+  // useful while a large content root continues loading in the background.
+  const benchmarkFound = await findFiles(benchmarkPatterns);
+  const benchmarkFiles = [...new Map(benchmarkFound.map((uri: any) => [uri.toString(), uri])).values()];
+  const benchmarkEntries = await readFiles(benchmarkFiles);
+  await index.updateManyAsync(benchmarkEntries);
+  publishIndexDiagnostics(index, indexDiagnostics, api);
+  tree.refresh();
+  onBenchmarkIndexed?.();
+  const remainingFound = await findFiles(remainingPatterns);
+  const files = [...new Map([...benchmarkFiles, ...remainingFound].map((uri: any) => [uri.toString(), uri])).values()];
+  const remainingFiles = files.filter((uri: any) => !benchmarkFiles.some((benchmark: any) => benchmark.toString() === uri.toString()));
+  const remainingEntries = await readFiles(remainingFiles);
+  await index.updateManyAsync(remainingEntries);
+  publishIndexDiagnostics(index, indexDiagnostics, api);
+  tree.refresh();
+  return files.length;
 }
+
+async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, onBenchmarkIndexed?: () => void) {
+  return indexContentLocation(index, tree, api, indexDiagnostics, undefined, onBenchmarkIndexed);
+}
+
+async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri: any, onBenchmarkIndexed?: () => void) {
+  return indexContentLocation(index, tree, api, indexDiagnostics, folderUri, onBenchmarkIndexed);
+}
+
+async function indexWorkspaceAndImportedRoots(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
+  let count = await indexWorkspace(index, tree, api, indexDiagnostics, () => state.onChange?.());
+  for (const root of state.importedRoots) {
+    if (!api.Uri?.file) continue;
+    count += await indexSelectedContentFolder(index, tree, api, indexDiagnostics, api.Uri.file(root), () => state.onChange?.());
+  }
+  return count;
+}
+
+/** Re-read workspace/imported content so Home statistics reflect disk changes. */
+async function refreshContentIndex(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
+  const previous = state.ready;
+  if (previous) { try { await previous; } catch { /* a fresh refresh can recover from a failed prior scan */ } }
+  state.indexing = true;
+  const run = (async () => {
+    return indexWorkspaceAndImportedRoots(index, tree, api, indexDiagnostics, state);
+  })();
+  state.ready = run.then(() => { state.indexing = false; state.onChange?.(); }, error => { state.indexing = false; state.onChange?.(); throw error; });
+  return run;
+}
+
 function publishIndexDiagnostics(index: WorkspaceIndex, diagnostics: vscode.DiagnosticCollection, api: any) {
   const grouped = new Map<string, vscode.Diagnostic[]>();
   for (const diagnostic of index.diagnostics()) {
@@ -1357,42 +1501,536 @@ function publishIndexDiagnostics(index: WorkspaceIndex, diagnostics: vscode.Diag
   diagnostics.clear();
   for (const [uri, values] of grouped) diagnostics.set(api.Uri.parse(uri), values);
 }
-async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection) {
-  try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); } catch { /* file may have been removed between watcher events */ }
+async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state?: BenchmarkContextState) {
+  try { const document = await api.workspace.openTextDocument(uri); index.update(uri.toString(), document.getText(), uri.fsPath); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); state?.onChange?.(); } catch { /* file may have been removed between watcher events */ }
 }
 
 function optionHtml(options: readonly { value: string; label: string; description?: string }[]) { return options.map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join(''); }
-function guidedHtml(catalog: GuidedCatalog, applicabilityOptions: readonly ApplicabilityOption[] = []) {
+function guidedHtml(catalog: GuidedCatalog, applicabilityOptions: readonly ApplicabilityOption[] = [], activeContextLabel = '') {
   const applicabilityOptionHtml = applicabilityOptions.filter(option => option.available).map(option => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`).join('');
-  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-guided';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:900px}fieldset{border:1px solid var(--vscode-panel-border);margin:12px 0;padding:12px}legend{font-weight:600}label{display:block;margin:9px 0}input,select,textarea{display:block;width:100%;box-sizing:border-box;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px}input[type=checkbox]{display:inline;width:auto}textarea{min-height:64px;font-family:var(--vscode-editor-font-family)}.row{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin:8px 0;align-items:end}.row label{margin:0}.hint{color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.explanation{border-left:3px solid var(--vscode-textLink-foreground);padding:8px}.summary{border-left:3px solid var(--vscode-textLink-foreground);padding:8px;margin:10px 0}.advanced{border-top:1px solid var(--vscode-panel-border);margin-top:12px;padding-top:8px}button{padding:7px 12px}.unsupported{color:var(--vscode-descriptionForeground);font-style:italic}</style></head><body><h1>Guided Assessment authoring</h1><p class="hint">Answer the policy question first. Exact YAML keywords remain available in the Graphical editor and native YAML editor. Platform is an authoring context only; it does not assert CPE applicability.</p><p id="status" role="status"></p><fieldset><legend>Authoring workflow</legend><label for="workflow">How would you like to start?<select id="workflow"><option value="guided">Build from structured questions</option><option value="assisted">Paste Rule title and check text (offline best guess)</option></select></label><p class="hint">The assisted path is deterministic and offline. It never calls AI or claims scanner results.</p></fieldset><fieldset id="guidedPurpose"><legend>1. Assessment purpose</legend><label for="platform">Target platform<select id="platform">${optionHtml(catalog.platforms())}</select></label><label for="mode">Assessment mode<select id="mode">${optionHtml(catalog.modes())}</select></label><label for="className">Assessment class<select id="className">${optionHtml(catalog.classes())}</select></label><label for="id">Assessment ID<input id="id" value="guided-assessment"></label><label for="title">Security requirement<input id="title" placeholder="What security requirement should be checked?"></label><label for="procedure">Manual procedure<textarea id="procedure">Review the target according to the documented procedure.</textarea></label><div id="manualResponse"><p class="hint">Manual responses are author-defined choices, not scanner results.</p><label for="responseType">Response contract name<input id="responseType" value="manual-review"></label><div class="row"><label>Value<input id="choice1Value" value="yes"></label><label>Label<input id="choice1Label" value="Yes"></label><label>Outcome<select id="choice1Outcome"><option>true</option><option>false</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><div class="row"><label>Value<input id="choice2Value" value="no"></label><label>Label<input id="choice2Label" value="No"></label><label>Outcome<select id="choice2Outcome"><option>false</option><option>true</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><label><input id="allowComment" type="checkbox" checked> Allow reviewer comment</label><label><input id="allowEvidence" type="checkbox" checked> Allow evidence attachment</label></div></fieldset><fieldset id="applicabilitySection"><legend>Applicability (optional)</legend><p class="hint">Choose an existing shared applicability Assessment when the requirement applies only to a specific target condition. The platform selection above is only authoring context.</p><label for="applicability">Existing applicability condition<select id="applicability"><option value="">No applicability condition selected</option>${applicabilityOptionHtml}</select></label><p class="hint">If the needed condition is not listed, create the companion applicability Assessment first or continue with an explicit review placeholder.</p></fieldset><fieldset id="guidedEvidence"><legend>2. What evidence should be collected?</legend><label for="capability">Evidence collection capability<select id="capability">${optionHtml(catalog.capabilities())}</select></label><p id="capabilityHelp" class="hint"></p><div id="objectRequirements" class="hint" aria-live="polite"></div><div id="objectFields"></div><details class="advanced"><summary>Advanced source fields</summary><p class="unsupported">This slice exposes the schema-declared primary selector fields. Advanced Objects, Variables and dependent sources remain available through the native YAML editor without being discarded.</p></details><legend>3. What counts as sufficient evidence?</legend><label for="testId">Test ID<input id="testId" value="guided-test"></label><label for="testTitle">Human-readable Test summary<input id="testTitle" placeholder="Generated summary; editable before save"></label><label for="itemsFound">Collected Items found<select id="itemsFound">${optionHtml(catalog.itemFound())}</select></label><label id="itemsSatisfyingLabel" for="itemsSatisfying">Selected Items satisfying condition<select id="itemsSatisfying">${optionHtml(catalog.itemsSatisfying())}</select></label><label id="valuesFoundLabel" for="valuesFound">Field values found<select id="valuesFound">${optionHtml(catalog.fieldValuesFound())}</select></label><label id="valuesMatchingLabel" for="valuesMatching">Field values matching<select id="valuesMatching">${optionHtml(catalog.fieldValuesMatching())}</select></label><label><input id="presenceOnly" type="checkbox"> Presence-only check (no field comparison)</label><div id="comparisonFields"></div><button id="addField" type="button">Add comparison field</button><div id="summary" class="summary" aria-live="polite"></div><p class="hint">This Guided slice creates one Test. Add additional authored Tests to Evaluate from the Graphical editor with its schema-driven Test/logic wizard.</p></fieldset><button id="guidedCreate">Create Assessment</button><fieldset id="assistedInputs" hidden><legend>Assisted Assessment draft</legend><p class="explanation">Paste the Rule title and human-readable check/procedure text. The editor will infer only patterns it recognizes, validate the result against the pinned schema, and annotate assumptions for review.</p><label for="assistedTitle">Rule title<input id="assistedTitle" placeholder="The system must ..."></label><label for="assistedCheckText">Check text<textarea id="assistedCheckText" placeholder="Paste the STIG check/procedure text here."></textarea></label><button id="generateAssisted" type="button">Generate annotated draft</button></fieldset><script nonce="guided">const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const status=$('status');let objectDefinitions=[];let objectRequirements=[];let resultDefinitions=[];function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function opts(items,selected){return items.map(x=>'<option value=\"'+esc(x.value)+'\" '+(x.value===selected?'selected':'')+'>'+esc(x.label||x.value)+'</option>').join('');}function renderObjectFields(fields,requirements){objectDefinitions=fields;objectRequirements=requirements||[];const requirementRoot=$('objectRequirements');requirementRoot.replaceChildren();if(objectRequirements.length>1){const text=document.createElement('p');text.textContent='Choose one complete item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';requirementRoot.append(text);}else if(objectRequirements.length===1){const text=document.createElement('p');text.textContent='Required item selectors: '+objectRequirements[0].fields.join(', ')+'.';requirementRoot.append(text);}const root=$('objectFields');root.replaceChildren();if(!fields.length){root.innerHTML='<p class="unsupported">No primary selector controls are available for this capability yet. Continue in Structured or the native YAML editor.</p>';return;}for(const f of fields){const row=document.createElement('div');row.className='row object-row';row.dataset.name=f.name;const label=document.createElement('label');label.textContent=f.label;label.title=f.description||'';const operation=document.createElement('select');operation.className='object-operation';const preferredOperation=f.operations.find(value=>value.value==='equals')?.value||f.operations[0]?.value;operation.innerHTML=opts(f.operations,preferredOperation);const value=document.createElement(f.enumValues?.length?'select':'input');value.className='object-value';if(f.enumValues?.length)value.innerHTML='<option value="">Choose '+esc(f.label.toLowerCase())+'</option>'+opts(f.enumValues.map(v=>({value:v,label:v})));else {value.placeholder='Enter '+f.label.toLowerCase();if(f.datatype==='integer'||f.datatype==='number')value.type='number';if(f.datatype==='boolean')value.type='checkbox';}row.append(label,operation,value);root.append(row);}}function renderComparisonFields(fields){resultDefinitions=fields;const root=$('comparisonFields');root.replaceChildren();addComparisonRow(fields[0]?.name||'');}function addComparisonRow(selected){const root=$('comparisonFields');const row=document.createElement('div');row.className='row field-row';const name=document.createElement('select');name.className='field-name';name.innerHTML=opts(resultDefinitions.map(f=>({value:f.name,label:f.label})),selected);const operation=document.createElement('select');operation.className='field-operation';operation.innerHTML=opts(resultDefinitions[0]?.operations||[],'equals');const datatype=document.createElement('select');datatype.className='field-datatype';datatype.innerHTML=opts((resultDefinitions.find(f=>f.name===selected)?.datatypes||['string']).map(v=>({value:v,label:v})),'string');const value=document.createElement('input');value.className='field-value';value.placeholder='Expected value';name.onchange=()=>{const definition=resultDefinitions.find(f=>f.name===name.value);operation.innerHTML=opts(definition?.operations||[],'equals');datatype.innerHTML=opts((definition?.datatypes||['string']).map(v=>({value:v,label:v})),definition?.datatype||'string');};const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(name,operation,datatype,value,remove);root.append(row);}function collectObject(){const object={};document.querySelectorAll('.object-row').forEach(row=>{const input=row.querySelector('.object-value');const value=input.type==='checkbox'?input.checked:input.value;if(value) object[row.dataset.name]={[row.querySelector('.object-operation').value]:value};});return object;}function objectRequirementError(object){if(!objectRequirements.length)return '';if(objectRequirements.some(requirement=>requirement.fields.every(name=>Object.hasOwn(object,name))))return '';if(objectRequirements.length===1)return 'Complete the required item selectors: '+objectRequirements[0].fields.join(', ')+'.';return 'Complete one item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';}function collectFields(){const fields={};document.querySelectorAll('.field-row').forEach(row=>{let value=row.querySelector('.field-value').value;if(value){const datatype=row.querySelector('.field-datatype').value;if(datatype==='integer')value=Number(value);else if(datatype==='boolean')value=value==='true';fields[row.querySelector('.field-name').value]={[row.querySelector('.field-operation').value]:value};}});return fields;}function updateSummary(){const cap=$('capability').selectedOptions[0]?.textContent||$('capability').value;const item=$('itemsFound').selectedOptions[0]?.textContent;const match=$('presenceOnly').checked?'presence only':($('itemsSatisfying').selectedOptions[0]?.textContent+' of selected Items');const field=$('presenceOnly').checked?'No field comparison':($('valuesMatching').selectedOptions[0]?.textContent+' of found values');$('summary').textContent=cap+': at least '+item+' Item(s) must exist; '+match+' must satisfy the condition; '+field+' must match.';}function refresh(){const automated=$('mode').value==='automated';$('guidedEvidence').hidden=!automated;$('manualResponse').hidden=automated;updateSummary();}$('mode').onchange=refresh;$('capability').onchange=()=>vscode.postMessage({type:'capability',value:$('capability').value});$('presenceOnly').onchange=()=>{const hidden=$('presenceOnly').checked;for(const id of ['itemsSatisfyingLabel','valuesFoundLabel','valuesMatchingLabel','comparisonFields','addField'])$(id).hidden=hidden;updateSummary();};$('itemsFound').onchange=updateSummary;$('itemsSatisfying').onchange=updateSummary;$('valuesMatching').onchange=updateSummary;$('addField').onclick=()=>addComparisonRow('');function refreshWorkflow(){const assisted=$('workflow').value==='assisted';$('guidedPurpose').hidden=assisted;$('guidedEvidence').hidden=assisted;$('guidedCreate').hidden=assisted;$('assistedInputs').hidden=!assisted;}$('workflow').onchange=refreshWorkflow;$('generateAssisted').onclick=()=>{vscode.postMessage({type:'assistedDraft',title:$('assistedTitle').value,checkText:$('assistedCheckText').value,applicability:$('applicability').value||undefined});};$('guidedCreate').onclick=()=>{try{const automated=$('mode').value==='automated';const message={type:'create',platform:$('platform').value,id:$('id').value,title:$('title').value,mode:$('mode').value,className:$('className').value,procedure:$('procedure').value,applicability:$('applicability').value||undefined};if(automated){const object=collectObject();const objectError=objectRequirementError(object);if(objectError){status.className='error';status.textContent=objectError;return;}message.tests=[{id:$('testId').value,title:$('testTitle').value,capability:$('capability').value,object,fields:collectFields(),presenceOnly:$('presenceOnly').checked}];}else{message.response={type:$('responseType').value,choices:[{value:$('choice1Value').value,label:$('choice1Label').value,outcome:$('choice1Outcome').value},{value:$('choice2Value').value,label:$('choice2Label').value,outcome:$('choice2Outcome').value}],allow_comment:$('allowComment').checked,allow_evidence:$('allowEvidence').checked};}vscode.postMessage(message);}catch(error){status.className='error';status.textContent=error.message;}};window.addEventListener('message',event=>{if(event.data.type==='objectFields')renderObjectFields(event.data.fields,event.data.requirements);if(event.data.type==='resultFields')renderComparisonFields(event.data.fields);status.className=event.data.ok?'':'error';if(event.data.message)status.textContent=event.data.message;});refresh();refreshWorkflow();vscode.postMessage({type:'capability',value:$('capability').value});</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-guided';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;max-width:900px}fieldset{border:1px solid var(--vscode-panel-border);margin:12px 0;padding:12px}legend{font-weight:600}label{display:block;margin:9px 0}input,select,textarea{display:block;width:100%;box-sizing:border-box;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px}input[type=checkbox]{display:inline;width:auto}textarea{min-height:64px;font-family:var(--vscode-editor-font-family)}.row{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin:8px 0;align-items:end}.row label{margin:0}.hint{color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.explanation{border-left:3px solid var(--vscode-textLink-foreground);padding:8px}.summary{border-left:3px solid var(--vscode-textLink-foreground);padding:8px;margin:10px 0}.advanced{border-top:1px solid var(--vscode-panel-border);margin-top:12px;padding-top:8px}button{padding:7px 12px}.unsupported{color:var(--vscode-descriptionForeground);font-style:italic}</style></head><body><h1>Guided Assessment authoring</h1><p class="hint">Answer the policy question first. Exact YAML keywords remain available in the Graphical editor and native YAML editor. Platform is an authoring context only; it does not assert CPE applicability.</p><p id="status" role="status"></p><fieldset><legend>Authoring workflow</legend><label for="workflow">How would you like to start?<select id="workflow"><option value="guided">Build from structured questions</option><option value="assisted">Paste check text (offline best guess)</option></select></label><p class="hint">The assisted path is deterministic and offline. It never calls AI or claims scanner results.</p></fieldset><fieldset id="guidedPurpose"><legend>1. Assessment purpose</legend><label for="platform">Target platform<select id="platform">${optionHtml(catalog.platforms())}</select></label><label for="mode">Assessment mode<select id="mode">${optionHtml(catalog.modes())}</select></label><label for="className">Assessment class<select id="className">${optionHtml(catalog.classes())}</select></label><label for="id">Assessment ID<input id="id" value="guided-assessment"></label><label for="title">Security requirement<input id="title" placeholder="What security requirement should be checked?"></label><label for="procedure">Manual procedure<textarea id="procedure">Review the target according to the documented procedure.</textarea></label><div id="manualResponse"><p class="hint">Manual responses are author-defined choices, not scanner results.</p><label for="responseType">Response contract name<input id="responseType" value="manual-review"></label><div class="row"><label>Value<input id="choice1Value" value="yes"></label><label>Label<input id="choice1Label" value="Yes"></label><label>Outcome<select id="choice1Outcome"><option>true</option><option>false</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><div class="row"><label>Value<input id="choice2Value" value="no"></label><label>Label<input id="choice2Label" value="No"></label><label>Outcome<select id="choice2Outcome"><option>false</option><option>true</option><option>unknown</option><option>not_evaluated</option><option>not_applicable</option><option>error</option></select></label></div><label><input id="allowComment" type="checkbox" checked> Allow reviewer comment</label><label><input id="allowEvidence" type="checkbox" checked> Allow evidence attachment</label></div></fieldset><fieldset id="guidedEvidence"><legend>2. What evidence should be collected?</legend><label for="capability">Evidence collection capability<select id="capability">${optionHtml(catalog.capabilities())}</select></label><p id="capabilityHelp" class="hint"></p><div id="objectRequirements" class="hint" aria-live="polite"></div><div id="objectFields"></div><details class="advanced"><summary>Advanced source fields</summary><p class="unsupported">This slice exposes the schema-declared primary selector fields. Advanced Objects, Variables and dependent sources remain available through the native YAML editor without being discarded.</p></details><legend>3. What counts as sufficient evidence?</legend><label for="testId">Test ID<input id="testId" value="guided-test"></label><label for="testTitle">Human-readable Test summary<input id="testTitle" placeholder="Generated summary; editable before save"></label><label for="itemsFound">Collected Items found<select id="itemsFound">${optionHtml(catalog.itemFound())}</select></label><label id="itemsSatisfyingLabel" for="itemsSatisfying">Selected Items satisfying condition<select id="itemsSatisfying">${optionHtml(catalog.itemsSatisfying())}</select></label><label id="valuesFoundLabel" for="valuesFound">Field values found<select id="valuesFound">${optionHtml(catalog.fieldValuesFound())}</select></label><label id="valuesMatchingLabel" for="valuesMatching">Field values matching<select id="valuesMatching">${optionHtml(catalog.fieldValuesMatching())}</select></label><label><input id="presenceOnly" type="checkbox"> Presence-only check (no field comparison)</label><div id="comparisonFields"></div><button id="addField" type="button">Add comparison field</button><div id="summary" class="summary" aria-live="polite"></div><p class="hint">This Guided slice creates one Test. Add additional authored Tests to Evaluate from the Graphical editor with its schema-driven Test/logic wizard.</p></fieldset><fieldset id="applicabilitySection"><legend>Applicability (optional; can be added later)</legend><p class="hint">Leave this blank while designing the requirement. Add an existing shared applicability Assessment only when you know the requirement is target-specific; it can also be added later in the Graphical editor.</p><p id="benchmarkContextStatus" class="hint" aria-live="polite">${activeContextLabel ? `Benchmark context selected from the Welcome screen: ${escapeHtml(activeContextLabel)}.` : 'No Benchmark root is selected. Existing applicability choices are unavailable; select a Benchmark root from Home before linking one, or continue as a standalone Assessment.'}</p><label for="applicability">Existing applicability condition<select id="applicability"><option value="">No applicability condition selected</option>${applicabilityOptionHtml}</select></label><p class="hint">If the needed condition is not listed, continue without it and add the companion applicability Assessment later.</p></fieldset><button id="guidedCreate">Create Assessment</button><fieldset id="assistedInputs" hidden><legend>Assisted Assessment draft</legend><p class="explanation">Paste the human-readable check/procedure text. A Rule title is optional; when omitted, the editor infers a title from the check text. The copied check text drives best-guess inference; applicability is handled after the draft is generated. If the text contains branches, the draft identifies the applicability Assessments that still need to be linked.</p><label for="assistedCheckText">Check text<textarea id="assistedCheckText" placeholder="Paste the STIG check/procedure text here."></textarea></label><label for="assistedTitle">Rule title (optional)<input id="assistedTitle" placeholder="Leave blank to infer from check text"></label><button id="generateAssisted" type="button">Generate from check text</button></fieldset><script nonce="guided">const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const status=$('status');let objectDefinitions=[];let objectRequirements=[];let resultDefinitions=[];function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function opts(items,selected){return items.map(x=>'<option value=\"'+esc(x.value)+'\" '+(x.value===selected?'selected':'')+'>'+esc(x.label||x.value)+'</option>').join('');}function renderObjectFields(fields,requirements){objectDefinitions=fields;objectRequirements=requirements||[];const requirementRoot=$('objectRequirements');requirementRoot.replaceChildren();if(objectRequirements.length>1){const text=document.createElement('p');text.textContent='Choose one complete item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';requirementRoot.append(text);}else if(objectRequirements.length===1){const text=document.createElement('p');text.textContent='Required item selectors: '+objectRequirements[0].fields.join(', ')+'.';requirementRoot.append(text);}const root=$('objectFields');root.replaceChildren();if(!fields.length){root.innerHTML='<p class="unsupported">No primary selector controls are available for this capability yet. Continue in Structured or the native YAML editor.</p>';return;}for(const f of fields){const row=document.createElement('div');row.className='row object-row';row.dataset.name=f.name;const label=document.createElement('label');label.textContent=f.label;label.title=f.description||'';const operation=document.createElement('select');operation.className='object-operation';const preferredOperation=f.operations.find(value=>value.value==='equals')?.value||f.operations[0]?.value;operation.innerHTML=opts(f.operations,preferredOperation);const value=document.createElement(f.enumValues?.length?'select':'input');value.className='object-value';if(f.enumValues?.length)value.innerHTML='<option value="">Choose '+esc(f.label.toLowerCase())+'</option>'+opts(f.enumValues.map(v=>({value:v,label:v})));else {value.placeholder='Enter '+f.label.toLowerCase();if(f.datatype==='integer'||f.datatype==='number')value.type='number';if(f.datatype==='boolean')value.type='checkbox';}row.append(label,operation,value);root.append(row);}}function renderComparisonFields(fields){resultDefinitions=fields;const root=$('comparisonFields');root.replaceChildren();addComparisonRow(fields[0]?.name||'');}function addComparisonRow(selected){const root=$('comparisonFields');const row=document.createElement('div');row.className='row field-row';const name=document.createElement('select');name.className='field-name';name.innerHTML=opts(resultDefinitions.map(f=>({value:f.name,label:f.label})),selected);const operation=document.createElement('select');operation.className='field-operation';operation.innerHTML=opts(resultDefinitions[0]?.operations||[],'equals');const datatype=document.createElement('select');datatype.className='field-datatype';datatype.innerHTML=opts((resultDefinitions.find(f=>f.name===selected)?.datatypes||['string']).map(v=>({value:v,label:v})),'string');const value=document.createElement('input');value.className='field-value';value.placeholder='Expected value';name.onchange=()=>{const definition=resultDefinitions.find(f=>f.name===name.value);operation.innerHTML=opts(definition?.operations||[],'equals');datatype.innerHTML=opts((definition?.datatypes||['string']).map(v=>({value:v,label:v})),definition?.datatype||'string');};const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.onclick=()=>row.remove();row.append(name,operation,datatype,value,remove);root.append(row);}function collectObject(){const object={};document.querySelectorAll('.object-row').forEach(row=>{const input=row.querySelector('.object-value');const value=input.type==='checkbox'?input.checked:input.value;if(value) object[row.dataset.name]={[row.querySelector('.object-operation').value]:value};});return object;}function objectRequirementError(object){if(!objectRequirements.length)return '';if(objectRequirements.some(requirement=>requirement.fields.every(name=>Object.hasOwn(object,name))))return '';if(objectRequirements.length===1)return 'Complete the required item selectors: '+objectRequirements[0].fields.join(', ')+'.';return 'Complete one item identity: '+objectRequirements.map(requirement=>requirement.fields.join(' + ')).join(' OR ')+'.';}function collectFields(){const fields={};document.querySelectorAll('.field-row').forEach(row=>{let value=row.querySelector('.field-value').value;if(value){const datatype=row.querySelector('.field-datatype').value;if(datatype==='integer')value=Number(value);else if(datatype==='boolean')value=value==='true';fields[row.querySelector('.field-name').value]={[row.querySelector('.field-operation').value]:value};}});return fields;}function updateSummary(){const cap=$('capability').selectedOptions[0]?.textContent||$('capability').value;const item=$('itemsFound').selectedOptions[0]?.textContent;const match=$('presenceOnly').checked?'presence only':($('itemsSatisfying').selectedOptions[0]?.textContent+' of selected Items');const field=$('presenceOnly').checked?'No field comparison':($('valuesMatching').selectedOptions[0]?.textContent+' of found values');$('summary').textContent=cap+': at least '+item+' Item(s) must exist; '+match+' must satisfy the condition; '+field+' must match.';}function refresh(){const automated=$('mode').value==='automated';$('guidedEvidence').hidden=!automated;$('manualResponse').hidden=automated;updateSummary();}$('mode').onchange=refresh;$('capability').onchange=()=>vscode.postMessage({type:'capability',value:$('capability').value});$('presenceOnly').onchange=()=>{const hidden=$('presenceOnly').checked;for(const id of ['itemsSatisfyingLabel','valuesFoundLabel','valuesMatchingLabel','comparisonFields','addField'])$(id).hidden=hidden;updateSummary();};$('itemsFound').onchange=updateSummary;$('itemsSatisfying').onchange=updateSummary;$('valuesMatching').onchange=updateSummary;$('addField').onclick=()=>addComparisonRow('');function refreshWorkflow(){const assisted=$('workflow').value==='assisted';$('guidedPurpose').hidden=assisted;$('guidedEvidence').hidden=assisted;$('applicabilitySection').hidden=assisted;$('guidedCreate').hidden=assisted;$('assistedInputs').hidden=!assisted;}$('workflow').onchange=refreshWorkflow;function renderApplicabilityOptions(options){const select=$('applicability');const selected=select.value;select.innerHTML='<option value="">No applicability condition selected</option>'+(options||[]).filter(option=>option.available).map(option=>'<option value="'+esc(option.key)+'">'+esc(option.label)+'</option>').join('');if([...select.options].some(option=>option.value===selected))select.value=selected;}function updateBenchmarkContextStatus(label){$('benchmarkContextStatus').textContent=label?'Benchmark context selected from the Welcome screen: '+label+'.':'No benchmark context selected; standalone authoring is fine.';}$('generateAssisted').onclick=()=>{vscode.postMessage({type:'assistedDraft',title:$('assistedTitle').value,checkText:$('assistedCheckText').value});};$('guidedCreate').onclick=()=>{try{const automated=$('mode').value==='automated';const message={type:'create',platform:$('platform').value,id:$('id').value,title:$('title').value,mode:$('mode').value,className:$('className').value,procedure:$('procedure').value,applicability:$('applicability').value||undefined};if(automated){const object=collectObject();const objectError=objectRequirementError(object);if(objectError){status.className='error';status.textContent=objectError;return;}message.tests=[{id:$('testId').value,title:$('testTitle').value,capability:$('capability').value,object,fields:collectFields(),presenceOnly:$('presenceOnly').checked}];}else{message.response={type:$('responseType').value,choices:[{value:$('choice1Value').value,label:$('choice1Label').value,outcome:$('choice1Outcome').value},{value:$('choice2Value').value,label:$('choice2Label').value,outcome:$('choice2Outcome').value}],allow_comment:$('allowComment').checked,allow_evidence:$('allowEvidence').checked};}vscode.postMessage(message);}catch(error){status.className='error';status.textContent=error.message;}};window.addEventListener('message',event=>{if(event.data.type==='objectFields')renderObjectFields(event.data.fields,event.data.requirements);if(event.data.type==='resultFields')renderComparisonFields(event.data.fields);if(event.data.type==='benchmarkContext'){renderApplicabilityOptions(event.data.applicability||[]);updateBenchmarkContextStatus(event.data.label);}if(event.data.ok!==undefined)status.className=event.data.ok?'':'error';if(event.data.message)status.textContent=event.data.message;});refresh();refreshWorkflow();vscode.postMessage({type:'capability',value:$('capability').value});</script></body></html>`;
 }
+interface BenchmarkContextState {
+  activeKey?: string;
+  authoringMode: 'benchmark' | 'standalone';
+  importedRoots: string[];
+  listeners: Set<(key: string | undefined) => void>;
+  refreshListeners: Set<() => void>;
+  indexing?: boolean;
+  ready?: Promise<void>;
+  persist?: () => void;
+  onChange?: () => void;
+}
+function contextState(extensionContext?: vscode.ExtensionContext): BenchmarkContextState {
+  const workspaceState: any = (extensionContext as any)?.workspaceState;
+  const activeKey = typeof workspaceState?.get === 'function' ? workspaceState.get('scapNg.benchmarkContextKey') : undefined;
+  const importedRoots = typeof workspaceState?.get === 'function' ? workspaceState.get('scapNg.importedContentRoots') : undefined;
+  const savedMode = typeof workspaceState?.get === 'function' ? workspaceState.get('scapNg.authoringMode') : undefined;
+  const authoringMode = savedMode === 'standalone' || savedMode === 'benchmark' ? savedMode : activeKey ? 'benchmark' : 'standalone';
+  const state: BenchmarkContextState = {
+    activeKey,
+    authoringMode,
+    importedRoots: Array.isArray(importedRoots) ? importedRoots.filter(root => typeof root === 'string') : [],
+    listeners: new Set(),
+    refreshListeners: new Set()
+  };
+  state.persist = extensionContext ? () => {
+    void (extensionContext as any).workspaceState.update('scapNg.benchmarkContextKey', state.activeKey);
+    void (extensionContext as any).workspaceState.update('scapNg.importedContentRoots', state.importedRoots);
+    void (extensionContext as any).workspaceState.update('scapNg.authoringMode', state.authoringMode);
+  } : undefined;
+  return state;
+}
+function persistBenchmarkContext(state: BenchmarkContextState) { state.persist?.(); }
+function selectBenchmarkContext(state: BenchmarkContextState, key: string | undefined) {
+  state.activeKey = key;
+  state.authoringMode = key ? 'benchmark' : 'standalone';
+  persistBenchmarkContext(state);
+  state.onChange?.();
+  for (const listener of state.listeners) listener(key);
+  for (const listener of state.refreshListeners) listener();
+}
+function setStandaloneMode(state: BenchmarkContextState) {
+  state.authoringMode = 'standalone';
+  persistBenchmarkContext(state);
+  state.onChange?.();
+  for (const listener of state.listeners) listener(undefined);
+  for (const listener of state.refreshListeners) listener();
+}
+async function clearBenchmarkContext(api: any, state: BenchmarkContextState) {
+  const choice = await api.window.showWarningMessage('Clear the saved Benchmark root and selected Benchmark? You can still create standalone Assessments.', { modal: true }, 'Clear Benchmark context');
+  if (choice !== 'Clear Benchmark context') return;
+  state.activeKey = undefined;
+  state.authoringMode = 'standalone';
+  state.importedRoots.splice(0, state.importedRoots.length);
+  persistBenchmarkContext(state);
+  state.onChange?.();
+  for (const listener of state.listeners) listener(undefined);
+  for (const listener of state.refreshListeners) listener();
+}
+
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value ?? null).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+function setImportedBenchmarkRoot(state: BenchmarkContextState, root: string) {
+  state.importedRoots.splice(0, state.importedRoots.length, root);
+  state.activeKey = undefined;
+  state.authoringMode = 'standalone';
+  persistBenchmarkContext(state);
+}
+async function promptForContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState): Promise<string | undefined> {
+  if (typeof api.window.showOpenDialog !== 'function') {
+    await api.window.showWarningMessage('No Benchmark documents are indexed. Open a folder containing SCAP-NG Benchmarks or Assessments, then try Browse Benchmarks again.');
+    return undefined;
+  }
+  const picked = await api.window.showOpenDialog({
+    canSelectFolders: true,
+    canSelectFiles: false,
+    canSelectMany: false,
+    openLabel: 'Index Benchmarks',
+    title: 'Select a folder containing SCAP-NG Benchmarks or Assessments'
+  });
+  const folder = picked?.[0];
+  const root = folder?.fsPath;
+  if (!root) return undefined;
+  setImportedBenchmarkRoot(state, root);
+  const indexFolder = () => indexSelectedContentFolder(index, tree, api, indexDiagnostics, folder, () => {
+    state.onChange?.();
+    for (const listener of state.refreshListeners) listener();
+  });
+  const count = api.window.withProgress
+    ? await api.window.withProgress({ location: api.ProgressLocation?.Window ?? 10, title: 'Indexing selected SCAP-NG content…' }, indexFolder)
+    : await indexFolder();
+  state.onChange?.();
+  for (const listener of state.refreshListeners) listener();
+  if (!count) {
+    await api.window.showWarningMessage(`No recognized Benchmark or Assessment YAML files were found in "${root}".`);
+  }
+  return root;
+}
+function benchmarkContextHtml(contexts: readonly BenchmarkContextSummary[], activeKey?: string, focusSection?: string) {
+  const contextLabels = benchmarkContextLabels(contexts);
+  const data = contexts.map(context => ({
+    key: context.key,
+    label: contextLabels.get(context.key) ?? context.packagePath,
+    packagePath: context.packagePath,
+    benchmark: context.benchmark,
+    profiles: context.profiles,
+    ruleCount: context.ruleCount,
+    assessmentCount: context.assessmentCount,
+    applicabilityCount: context.applicabilityCount,
+    conditionCount: context.conditionCount,
+    rules: context.rules,
+    assessments: context.assessments,
+    applicability: context.applicability,
+    conditions: context.conditions
+  }));
+  const options = contexts.map(context => `<option value="${escapeHtml(context.key)}"${context.key === activeKey ? ' selected' : ''}>${escapeHtml(contextLabels.get(context.key) ?? context.packagePath)}</option>`).join('');
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-benchmark-context';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:18px;max-width:1100px}h1{margin-top:0;font-size:18px}.hint,.muted{color:var(--vscode-descriptionForeground)}select{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}button{padding:6px 10px;margin:6px 6px 6px 0;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}.banner,.card{border:1px solid var(--vscode-panel-border);padding:12px;margin:12px 0}.banner{border-left:4px solid var(--vscode-textLink-foreground);background:var(--vscode-textBlockQuote-background)}.stats{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:8px}.stat{border:1px solid var(--vscode-panel-border);padding:9px;text-align:left;font:inherit;color:var(--vscode-foreground);background:var(--vscode-editor-background);cursor:pointer}.stat:hover{border-color:var(--vscode-textLink-foreground)}.stat strong{display:block;font-size:18px}.stat span{font-size:11px;color:var(--vscode-descriptionForeground)}details{border-top:1px solid var(--vscode-panel-border);padding:8px 0}summary{cursor:pointer;font-weight:600}.items{max-height:360px;overflow:auto;margin-top:8px}.item{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--vscode-panel-border)}.item button{margin:0;padding:3px 6px;white-space:nowrap}.item span{overflow-wrap:anywhere}.source-link{color:var(--vscode-textLink-foreground);text-decoration:underline;cursor:pointer}.path{font:11px var(--vscode-editor-font-family);color:var(--vscode-descriptionForeground);overflow-wrap:anywhere}@media(max-width:700px){.stats{grid-template-columns:repeat(2,minmax(120px,1fr))}}</style></head><body><h1>SCAP-NG Benchmark context</h1><p class="hint">Switching context changes navigation and authoring suggestions only. It never rewrites YAML or turns platform metadata into an applicability claim.</p><label for="benchmark">Current benchmark</label><select id="benchmark"><option value="">No benchmark context</option>${options}</select><p id="status" class="muted" role="status"></p><section id="details" aria-live="polite"></section><script nonce="benchmark-context">const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);const contexts=${scriptJson(data)};const initialFocus=${scriptJson(focusSection)};function text(value){return String(value??'');}function add(parent,tag,value,className){const node=document.createElement(tag);if(className)node.className=className;node.textContent=text(value);parent.append(node);return node;}function sourceLink(uri,label){const link=document.createElement('a');link.className='source-link';link.href='#';link.textContent=label;link.title='Open source file for editing';link.onclick=event=>{event.preventDefault();vscode.postMessage({type:'open',uri});};return link;}function list(parent,title,items,assessment=false,section=''){const details=document.createElement('details');if(section)details.dataset.section=section;const summary=document.createElement('summary');summary.textContent=title+' ('+items.length+')';details.append(summary);const wrap=document.createElement('div');wrap.className='items';for(const item of items){const row=document.createElement('div');row.className='item';const sourceUri=item.sourceUri||item.uri;const label=item.name||item.title||item.id||'Source file';const body=document.createElement('span');if(sourceUri)body.append(sourceLink(sourceUri,label));else body.textContent=label;const metadata=[item.id&&('id: '+item.id),item.targetId&&('assessment: '+item.targetId),item.version!==undefined&&('version: '+item.version),item.disabledRuleCount!==undefined&&(item.disabledRuleCount+' disabled Rules')].filter(Boolean).join(' · ');if(metadata){const meta=document.createElement('span');meta.className='muted';meta.textContent=' · '+metadata;body.append(meta);}row.append(body);if(item.uri&&assessment){for(const mode of ['yaml','graphical']){const button=document.createElement('button');button.className='secondary';button.type='button';button.textContent=mode==='yaml'?'YAML':'Graphical';button.title='Open Assessment in '+(mode==='yaml'?'native YAML':'graphical')+' editor';button.onclick=()=>vscode.postMessage({type:'open',uri:item.uri,mode});row.append(button);}}wrap.append(row);}details.append(wrap);parent.append(details);}function render(value){const root=$('details');root.replaceChildren();if(!value){add(root,'p','No benchmark selected. Choose a package above.','muted');return;}const banner=document.createElement('div');banner.className='banner';add(banner,'h2',value.label||value.benchmark.title||value.benchmark.id||'Benchmark');root.append(banner);const stats=document.createElement('div');stats.className='stats';for(const pair of [['Profiles',value.profiles.length,'profiles'],['Rules',value.ruleCount,'rules'],['Assessments',value.assessmentCount,'assessments'],['Applicability catalogs',value.applicabilityCount,'applicability'],['Conditions',value.conditionCount,'conditions']]){const card=document.createElement('button');card.type='button';card.className='stat stat-link';card.title='Open searchable '+pair[0]+' editor';add(card,'strong',pair[1]);add(card,'span',pair[0]);card.onclick=()=>vscode.postMessage({type:'section',section:pair[2]});stats.append(card);}root.append(stats);list(root,'Profiles',value.profiles,false,'profiles');list(root,'Rules',value.rules,false,'rules');const automated=value.assessments.filter(item=>item.mode==='automated');const manual=value.assessments.filter(item=>item.mode==='manual');const other=value.assessments.filter(item=>item.mode!=='automated'&&item.mode!=='manual');list(root,'Automated Assessments',automated,true,'assessments');list(root,'Manual Assessments',manual,true,'assessments');if(other.length)list(root,'Other Assessments',other,true,'assessments');list(root,'Applicability',value.applicability,false,'applicability');list(root,'Conditions',value.conditions||[],false,'conditions');}function focusSection(section){if(!section)return;const targets=[...document.querySelectorAll('[data-section=\"'+section+'\"]')];for(const target of targets)target.open=true;if(targets[0])targets[0].scrollIntoView({block:'start'});}function choose(key){const value=contexts.find(context=>context.key===key);render(value);$('status').textContent=value?'Context selected: '+(value.label||value.benchmark.title||value.benchmark.id||value.packagePath):'No benchmark context selected.';vscode.postMessage({type:'select',key:key||undefined});}$('benchmark').onchange=()=>choose($('benchmark').value);for(const button of document.querySelectorAll('button'))button.addEventListener('keydown',event=>{if(event.key==='Enter')button.click();});window.addEventListener('message',event=>{if(event.data.type==='selected'){$('benchmark').value=event.data.key||'';render(contexts.find(context=>context.key===event.data.key));}});render(contexts.find(context=>context.key===${scriptJson(activeKey)}));focusSection(initialFocus);</script></body></html>`;
+}
+async function selectBenchmarkRoot(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
+  // Do not await the workspace scan here. The setup surface is deliberately
+  // opened first so a large content root feels like a guided loading step,
+  // not a frozen command-palette action. Benchmark documents are indexed
+  // ahead of the rest of the corpus and will populate this wizard first.
+  const contexts = benchmarkContexts(index, state.importedRoots);
+  await openBenchmarkSetupPanel(extensionContext, index, tree, api, indexDiagnostics, contexts, state);
+}
+
+async function chooseBenchmarkRootAndBenchmark(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
+  const root = await promptForContentFolder(index, tree, api, indexDiagnostics, state);
+  if (!root) return;
+  // Choosing a filesystem root is only the first step when a root contains
+  // one or more converted Benchmarks. Keep the user in the selection flow so
+  // the root cannot silently leave Home in standalone mode.
+  await openBenchmarkSetupPanel(extensionContext, index, tree, api, indexDiagnostics, benchmarkContexts(index, state.importedRoots), state);
+}
+
+function benchmarkSetupData(contexts: readonly BenchmarkContextSummary[]) {
+  const labels = benchmarkContextLabels(contexts);
+  return contexts.map(context => ({
+    key: context.key,
+    label: labels.get(context.key) ?? context.packagePath,
+    // Keep the setup payload focused on the choices; file paths belong on
+    // the optional Benchmark details page, not in this selection step.
+    profileCount: context.profiles.length,
+    ruleCount: context.ruleCount,
+    assessmentCount: context.assessmentCount,
+    applicabilityCount: context.applicabilityCount,
+    conditionCount: context.conditionCount
+  }));
+}
+
+function benchmarkSetupHtml(contexts: readonly BenchmarkContextSummary[], activeKey?: string) {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-benchmark-setup';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:22px;max-width:900px}h1{font-size:21px;margin:0 0 7px}.hint,.muted{color:var(--vscode-descriptionForeground)}.search{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit;margin-top:8px}.choices{display:grid;gap:6px;margin:12px 0}.choice{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;text-align:left;width:100%;padding:8px 10px;border:1px solid var(--vscode-panel-border);border-left:3px solid transparent;background:var(--vscode-editor-background);color:var(--vscode-foreground);cursor:pointer}.choice:hover,.choice.selected{background:var(--vscode-list-hoverBackground);border-left-color:var(--vscode-textLink-foreground)}.choice strong{display:block;font-size:13px;overflow-wrap:anywhere}.choice small{display:block;color:var(--vscode-descriptionForeground);margin-top:4px;overflow-wrap:anywhere}.stats{margin-top:0;white-space:nowrap;color:var(--vscode-descriptionForeground);font-size:11px}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}button{font:inherit;padding:7px 11px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}button.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}button:disabled{opacity:.5;cursor:default}.status{min-height:1.4em;color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.empty{border:1px dashed var(--vscode-panel-border);padding:16px;margin:18px 0}</style></head><body><h1>Choose the Benchmark to edit</h1><p class="hint">This guided step selects the Benchmark you want to edit. The selected Benchmark filters applicability choices and guides new Assessments; it does not rewrite existing YAML or open the full Benchmark details page.</p><label class="muted" for="benchmarkSearch">Find a Benchmark</label><input id="benchmarkSearch" class="search" type="search" placeholder="Search by Benchmark name"><div id="choices" class="choices"></div><div id="empty" class="empty" hidden><strong>No Benchmark is available yet.</strong><p class="muted">The workspace scan may still be running. You can wait for it, or choose a content folder to index here.</p></div><p id="status" class="status" role="status" aria-live="polite">Scanning for Benchmark files…</p><div class="actions"><button id="browse">Choose content folder</button><button id="cancel">Cancel</button><button id="use" class="primary" disabled>Use selected Benchmark</button></div><script nonce="benchmark-setup">const vscode=acquireVsCodeApi();const initial=${scriptJson(benchmarkSetupData(contexts))};let data=initial;let selected=${scriptJson(activeKey)};let query='';const choices=document.getElementById('choices');const empty=document.getElementById('empty');const use=document.getElementById('use');const status=document.getElementById('status');function render(next,active){data=Array.isArray(next)?next:[];if(active&&data.some(item=>item.key===active))selected=active;else if(!data.some(item=>item.key===selected))selected=undefined;const visible=data.filter(item=>!query||item.label.toLocaleLowerCase().includes(query));choices.replaceChildren();for(const item of visible){const button=document.createElement('button');button.type='button';button.className='choice'+(item.key===selected?' selected':'');button.onclick=()=>{selected=item.key;render(data,selected);};button.ondblclick=()=>{selected=item.key;vscode.postMessage({type:'select',key:selected});};const title=document.createElement('strong');title.textContent=item.label;button.append(title);const stats=document.createElement('div');stats.className='stats';stats.textContent=[item.profileCount+' profiles',item.ruleCount+' Rules',item.assessmentCount+' Assessments',item.applicabilityCount+' applicability catalogs',item.conditionCount+' conditions'].join(' · ');button.append(stats);choices.append(button);}empty.hidden=data.length>0;use.disabled=!selected;if(data.length){if(status.textContent==='Scanning for Benchmark files…'||status.textContent==='No Benchmark is available yet.')status.textContent=visible.length+' Benchmark'+(visible.length===1?'':'s')+' shown. Double-click one or use the button below.';if(!visible.length)status.textContent='No Benchmarks match your search.';}else{if(status.textContent!=='Choose a content folder to continue.')status.textContent='Scanning for Benchmark files…';}}document.getElementById('benchmarkSearch').oninput=event=>{query=event.target.value.trim().toLocaleLowerCase();render(data,selected);};document.getElementById('browse').onclick=()=>{status.textContent='Choose a folder to index; this wizard will stay open while it loads…';vscode.postMessage({type:'browse'});};document.getElementById('cancel').onclick=()=>vscode.postMessage({type:'cancel'});use.onclick=()=>{if(selected)vscode.postMessage({type:'select',key:selected});};window.addEventListener('message',event=>{if(event.data.type==='contexts')render(event.data.contexts,event.data.activeKey);if(event.data.type==='status'){status.className='status'+(event.data.error?' error':'');status.textContent=event.data.message||'';}});vscode.postMessage({type:'ready'});render(data,selected);</script></body></html>`;
+}
+async function openBenchmarkSetupPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, contexts: readonly BenchmarkContextSummary[], state: BenchmarkContextState) {
+  const panel = api.window.createWebviewPanel('scapNg.benchmarkSetup', 'Choose Benchmark to edit', api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: false });
+  panel.webview.html = benchmarkSetupHtml(contexts, state.activeKey);
+  let browsing = false;
+  const refresh = () => {
+    const current = benchmarkContexts(index, state.importedRoots);
+    void panel.webview.postMessage({ type: 'contexts', contexts: benchmarkSetupData(current), activeKey: state.activeKey });
+  };
+  state.refreshListeners.add(refresh);
+  const onMessage = panel.webview.onDidReceiveMessage(async (message: any) => {
+    if (message.type === 'ready') { refresh(); return; }
+    if (message.type === 'cancel') { panel.dispose(); return; }
+    if (message.type === 'browse') {
+      if (browsing) return;
+      browsing = true;
+      try {
+        const root = await promptForContentFolder(index, tree, api, indexDiagnostics, state);
+        refresh();
+        if (!root) panel.webview.postMessage({ type: 'status', message: 'Choose a content folder to continue.' });
+      } catch (error) {
+        panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) });
+      } finally { browsing = false; }
+      return;
+    }
+    if (message.type === 'select' && typeof message.key === 'string') {
+      const current = benchmarkContexts(index, state.importedRoots);
+      const selected = current.find(context => context.key === message.key);
+      if (!selected) { panel.webview.postMessage({ type: 'status', error: true, message: 'That Benchmark is no longer available. Wait for indexing to finish, then choose it again.' }); return; }
+      selectBenchmarkContext(state, selected.key);
+      panel.dispose();
+      await api.window.showInformationMessage(`Benchmark context selected: ${selected.benchmark.title ?? selected.benchmark.id ?? selected.packagePath}`);
+    }
+  });
+  const cleanup = () => { state.refreshListeners.delete(refresh); onMessage.dispose(); };
+  panel.onDidDispose(cleanup);
+  extensionContext.subscriptions.push(panel);
+  // The scan is intentionally observed, not awaited. The wizard remains
+  // responsive and receives Benchmark cards as soon as the fast first pass
+  // completes, followed by current stats after the rest of the corpus loads.
+  if (state.ready) void state.ready.then(refresh, error => panel.webview.postMessage({ type: 'status', error: true, message: `Content scan failed: ${error instanceof Error ? error.message : String(error)}` }));
+  refresh();
+}
+
+function benchmarkAssessmentChooserData(context: BenchmarkContextSummary | undefined) {
+  if (!context) return undefined;
+  const label = benchmarkContextLabels([context]).get(context.key) ?? context.benchmark.title ?? context.benchmark.id ?? 'Benchmark';
+  return {
+    label,
+    assessments: context.assessments.map(assessment => ({
+      uri: assessment.uri,
+      title: assessment.title ?? assessment.id ?? 'Untitled Assessment',
+      id: assessment.id,
+      mode: assessment.mode,
+      version: assessment.version
+    }))
+  };
+}
+
+function benchmarkAssessmentChooserHtml(context: BenchmarkContextSummary | undefined) {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-assessment-chooser';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:18px;max-width:900px}h1{font-size:20px;margin:0 0 7px}.hint,.muted{color:var(--vscode-descriptionForeground)}.context{font-weight:600;margin:15px 0 8px}.search{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}.group{margin:17px 0}.group h2{font-size:14px;margin:0 0 7px}.list{display:grid;gap:6px}.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--vscode-panel-border)}.name{font-weight:600;overflow-wrap:anywhere}.meta{display:block;color:var(--vscode-descriptionForeground);font-size:11px;margin-top:3px}.badge{display:inline-block;margin-left:7px;padding:2px 5px;border:1px solid var(--vscode-panel-border);color:var(--vscode-descriptionForeground);font-size:10px;font-weight:400;vertical-align:middle}.item-actions{display:flex;gap:6px}.item button,button{font:inherit;padding:6px 9px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}.empty{border:1px dashed var(--vscode-panel-border);padding:15px;margin:16px 0}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.error{color:var(--vscode-errorForeground)}@media(max-width:650px){.item{grid-template-columns:1fr}.item-actions{justify-content:flex-start}}</style></head><body><h1>Open an Assessment</h1><p class="hint">Assessments are separated by authoring mode before you open one. YAML always opens the native YAML editor; Graphical always opens the graphical editor, regardless of the global editor preference.</p><p id="context" class="context"></p><input id="search" class="search" type="search" placeholder="Search Assessments"><div id="groups"></div><div id="empty" class="empty" hidden><strong>No associated Assessments are indexed yet.</strong><p class="muted">Refresh Benchmark data after adding files, or create a new Assessment from Home.</p></div><p id="status" class="muted" role="status" aria-live="polite">Loading associated Assessments…</p><div class="actions"><button id="switch">Change Benchmark</button><button id="cancel">Cancel</button></div><script nonce="assessment-chooser">const vscode=acquireVsCodeApi();const initial=${scriptJson(benchmarkAssessmentChooserData(context))};let data=initial;let query='';const contextNode=document.getElementById('context');const groups=document.getElementById('groups');const empty=document.getElementById('empty');const status=document.getElementById('status');function modeOf(item){return item.mode==='manual'?'Manual':item.mode==='automated'?'Automated':'Other';}function render(next){data=next||undefined;contextNode.textContent=data?'Current Benchmark: '+data.label:'';groups.replaceChildren();const items=(data?.assessments||[]).filter(item=>!query||[item.title,item.id,item.mode].filter(Boolean).some(value=>String(value).toLocaleLowerCase().includes(query)));const names=['Automated','Manual','Other'];for(const groupName of names){const groupItems=items.filter(item=>modeOf(item)===groupName);if(!groupItems.length)continue;const section=document.createElement('section');section.className='group';const heading=document.createElement('h2');heading.textContent=groupName+' Assessments ('+groupItems.length+')';section.append(heading);const list=document.createElement('div');list.className='list';for(const item of groupItems){const row=document.createElement('div');row.className='item';const body=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=item.title;const badge=document.createElement('span');badge.className='badge';badge.textContent=groupName;name.append(badge);body.append(name);const meta=document.createElement('span');meta.className='meta';meta.textContent=[item.id,item.version!==undefined?'version '+item.version:undefined].filter(Boolean).join(' · ');body.append(meta);const actions=document.createElement('div');actions.className='item-actions';for(const mode of ['yaml','graphical']){const button=document.createElement('button');button.textContent=mode==='yaml'?'YAML':'Graphical';button.onclick=()=>vscode.postMessage({type:'open',uri:item.uri,mode});actions.append(button);}row.append(body,actions);list.append(row);}section.append(list);groups.append(section);}empty.hidden=Boolean(data?.assessments?.length);if(!data)status.textContent='Loading associated Assessments…';else if(!data.assessments.length)status.textContent='No associated Assessments are indexed yet.';else status.textContent=items.length+' matching Assessment'+(items.length===1?'':'s')+'; choose YAML or Graphical.';}document.getElementById('search').oninput=event=>{query=event.target.value.trim().toLocaleLowerCase();render(data);};document.getElementById('switch').onclick=()=>vscode.postMessage({type:'switch'});document.getElementById('cancel').onclick=()=>vscode.postMessage({type:'cancel'});window.addEventListener('message',event=>{if(event.data.type==='context')render(event.data.context);if(event.data.type==='status'){status.className=event.data.error?'error':'muted';status.textContent=event.data.message||'';}});vscode.postMessage({type:'ready'});render(data);</script></body></html>`;
+}
+
+type BenchmarkSourceSection = 'rules' | 'applicability' | 'conditions';
+
+type BenchmarkEntityKind = 'rule' | 'applicability' | 'condition';
+
+function benchmarkEntityReferenceData(context: BenchmarkContextSummary | undefined) {
+  return {
+    availableAssessments: (context?.assessments ?? []).map(item => ({ id: item.id, title: item.title, mode: item.mode, version: item.version })),
+    availableConditions: (context?.conditions ?? []).map(item => ({ id: item.name, title: item.name, assessment: item.targetId }))
+  };
+}
+function benchmarkEntityModel(text: string, kind: BenchmarkEntityKind, conditionName?: string, references: any = {}) {
+  const value: any = new SourceBuffer(text).json();
+  if (kind === 'rule') {
+    const body = value.rule ?? {};
+    return { kind, id: body.id, revision: sha256(text), title: body.title, version: body.version, severity: body.severity, role: body.role, weight: body.weight, discussion: body.discussion, requires: body.requires ?? [], conflicts: body.conflicts ?? [], applicability: body.applicability ?? [], assessmentChoices: body.assessment_choices ?? {}, defaultAssessmentChoice: body.default_assessment_choice, availableAssessments: references.availableAssessments ?? [], availableConditions: references.availableConditions ?? [] };
+  }
+  const body = value.applicability ?? {};
+  if (kind === 'applicability') return { kind, id: body.id, revision: sha256(text), conditions: Object.entries(body.conditions ?? {}).map(([name, condition]: [string, any]) => ({ name, assessment: condition?.assessment, path: ['applicability', 'conditions', name, 'assessment'] })) };
+  const condition = body.conditions?.[conditionName ?? ''];
+  return { kind, id: conditionName, revision: sha256(text), assessment: condition?.assessment, path: ['applicability', 'conditions', conditionName, 'assessment'] };
+}
+
+function benchmarkEntityGraphicalHtml(kind: BenchmarkEntityKind, initialModel?: any) {
+  // This surface intentionally mirrors the Assessment editor's contract: a
+  // navigation rail, focused inspector sections, explicit YAML escape hatch,
+  // and extension-host-owned localized edits. It is not a read-only summary.
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-scap-ng-entity-editor';"><style>
+:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;height:100vh;overflow:hidden;color:var(--vscode-foreground);background:var(--vscode-editor-background);font:var(--vscode-font-size)/1.4 var(--vscode-font-family)}button,input,select,textarea{font:inherit}button{cursor:pointer}.shell{height:100vh;display:grid;grid-template-rows:auto 1fr 24px}.topbar{display:flex;align-items:center;gap:9px;padding:0 10px;min-height:38px;border-bottom:1px solid var(--vscode-panel-border);background:var(--vscode-sideBar-background)}.topbar strong{font-size:13px}.topbar .file{min-width:0;flex:1;color:var(--vscode-descriptionForeground);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topbar button,.action{border:1px solid var(--vscode-panel-border);border-radius:3px;padding:5px 9px;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground)}.topbar button.primary,.action.primary{border-color:var(--vscode-button-background);background:var(--vscode-button-background);color:var(--vscode-button-foreground)}.workspace{min-height:0;display:grid;grid-template-columns:235px minmax(0,1fr)}.rail{min-width:0;overflow:auto;padding:12px 9px;background:var(--vscode-sideBar-background);border-right:1px solid var(--vscode-panel-border)}.rail h2{font-size:12px;margin:0 4px 4px}.rail p{font-size:11px;color:var(--vscode-descriptionForeground);margin:0 4px 13px}.nav{display:grid;gap:2px}.nav button{border:0;border-radius:3px;text-align:left;padding:7px 8px;background:transparent;color:var(--vscode-foreground)}.nav button:hover{background:var(--vscode-list-hoverBackground)}.nav button.active{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.nav small{display:block;color:var(--vscode-descriptionForeground);margin-top:2px}.inspector{min-width:0;overflow:auto;padding:17px 22px 30px}.crumb{color:var(--vscode-descriptionForeground);font-size:11px;margin-bottom:5px}.inspector h1{font-size:18px;margin:0}.sub{color:var(--vscode-descriptionForeground);font-size:12px;margin:3px 0 12px}.banner{border-left:3px solid var(--vscode-textLink-foreground);padding:9px 11px;margin:10px 0 15px;background:var(--vscode-textBlockQuote-background);font-size:12px}.section{border-top:1px solid var(--vscode-panel-border);padding:14px 0 3px;max-width:920px}.section h2{font-size:13px;margin:0 0 9px}.section p{color:var(--vscode-descriptionForeground);font-size:11px;margin:4px 0 9px}.field{display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:12px;align-items:start;margin:9px 0;max-width:920px}.field label{padding-top:7px;font-weight:600;font-size:12px;overflow-wrap:anywhere}.field input,.field textarea,.field select,.condition input{width:100%;min-height:30px;padding:5px 7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);border-radius:2px}.field textarea{min-height:90px;resize:vertical;font-family:var(--vscode-editor-font-family)}.field input:focus,.field textarea:focus,.field select:focus,.condition input:focus{outline:1px solid var(--vscode-focusBorder)}.readonly{opacity:.65}.list-help{display:block;color:var(--vscode-descriptionForeground);font-size:10px;margin-top:3px}.condition{display:grid;grid-template-columns:minmax(210px,1fr) minmax(260px,2fr);gap:12px;align-items:center;border-top:1px solid var(--vscode-panel-border);padding:9px 0;max-width:920px}.condition:first-of-type{border-top:0}.condition strong{font:11px var(--vscode-editor-font-family);overflow-wrap:anywhere}.choice{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center;border-top:1px solid var(--vscode-panel-border);padding:9px 0;max-width:920px}.choice strong{font-size:12px}.statusbar{display:flex;align-items:center;padding:0 10px;border-top:1px solid var(--vscode-panel-border);color:var(--vscode-descriptionForeground);font-size:11px}.error{color:var(--vscode-errorForeground)!important}.muted{color:var(--vscode-descriptionForeground)}.source-note{font:11px var(--vscode-editor-font-family);overflow-wrap:anywhere;color:var(--vscode-descriptionForeground)}.picker{position:relative;min-width:0}.picker input{width:100%;min-height:30px;padding:5px 7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);border-radius:2px}.picker-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.picker-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 6px;border:1px solid var(--vscode-panel-border);border-radius:3px;background:var(--vscode-textBlockQuote-background);font:11px var(--vscode-editor-font-family);overflow-wrap:anywhere}.picker-chip button{border:0;background:transparent;color:inherit;padding:0 2px}.picker-results{position:absolute;z-index:20;left:0;right:0;top:100%;max-height:260px;overflow:auto;margin-top:2px;border:1px solid var(--vscode-focusBorder);background:var(--vscode-menu-background);box-shadow:0 4px 12px #0006}.picker-item{display:block;width:100%;padding:7px 9px;text-align:left;border:0;border-bottom:1px solid var(--vscode-panel-border);background:transparent;color:var(--vscode-menu-foreground);overflow-wrap:anywhere}.picker-item:hover{background:var(--vscode-menu-selectionBackground);color:var(--vscode-menu-selectionForeground)}.picker-empty{padding:8px;color:var(--vscode-descriptionForeground);font-size:11px}.picker-help{display:block;margin-top:3px;color:var(--vscode-descriptionForeground);font-size:10px}@media(max-width:700px){.workspace{grid-template-columns:170px minmax(0,1fr)}.inspector{padding:14px}.field{grid-template-columns:1fr;gap:3px}.condition,.choice{grid-template-columns:1fr;gap:4px}.topbar .file{display:none}}
+</style></head><body><div class="shell"><header class="topbar"><strong id="topTitle">SCAP-NG</strong><span id="file" class="file"></span><button id="yaml" type="button">YAML</button><button id="close" type="button">Close</button></header><div class="workspace"><aside class="rail"><h2 id="railTitle">Source inspector</h2><p>Graphical editing writes localized changes to the authoritative YAML. Native Undo/Redo remains available.</p><nav id="nav" class="nav"></nav></aside><main class="inspector"><div class="crumb">Selected Benchmark source <span aria-hidden="true">›</span> Graphical editor</div><h1 id="heading">Loading graphical editor…</h1><p id="sub" class="sub">Loading the authored model…</p><div id="banner" class="banner"></div><div id="editor"></div></main></div><footer id="status" class="statusbar" role="status" aria-live="polite">Loading…</footer></div><script nonce="scap-ng-entity-editor">const vscode=acquireVsCodeApi();const kind=${scriptJson(kind)};const initialModel=${scriptJson(initialModel)};let model=initialModel;const editor=document.getElementById('editor');const nav=document.getElementById('nav');const status=document.getElementById('status');const text=value=>value===undefined||value===null?'':String(value);function setStatus(message,error=false){status.textContent=message||'';status.className='statusbar'+(error?' error':'')}function send(path,value,replace=false){if(!model)return;setStatus('Saving localized source edit…');vscode.postMessage({type:'edit',path,value,replace,revision:model.revision,version:model.version})}function section(title,id){const node=document.createElement('section');node.className='section';node.id=id;const h=document.createElement('h2');h.textContent=title;node.append(h);editor.append(node);return node}function field(parent,label,path,value,opts={}){const row=document.createElement('div');row.className='field';const name=document.createElement('label');name.textContent=label;const control=opts.multiline?document.createElement('textarea'):opts.select?document.createElement('select'):document.createElement('input');if(opts.multiline)control.value=text(value);else if(opts.select){let values=[...(opts.select||[])];if(value!==undefined&&value!==null&&!values.includes(value))values.push(value);for(const option of values){const item=document.createElement('option');item.value=option;item.textContent=option;item.selected=option===value;control.append(item)}}else{control.value=text(value);control.type=opts.number?'number':'text'}if(opts.readonly){control.disabled=true;control.className='readonly'}else control.onchange=()=>send(path,opts.number?(control.value===''?null:Number(control.value)):control.value,opts.replace===true);row.append(name,control);parent.append(row);return row}function listField(parent,label,path,value){const row=document.createElement('div');row.className='field';const name=document.createElement('label');name.textContent=label;const control=document.createElement('textarea');control.value=Array.isArray(value)?value.join('\\n'):'';control.rows=3;control.onchange=()=>send(path,control.value.split(/\\r?\\n/).map(item=>item.trim()).filter(Boolean),true);const help=document.createElement('span');help.className='list-help';help.textContent='One referenced ID per line.';const box=document.createElement('div');box.append(control,help);row.append(name,box);parent.append(row);return row}function itemValue(item){return typeof item==='string'?item:String(item?.id||'')}function itemLabel(item){if(typeof item==='string')return item;return [item?.title,item?.id,item?.mode].filter(Boolean).join(' · ')||String(item?.id||'')}function referencePicker(parent,label,path,value,items,options={}){const multi=options.multi===true;const row=label?document.createElement('div'):parent;if(label){row.className='field';const name=document.createElement('label');name.textContent=label;row.append(name)}const box=document.createElement('div');box.className='picker';const selected=multi?(Array.isArray(value)?value.map(String):[]):[value===undefined||value===null?'':String(value)];const chips=document.createElement('div');chips.className='picker-chips';const input=document.createElement('input');input.type='search';input.placeholder=multi?'Search and add existing conditions':'Search existing Assessments by title or ID';if(!multi)input.value=selected[0]||'';input.setAttribute('aria-label',label||'Choose existing reference');const results=document.createElement('div');results.className='picker-results';results.hidden=true;const help=document.createElement('small');help.className='picker-help';help.textContent=multi?'Click to search and add existing applicability conditions.':'Click the field and type to search existing Assessment automations or manual Assessments.';box.append(chips,input,help,results);if(label)row.append(box);else parent.append(box);function commit(){send(path,multi?selected.slice():selected[0]||'',multi)}function renderChips(){chips.replaceChildren();if(!multi)return;for(const id of selected){const chip=document.createElement('span');chip.className='picker-chip';chip.textContent=id;const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Remove '+id;remove.onclick=()=>{const index=selected.indexOf(id);if(index>=0){selected.splice(index,1);renderChips();commit()}};chip.append(remove);chips.append(chip)}}function draw(){const query=input.value.trim().toLocaleLowerCase();results.replaceChildren();const matches=(Array.isArray(items)?items:[]).filter(item=>{const haystack=itemLabel(item).toLocaleLowerCase();return !query||haystack.includes(query)}).slice(0,80);if(!matches.length){const empty=document.createElement('div');empty.className='picker-empty';empty.textContent=items?.length?'No matching existing reference.':'No indexed references are available.';results.append(empty)}for(const item of matches){const id=itemValue(item);if(multi&&selected.includes(id))continue;const button=document.createElement('button');button.type='button';button.className='picker-item';button.textContent=itemLabel(item);button.title=id;button.onclick=()=>{if(multi){if(!selected.includes(id))selected.push(id);input.value='';renderChips()}else{selected[0]=id;input.value=id;results.hidden=true}commit();if(multi)draw()};results.append(button)}results.hidden=false}input.onfocus=()=>{if(!multi&&input.value)input.select();draw()};input.oninput=draw;input.onkeydown=event=>{if(event.key==='Escape')results.hidden=true};document.addEventListener('click',event=>{if(!box.contains(event.target))results.hidden=true});renderChips();return row}function navItem(label,id,detail){const button=document.createElement('button');button.type='button';button.dataset.target=id;button.innerHTML='';const strong=document.createElement('span');strong.textContent=label;button.append(strong);if(detail){const small=document.createElement('small');small.textContent=detail;button.append(small)}button.onclick=()=>{document.getElementById(id)?.scrollIntoView({block:'start',behavior:'smooth'});for(const item of nav.children)item.classList.toggle('active',item===button)};nav.append(button);return button}function render(next){model=next;if(!model){setStatus('The source model could not be loaded.',true);return}editor.replaceChildren();nav.replaceChildren();const label=kind==='rule'?'Rule':kind==='applicability'?'Applicability catalog':'Applicability condition';document.getElementById('topTitle').textContent='SCAP-NG '+label+' editor';document.getElementById('file').textContent=model.sourceName||'';document.getElementById('heading').textContent=label+' graphical editor';document.getElementById('sub').textContent='Edit authored values with the same source-preserving workflow as Assessment graphical editing.';document.getElementById('banner').textContent=kind==='rule'?'Rule: '+text(model.title||model.id):kind==='applicability'?'Catalog: '+text(model.id):'Condition: '+text(model.id);if(kind==='rule'){const identity=section('Rule identity','identity');navItem('Rule identity','identity',text(model.id));field(identity,'Rule ID',['rule','id'],model.id,{readonly:true});field(identity,'Title',['rule','title'],model.title);field(identity,'Version',['rule','version'],model.version);field(identity,'Severity',['rule','severity'],model.severity,{select:['low','medium','high','critical']});field(identity,'Role',['rule','role'],model.role);field(identity,'Weight',['rule','weight'],model.weight,{number:true});const policy=section('Policy and relationships','policy');navItem('Policy and relationships','policy','discussion, references, applicability picker');field(policy,'Discussion',['rule','discussion'],model.discussion,{multiline:true,replace:true});listField(policy,'Requires',['rule','requires'],model.requires);listField(policy,'Conflicts',['rule','conflicts'],model.conflicts);const applicability=section('Applicability','applicability');navItem('Applicability','applicability',(model.availableConditions||[]).length+' existing conditions · searchable');referencePicker(applicability,'Applicable conditions',['rule','applicability'],model.applicability,model.availableConditions,{multi:true});const choices=section('Assessment choices','choices');navItem('Assessment choices','choices',Object.keys(model.assessmentChoices||{}).length+' choices · searchable references');const authored=Object.entries(model.assessmentChoices||{});if(!authored.length){const empty=document.createElement('p');empty.textContent='No assessment choices are authored in this Rule.';choices.append(empty)}for(const [name,value] of authored){const row=document.createElement('div');row.className='choice';const heading=document.createElement('strong');heading.textContent=name==='automated'?'Automated assessment':'Manual assessment';row.append(heading);referencePicker(row,'',['rule','assessment_choices',name,'assessment'],value?.assessment,model.availableAssessments,{multi:false});choices.append(row)}field(choices,'Default assessment choice',['rule','default_assessment_choice'],model.defaultAssessmentChoice,{select:authored.map(([name])=>name)});}else if(kind==='applicability'){const identity=section('Applicability catalog','identity');navItem('Catalog identity','identity',text(model.id));field(identity,'Catalog ID',['applicability','id'],model.id,{readonly:true});const conditions=section('Condition mappings','conditions');navItem('Condition mappings','conditions',(model.conditions||[]).length+' conditions');if(!model.conditions?.length){const empty=document.createElement('p');empty.textContent='No conditions are authored in this catalog.';conditions.append(empty)}for(const condition of model.conditions||[]){const row=document.createElement('div');row.className='condition';const name=document.createElement('strong');name.textContent=condition.name;const input=document.createElement('input');input.value=text(condition.assessment);input.setAttribute('aria-label','Assessment for '+condition.name);input.onchange=()=>send(condition.path,input.value);row.append(name,input);conditions.append(row)}}else{const identity=section('Condition mapping','identity');navItem('Condition mapping','identity',text(model.id));field(identity,'Condition name',['applicability','conditions',model.id],model.id,{readonly:true});field(identity,'Assessment ID',model.path,model.assessment);const note=document.createElement('p');note.textContent='Condition names are reference keys. Rename them in YAML only after updating every Rule and dependency that refers to this condition.';identity.append(note)}const first=nav.firstElementChild;if(first)first.classList.add('active');setStatus('Ready. Changes are saved to YAML as you leave each field.')}document.getElementById('yaml').onclick=()=>vscode.postMessage({type:'openSource'});document.getElementById('close').onclick=()=>vscode.postMessage({type:'close'});window.addEventListener('message',event=>{const message=event.data;if(message.type==='model')render(message.model);if(message.type==='status')setStatus(message.message||'');if(message.type==='error')setStatus(message.message||'Edit failed',true)});window.addEventListener('error',event=>{try{vscode.postMessage({type:'webviewError',message:event.message||'Unknown graphical editor error'})}catch{}});render(initialModel);vscode.postMessage({type:'ready'});</script></body></html>`;
+}
+async function openBenchmarkGraphicalEditor(extensionContext: vscode.ExtensionContext, api: any, uri: any, kind: BenchmarkEntityKind, conditionName: string | undefined, getPack: () => MetadataPack | undefined, getReferences: () => any = () => ({})) {
+  const document = await api.workspace.openTextDocument(uri);
+  const panel = api.window.createWebviewPanel(`scapNg.${kind}Graphical`, kind === 'rule' ? 'Graphical Rule' : kind === 'applicability' ? 'Graphical Applicability' : 'Graphical Condition', api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: true });
+  const initialModel = { ...benchmarkEntityModel(document.getText(), kind, conditionName, getReferences()), version: document.version, sourceName: document.uri?.fsPath ?? document.fileName };
+  panel.webview.options = { enableScripts: true };
+  panel.webview.html = benchmarkEntityGraphicalHtml(kind, initialModel);
+  const send = () => { try { void panel.webview.postMessage({ type: 'model', model: { ...benchmarkEntityModel(document.getText(), kind, conditionName, getReferences()), version: document.version, sourceName: document.uri?.fsPath ?? document.fileName } }); } catch (error) { void panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); } };
+  const listener = panel.webview.onDidReceiveMessage(async (message: any) => {
+    if (message.type === 'ready') { send(); return; }
+    if (message.type === 'close') { panel.dispose(); return; }
+    if (message.type === 'openSource') { await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Beside ?? 2, preserveFocus: false, preview: false }); return; }
+    if (message.type === 'webviewError') {
+      const detail = typeof message.message === 'string' ? message.message : 'Unknown webview error';
+      void api.window.showErrorMessage(`SCAP-NG graphical editor failed to load: ${detail}`);
+      return;
+    }
+    if (message.type !== 'edit' || !Array.isArray(message.path)) return;
+    try {
+      const revision = sha256(document.getText());
+      if (message.revision !== revision || (message.version !== undefined && message.version !== document.version)) throw new Error('Document changed before this edit; refresh and try again.');
+      const source = new SourceBuffer(document.getText());
+      const before = source.json();
+      const edit = message.replace ? source.replacePathValue(message.path, message.value, revision) : source.editScalar(message.path, message.value, revision);
+      const pack = getPack();
+      const schemaUri = kind === 'rule' ? 'https://scap-ng.dev/schema/v0.4.0/rule.schema.json' : 'https://scap-ng.dev/schema/v0.4.0/applicability.schema.json';
+      if (pack) {
+        const beforeErrors = pack.validate(schemaUri, before);
+        const afterErrors = pack.validate(schemaUri, edit.document.json());
+        const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
+        if (introduced.length) throw new Error('Pinned schema rejected this edit: ' + introduced.join('; '));
+      }
+      await applySourceWorkspaceEdit(api, document, edit);
+      panel.webview.postMessage({ type: 'status', message: 'Saved localized YAML edit; native Undo/Redo remains available.' });
+    } catch (error) { panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); send(); }
+  });
+  const onChange = api.workspace.onDidChangeTextDocument?.((event: any) => { if (event.document.uri.toString() === document.uri.toString()) send(); });
+  panel.onDidDispose(() => { listener.dispose(); onChange?.dispose?.(); });
+  extensionContext.subscriptions.push(panel);
+  send();
+}
+
+function benchmarkSourceChooserData(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection) {
+  if (!context) return undefined;
+  const label = benchmarkContextLabels([context]).get(context.key) ?? context.benchmark.title ?? context.benchmark.id ?? 'Benchmark';
+  const entries = section === 'rules'
+    ? context.rules.map(rule => ({ uri: rule.uri, title: rule.title ?? rule.id ?? 'Untitled Rule', id: rule.id, conditionName: undefined }))
+    : section === 'applicability'
+      ? context.applicability.map(catalog => ({ uri: catalog.uri, title: catalog.title ?? catalog.id ?? 'Applicability catalog', id: catalog.id, conditionName: undefined }))
+      : context.conditions.map(condition => ({ uri: condition.sourceUri, title: condition.name, id: condition.targetId, path: condition.path, conditionName: condition.name }));
+  const titles: Record<BenchmarkSourceSection, string> = { rules: 'Rules', applicability: 'Applicability', conditions: 'Conditions' };
+  return { label, section, title: titles[section], entries };
+}
+
+function benchmarkSourceChooserHtml(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection) {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-benchmark-source-chooser';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:18px;max-width:900px}h1{font-size:20px;margin:0 0 7px}.hint,.muted{color:var(--vscode-descriptionForeground)}.context{font-weight:600;margin:15px 0 8px}.search{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}.list{display:grid;gap:6px;margin-top:17px}.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--vscode-panel-border)}.name{font-weight:600;overflow-wrap:anywhere}.meta{display:block;color:var(--vscode-descriptionForeground);font-size:11px;margin-top:3px}.item-actions{display:flex;gap:6px}.item button,button{font:inherit;padding:6px 9px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}.empty{border:1px dashed var(--vscode-panel-border);padding:15px;margin:16px 0}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.error{color:var(--vscode-errorForeground)}@media(max-width:650px){.item{grid-template-columns:1fr}.item-actions{justify-content:flex-start}}</style></head><body><h1>Open Benchmark ${escapeHtml(section === 'rules' ? 'Rule' : section === 'applicability' ? 'Applicability' : 'Condition')}</h1><p class="hint">Search the selected Benchmark's ${escapeHtml(section)} and open the authored YAML source for editing.</p><p id="context" class="context"></p><input id="search" class="search" type="search" placeholder="Search ${escapeHtml(section)}"><div id="list" class="list"></div><div id="empty" class="empty" hidden><strong>No ${escapeHtml(section)} are indexed yet.</strong><p class="muted">Refresh Benchmark data after adding files.</p></div><p id="status" class="muted" role="status" aria-live="polite">Loading ${escapeHtml(section)}…</p><div class="actions"><button id="switch">Change Benchmark</button><button id="cancel">Cancel</button></div><script nonce="benchmark-source-chooser">const vscode=acquireVsCodeApi();const initial=${scriptJson(benchmarkSourceChooserData(context,section))};const singular=${scriptJson(section === 'applicability' ? 'applicability' : section.slice(0,-1))};let data=initial;let query='';const contextNode=document.getElementById('context');const listNode=document.getElementById('list');const empty=document.getElementById('empty');const status=document.getElementById('status');function render(next){data=next||undefined;contextNode.textContent=data?'Current Benchmark: '+data.label:'';const items=(data?.entries||[]).filter(item=>!query||[item.title,item.id,item.path].filter(Boolean).some(value=>String(value).toLocaleLowerCase().includes(query)));listNode.replaceChildren();for(const item of items){const row=document.createElement('div');row.className='item';const body=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=item.title;body.append(name);const meta=document.createElement('span');meta.className='meta';meta.textContent=[item.id,item.path].filter(Boolean).join(' · ');body.append(meta);const actions=document.createElement('div');actions.className='item-actions';const button=document.createElement('button');button.textContent='YAML';button.title='Open source YAML for editing';button.onclick=()=>vscode.postMessage({type:'open',uri:item.uri});actions.append(button);const graphical=document.createElement('button');graphical.textContent='Graphical';graphical.title='Open graphical editor';graphical.onclick=()=>vscode.postMessage({type:'graphical',uri:item.uri,conditionName:item.conditionName});actions.append(graphical);row.append(body,actions);listNode.append(row);}empty.hidden=Boolean(data?.entries?.length);if(!data)status.textContent='Loading '+${scriptJson(section)}+'…';else if(!data.entries.length)status.textContent='No '+${scriptJson(section)}+' are indexed yet.';else status.textContent=items.length+' matching '+singular+(items.length===1?'':'s')+'.';}document.getElementById('search').oninput=event=>{query=event.target.value.trim().toLocaleLowerCase();render(data);};document.getElementById('switch').onclick=()=>vscode.postMessage({type:'switch'});document.getElementById('cancel').onclick=()=>vscode.postMessage({type:'cancel'});window.addEventListener('message',event=>{if(event.data.type==='context')render(event.data.context);if(event.data.type==='status'){status.className=event.data.error?'error':'muted';status.textContent=event.data.message||'';}});vscode.postMessage({type:'ready'});render(data);</script></body></html>`;
+}
+
+async function openBenchmarkSourceChooserPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, api: any, state: BenchmarkContextState, section: BenchmarkSourceSection, getPack: () => MetadataPack | undefined) {
+  const selected = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+  if (!selected) return false;
+  const title = section === 'rules' ? 'Open Benchmark Rules' : section === 'applicability' ? 'Open Benchmark Applicability' : 'Open Benchmark Conditions';
+  const panel = api.window.createWebviewPanel(`scapNg.${section}Chooser`, title, api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: true });
+  panel.webview.html = benchmarkSourceChooserHtml(selected, section);
+  const refresh = () => {
+    const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+    void panel.webview.postMessage({ type: 'context', context: benchmarkSourceChooserData(current, section) });
+  };
+  state.refreshListeners.add(refresh);
+  const listener = panel.webview.onDidReceiveMessage(async (message: any) => {
+    if (message.type === 'ready') { refresh(); return; }
+    if (message.type === 'cancel') { panel.dispose(); return; }
+    if (message.type === 'switch') { panel.dispose(); await api.commands.executeCommand('scapNg.selectBenchmarkRoot'); return; }
+    if ((message.type !== 'open' && message.type !== 'graphical') || typeof message.uri !== 'string') return;
+    const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+    const data = benchmarkSourceChooserData(current, section);
+    const entry = data?.entries.find(candidate => candidate.uri === message.uri && (section !== 'conditions' || candidate.conditionName === message.conditionName));
+    if (!entry) { panel.webview.postMessage({ type: 'status', error: true, message: `That ${data?.title ?? 'source'} is not associated with the current Benchmark.` }); return; }
+    try {
+      const uri = api.Uri.parse(message.uri);
+      if (message.type === 'graphical') await openBenchmarkGraphicalEditor(extensionContext, api, uri, section === 'rules' ? 'rule' : section === 'applicability' ? 'applicability' : 'condition', section === 'conditions' ? entry.conditionName : undefined, getPack, () => benchmarkEntityReferenceData(benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey)));
+      else await api.commands.executeCommand('vscode.open', uri);
+    }
+    catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
+  });
+  panel.onDidDispose(() => { state.refreshListeners.delete(refresh); listener.dispose(); });
+  extensionContext.subscriptions.push(panel);
+  if (state.ready) void state.ready.then(refresh, error => panel.webview.postMessage({ type: 'status', error: true, message: `Content scan failed: ${error instanceof Error ? error.message : String(error)}` }));
+  refresh();
+  return true;
+}
+
+async function openBenchmarkAssessmentPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, api: any, state: BenchmarkContextState) {
+  const contexts = benchmarkContexts(index, state.importedRoots);
+  const selected = benchmarkContextForKey(contexts, state.activeKey);
+  if (!selected) return false;
+  const panel = api.window.createWebviewPanel('scapNg.assessmentChooser', 'Open Benchmark Assessment', api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: true });
+  panel.webview.html = benchmarkAssessmentChooserHtml(selected);
+  const refresh = () => {
+    const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+    void panel.webview.postMessage({ type: 'context', context: benchmarkAssessmentChooserData(current) });
+  };
+  state.refreshListeners.add(refresh);
+  const listener = panel.webview.onDidReceiveMessage(async (message: any) => {
+    if (message.type === 'ready') { refresh(); return; }
+    if (message.type === 'cancel') { panel.dispose(); return; }
+    if (message.type === 'switch') {
+      panel.dispose();
+      await api.commands.executeCommand('scapNg.selectBenchmarkRoot');
+      return;
+    }
+    if (message.type !== 'open' || typeof message.uri !== 'string') return;
+    const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+    const assessment = current?.assessments.find(item => item.uri === message.uri);
+    if (!assessment) { panel.webview.postMessage({ type: 'status', error: true, message: 'That Assessment is not associated with the current Benchmark.' }); return; }
+    try {
+      const uri = api.Uri.parse(assessment.uri);
+      if ((message.mode === 'graphical' || message.mode === 'yaml') && isAssessmentFilePath(uri.fsPath ?? '')) await openAssessmentInMode(api, uri, message.mode);
+      else await api.commands.executeCommand('vscode.open', uri);
+    } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
+  });
+  panel.onDidDispose(() => { state.refreshListeners.delete(refresh); listener.dispose(); });
+  extensionContext.subscriptions.push(panel);
+  if (state.ready) void state.ready.then(refresh, error => panel.webview.postMessage({ type: 'status', error: true, message: `Content scan failed: ${error instanceof Error ? error.message : String(error)}` }));
+  refresh();
+  return true;
+}
+
+async function openStandaloneAssessmentFile(api: any) {
+  if (typeof api.window.showOpenDialog !== 'function') {
+    await api.window.showWarningMessage('File browsing is unavailable in this VS Code session.');
+    return;
+  }
+  const picked = await api.window.showOpenDialog({
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    openLabel: 'Open Assessment',
+    title: 'Open a standalone SCAP-NG Assessment file',
+    filters: { 'Assessment YAML': ['yaml', 'yml'] }
+  });
+  const uri = picked?.[0];
+  if (!uri) return;
+  if (!isAssessmentFilePath(uri.fsPath ?? '')) {
+    await api.window.showWarningMessage('Select a file ending in .assessment.yaml, .assessment.yml, -assessment.yaml, or -assessment.yml.');
+    return;
+  }
+  await api.commands.executeCommand('vscode.open', uri);
+}
+
+async function openBenchmarkContextPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, tree: StudioTree, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState, focusSection?: string) {
+  const api: any = vscode;
+  if (state.ready) {
+    try {
+      if (api.window.withProgress) await api.window.withProgress({ location: api.ProgressLocation?.Window ?? 10, title: 'Indexing SCAP-NG content…' }, () => state.ready);
+      else await state.ready;
+    } catch { /* The empty-state message below remains actionable if indexing failed. */ }
+  }
+  let contexts = benchmarkContexts(index, state.importedRoots);
+  if (!contexts.length) {
+    const importedRoot = await promptForContentFolder(index, tree, api, indexDiagnostics, state);
+    if (!importedRoot) return;
+    contexts = benchmarkContexts(index, state.importedRoots);
+    if (!contexts.length) {
+      await api.window.showWarningMessage(`No Benchmark document was found under "${importedRoot}". Select the folder that contains the converted Benchmark YAML (Assessments and Rules may be in child folders).`);
+      return;
+    }
+    // Root selection and Benchmark selection are separate. Do not fall
+    // through to the overview while the user still needs to choose a
+    // Benchmark; leave the searchable chooser in front instead.
+    if (!state.activeKey) {
+      await openBenchmarkSetupPanel(extensionContext, index, tree, api, indexDiagnostics, contexts, state);
+      return;
+    }
+  }
+  const selected = benchmarkContextForKey(contexts, state.activeKey);
+  if (selected && state.activeKey !== selected.key) selectBenchmarkContext(state, selected.key);
+  const panel = api.window.createWebviewPanel('scapNg.benchmarkContext', 'SCAP-NG Benchmark context', api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: true });
+  panel.webview.html = benchmarkContextHtml(contexts, selected?.key, focusSection);
+  const listener = (key: string | undefined) => panel.webview.postMessage({ type: 'selected', key });
+  state.listeners.add(listener);
+  panel.webview.onDidReceiveMessage(async (message: any) => {
+    if (message.type === 'select') { selectBenchmarkContext(state, typeof message.key === 'string' ? message.key : undefined); return; }
+    if (message.type === 'section' && ['rules', 'applicability', 'conditions', 'assessments'].includes(message.section)) {
+      panel.dispose();
+      await api.commands.executeCommand(message.section === 'rules' ? 'scapNg.openBenchmarkRules' : message.section === 'applicability' ? 'scapNg.openBenchmarkApplicability' : message.section === 'conditions' ? 'scapNg.openBenchmarkConditions' : 'scapNg.openBenchmarkAssessments');
+      return;
+    }
+    if (message.type === 'open' && typeof message.uri === 'string') {
+      try {
+        // The page only links to documents in the selected Benchmark context.
+        // Validate the URI before opening it so a tampered webview message
+        // cannot turn this navigation surface into an arbitrary file opener.
+        const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
+        const sourceUris = new Set([
+          ...(current ? [current.benchmark.uri] : []),
+          ...(current?.rules.map(item => item.uri) ?? []),
+          ...(current?.assessments.map(item => item.uri) ?? []),
+          ...(current?.applicability.map(item => item.uri) ?? []),
+          ...(current?.conditions.map(item => item.sourceUri) ?? [])
+        ]);
+        if (!sourceUris.has(message.uri)) return;
+        const uri = api.Uri.parse(message.uri);
+        if ((message.mode === 'graphical' || message.mode === 'yaml') && isAssessmentFilePath(uri.fsPath ?? '')) await openAssessmentInMode(api, uri, message.mode);
+        else await api.commands.executeCommand('vscode.open', uri);
+      } catch { /* keep the context form usable if a file cannot be opened */ }
+    }
+  });
+  panel.onDidDispose(() => state.listeners.delete(listener));
+  extensionContext.subscriptions.push(panel);
+}
+
 class GuidedPanel {
-  static open(context: vscode.ExtensionContext, pack: MetadataPack | undefined, index: WorkspaceIndex) {
+  static open(context: vscode.ExtensionContext, pack: MetadataPack | undefined, index: WorkspaceIndex, tree: StudioTree, indexDiagnostics: vscode.DiagnosticCollection, benchmarkState: BenchmarkContextState, forceStandalone = false) {
     const api: any = vscode;
     if (!pack) return void vscode.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before using Guided authoring.');
-    const catalog = new GuidedCatalog(pack); const applicabilityOptions = index.applicabilityOptions(); const objectStyle = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')); const panel = api.window.createWebviewPanel('scapNg.guided', 'SCAP-NG Guided Assessment', api.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
-    panel.webview.html = guidedHtml(catalog, applicabilityOptions);
+    const catalog = new GuidedCatalog(pack);
+    const contexts = benchmarkContexts(index, benchmarkState.importedRoots);
+    const active = forceStandalone || benchmarkState.authoringMode !== 'benchmark' ? undefined : benchmarkContextForKey(contexts, benchmarkState.activeKey);
+    if (active && benchmarkState.activeKey !== active.key) selectBenchmarkContext(benchmarkState, active.key);
+    const optionsFor = (key: string | undefined) => {
+      const selectedContext = benchmarkContextForKey(contexts, key);
+      return applicabilityForBenchmark(index.applicabilityOptions(selectedContext?.packagePath), selectedContext);
+    };
+    const objectStyle = normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle'));
+    const panel = api.window.createWebviewPanel('scapNg.guided', forceStandalone ? 'SCAP-NG Standalone Assessment' : 'SCAP-NG Guided Assessment', api.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    const publishContext = (key: string | undefined) => {
+      const selectedContext = forceStandalone ? undefined : benchmarkContextForKey(contexts, key);
+      const selectedLabel = selectedContext ? benchmarkContextLabels(contexts).get(selectedContext.key) : undefined;
+      panel.webview.postMessage({
+        type: 'benchmarkContext',
+        applicability: optionsFor(selectedContext?.key),
+        label: selectedContext ? (selectedLabel ?? selectedContext.benchmark.title ?? selectedContext.benchmark.id ?? 'Benchmark') : undefined
+      });
+    };
+    const activeContextLabel = active ? benchmarkContextLabels(contexts).get(active.key) ?? active.benchmark.title ?? active.benchmark.id ?? 'Benchmark' : '';
+    panel.webview.html = guidedHtml(catalog, optionsFor(active?.key), activeContextLabel);
+    const stateListener = (key: string | undefined) => publishContext(key);
+    benchmarkState.listeners.add(stateListener);
     panel.webview.onDidReceiveMessage(async (message: any) => {
       if (message.type === 'capability') { panel.webview.postMessage({ type: 'objectFields', fields: catalog.objectFields(message.value), requirements: catalog.objectRequirements(message.value) }); panel.webview.postMessage({ type: 'resultFields', fields: catalog.resultFields(message.value) }); return; }
       if (message.type === 'assistedDraft') {
         try {
+          const selectedContext = forceStandalone || benchmarkState.authoringMode !== 'benchmark' ? undefined : benchmarkContextForKey(contexts, typeof message.benchmarkContext === 'string' ? message.benchmarkContext : benchmarkState.activeKey);
+          const applicabilityOptions = optionsFor(selectedContext?.key);
           const selected = typeof message.applicability === 'string' ? applicabilityOptions.find(option => option.key === message.applicability && option.available) : undefined;
-          const result = createAssistedAssessment(pack, { title: String(message.title ?? ''), checkText: String(message.checkText ?? ''), applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined, objectStyle });
-          const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' }); await api.window.showTextDocument(document);
-          panel.webview.postMessage({ ok: true, message: `Annotated ${result.generatedMode} draft opened (${result.confidence} confidence). Review every assumption before use; no scanner result was produced.` });
+          const result = createAssistedAssessment(pack, { title: String(message.title ?? ''), checkText: String(message.checkText ?? ''), platform: benchmarkContextPlatform(selectedContext), applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined, objectStyle });
+          const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' });
+          const opened = selectedContext
+            ? await saveGeneratedAssessmentForBenchmark(api, document, selectedContext, message.title || 'assisted-assessment')
+            : await openGeneratedAssessment(api, document);
+          if (selectedContext && !opened) { panel.webview.postMessage({ ok: false, message: 'Assessment creation canceled before saving in the selected Benchmark.' }); return; }
+          const conditionalNotice = result.unresolved.some((value: string) => /applicability Assessments/i.test(value))
+            ? ' Select or create the referenced applicability Assessments before relying on the if/else-if branches.'
+            : '';
+          panel.webview.postMessage({ ok: true, message: `Annotated ${result.generatedMode} draft opened (${result.confidence} confidence).${conditionalNotice} Review every assumption before use; no scanner result was produced.` });
         } catch (error) { panel.webview.postMessage({ ok: false, message: error instanceof Error ? error.message : String(error) }); }
         return;
       }
       if (message.type !== 'create') return;
       try {
+        const selectedContext = forceStandalone || benchmarkState.authoringMode !== 'benchmark' ? undefined : benchmarkContextForKey(contexts, typeof message.benchmarkContext === 'string' ? message.benchmarkContext : benchmarkState.activeKey);
+        const applicabilityOptions = optionsFor(selectedContext?.key);
         const selected = typeof message.applicability === 'string' ? applicabilityOptions.find(option => option.key === message.applicability && option.available) : undefined;
         const draft = { ...message, applicability: selected ? { alias: selected.condition, assessmentId: selected.assessmentId, expectedVersion: selected.expectedVersion } : undefined, objectStyle };
         const result = createGuidedAssessment(pack, draft);
         if (result.diagnostics.length) { panel.webview.postMessage({ ok: false, message: `Schema validation: ${result.diagnostics.join('; ')}` }); return; }
-        const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' }); await api.window.showTextDocument(document);
-        panel.webview.postMessage({ ok: true, message: 'Assessment created. Review it in Source or Structured mode; no scanner result was produced.' });
+        const document = await api.workspace.openTextDocument({ content: result.yaml, language: 'yaml' });
+        const opened = selectedContext
+          ? await saveGeneratedAssessmentForBenchmark(api, document, selectedContext, message.id || 'new-assessment')
+          : await openGeneratedAssessment(api, document);
+        if (selectedContext && !opened) { panel.webview.postMessage({ ok: false, message: 'Assessment creation canceled before saving in the selected Benchmark.' }); return; }
+        panel.webview.postMessage({ ok: true, message: selectedContext ? 'Assessment saved in the selected Benchmark. Review it in Source or Structured mode; no scanner result was produced.' : 'Assessment created. Review it in Source or Structured mode; no scanner result was produced.' });
       } catch (error) { panel.webview.postMessage({ ok: false, message: error instanceof Error ? error.message : String(error) }); }
     });
+    panel.onDidDispose(() => benchmarkState.listeners.delete(stateListener));
     context.subscriptions.push(panel);
   }
 }
@@ -1503,7 +2141,7 @@ function schemaRequiredErrors(document: any, pack: MetadataPack): any[] {
   return errors;
 }
 function publishSchemaRequiredDiagnostics(document: any, pack: MetadataPack | undefined, diagnostics: any) {
-  if (!pack || !/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) { diagnostics.delete(document.uri); return; }
+  if (!pack || !isAssessmentFilePath(document.uri?.fsPath ?? document.fileName ?? '')) { diagnostics.delete(document.uri); return; }
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
   if (parsed.errors.length) { diagnostics.delete(document.uri); return; }
   let value: any;
@@ -1526,7 +2164,7 @@ function publishSchemaRequiredDiagnostics(document: any, pack: MetadataPack | un
 }
 
 function missingRequiredActions(document: any, pack: MetadataPack, api: any): any[] {
-  if (!/\.assessment\.ya?ml$/i.test(document.fileName ?? document.uri?.fsPath ?? '')) return [];
+  if (!isAssessmentFilePath(document.fileName ?? document.uri?.fsPath ?? '')) return [];
   const schemaUri = assessmentSchemaUri(pack);
   if (!schemaUri) return [];
   const parsed = parseDocument(document.getText(), { uniqueKeys: true });
@@ -1674,7 +2312,7 @@ function validateDocument(document: vscode.TextDocument, profile: Pin, diagnosti
 }
 function yamlAssociationMap(pack: MetadataPack) {
   const byFile: Array<{ suffix: string; patterns: string[] }> = [
-    { suffix: '/assessment.schema.json', patterns: ['**/*.assessment.yaml', '**/*.assessment.yml'] },
+    { suffix: '/assessment.schema.json', patterns: ['**/*.assessment.yaml', '**/*.assessment.yml', '**/*-assessment.yaml', '**/*-assessment.yml'] },
     { suffix: '/rule.schema.json', patterns: ['**/*.rule.yaml', '**/*.rule.yml'] },
     { suffix: '/benchmark.schema.json', patterns: ['**/*.benchmark.yaml', '**/*.benchmark.yml'] }
   ];
@@ -1705,7 +2343,7 @@ async function configureNativeYamlWorkspace(pack: MetadataPack, api: any) {
   return true;
 }
 function isAssessmentDocument(document: any): boolean {
-  return Boolean(document && /\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? ''));
+  return Boolean(document && isAssessmentFilePath(document.uri?.fsPath ?? document.fileName ?? ''));
 }
 function yamlStatusDetails(pack: MetadataPack | undefined, document: any, profile: Pin, api: any, build: BuildInfo, packError?: string) {
   const redhat = api.extensions?.getExtension?.('redhat.vscode-yaml');
@@ -1768,7 +2406,7 @@ function registerYamlCompletionProvider(context: vscode.ExtensionContext, getPac
       // Do not inject SCAP-NG vocabulary into ordinary YAML documents. The
       // native YAML language id remains intact; this provider is resource
       // scoped to Assessment authoring files only.
-      if (!/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) return [];
+      if (!isAssessmentFilePath(document.uri?.fsPath ?? document.fileName ?? '')) return [];
       const pack = getPack();
       if (!pack) return [];
       const offset = typeof document.offsetAt === 'function' ? document.offsetAt(position) : document.getText().length;
@@ -1868,10 +2506,39 @@ export function activate(context: vscode.ExtensionContext) {
     }
     return pack;
   };
-  loadPack((vscode.window as any).activeTextEditor?.document.uri.fsPath);
+  const initialDocumentPath = (vscode.window as any).activeTextEditor?.document?.uri?.fsPath;
+  const initialWorkspacePath = (vscode.workspace as any).workspaceFolders?.[0]?.uri?.fsPath;
+  // A blank workspace has no active document yet. Still walk from the
+  // workspace root so the verified sibling .external/editor-pack is loaded
+  // before the Authoring Home is displayed.
+  loadPack(initialDocumentPath || initialWorkspacePath);
   const syncEditorPreference = () => void synchronizeAssessmentEditorPreference(api).catch(() => { /* a read-only settings host may decline this optional convenience */ });
   syncEditorPreference();
   const index = new WorkspaceIndex();
+  const benchmarkState = contextState(context);
+  const welcomeContextInfo = (): WelcomeContextInfo => {
+    const contexts = benchmarkContexts(index, benchmarkState.importedRoots);
+    const selected = benchmarkState.authoringMode === 'benchmark' ? benchmarkContextForKey(contexts, benchmarkState.activeKey) : undefined;
+    if (!selected) {
+      // workspaceState is restored before the asynchronous index is ready.
+      // Keep Home in a selected/restoring state so users do not mistake the
+      // initial scan window for a lost Benchmark selection.
+      if (benchmarkState.authoringMode === 'benchmark' && benchmarkState.activeKey && benchmarkState.indexing) return { benchmarkRootSelected: true, authoringMode: 'benchmark', benchmarkLabel: 'Restoring saved Benchmark…', benchmarkRootPath: benchmarkState.importedRoots.at(-1) };
+      return { benchmarkRootSelected: false, authoringMode: benchmarkState.authoringMode, benchmarkRootPath: benchmarkState.importedRoots.at(-1) };
+    }
+    const labels = benchmarkContextLabels(contexts);
+    return {
+      benchmarkRootSelected: true,
+      authoringMode: 'benchmark',
+      benchmarkLabel: labels.get(selected.key),
+      benchmarkRootPath: benchmarkState.importedRoots.at(-1) ?? selected.packagePath,
+      profileCount: selected.profiles.length,
+      ruleCount: selected.ruleCount,
+      assessmentCount: selected.assessmentCount,
+      applicabilityCount: selected.applicabilityCount,
+      conditionCount: selected.conditionCount
+    };
+  };
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
   const schemaDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-schema');
@@ -1886,7 +2553,7 @@ export function activate(context: vscode.ExtensionContext) {
   // default YAML-first activation path.
   if (process.env.SCAP_NG_GRAPHICAL_HOST === '1') setTimeout(async () => {
     const active = api.window.activeTextEditor?.document;
-    const candidate = active && /\.assessment\.ya?ml$/i.test(active.uri?.fsPath ?? '') ? active : undefined;
+    const candidate = active && isAssessmentFilePath(active.uri?.fsPath ?? '') ? active : undefined;
     if (candidate) await api.commands.executeCommand('vscode.openWith', candidate.uri, 'scapNg.assessment', { viewColumn: api.ViewColumn?.One ?? 1, preserveFocus: false, preview: false });
   }, 3000);
   const resetPack = () => {
@@ -1897,6 +2564,11 @@ export function activate(context: vscode.ExtensionContext) {
     loadPack((api.window as any).activeTextEditor?.document?.uri?.fsPath);
   };
   const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, () => { resetPack(); syncEditorPreference(); });
+  benchmarkState.onChange = () => {
+    WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
+    authoringSidebar.refreshContext();
+    for (const listener of benchmarkState.refreshListeners) listener();
+  };
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('scapNg-authoringSidebar', authoringSidebar));
   if (api.workspace.onDidChangeConfiguration) context.subscriptions.push(api.workspace.onDidChangeConfiguration((event: any) => {
     if (event?.affectsConfiguration?.('scapNg.assessmentEditor')) {
@@ -1905,8 +2577,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
   }));
   const revealAuthoring = async () => {
-    try { await api.commands.executeCommand('workbench.view.extension.scapNg-authoring'); return true; }
-    catch { return false; }
+    // Secondary-bar containers are not consistently addressable through one
+    // workbench command across VS Code releases. Try both forms; some builds
+    // resolve the first command without actually moving focus to the view.
+    let opened = false;
+    try { await api.commands.executeCommand('workbench.action.openView', 'scapNg-authoringSidebar'); opened = true; } catch { /* try container form */ }
+    try { await api.commands.executeCommand('workbench.view.extension.scapNg-authoring'); return true; } catch { return opened; }
   };
   const yamlStatus = api.window.createStatusBarItem(api.StatusBarAlignment?.Right ?? 2, 100);
   yamlStatus.command = 'scapNg.showYamlStatus';
@@ -1925,11 +2601,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Keep the suppression and schema association workspace-scoped. This avoids
   // changing ordinary YAML files in other workspaces or the user's global settings.
   context.subscriptions.push(diagnostics, schemaDiagnostics, indexDiagnostics, vscode.window.registerTreeDataProvider('scapNg-assessmentStudio', tree), vscode.window.registerWebviewViewProvider('scapNg.pinView', new PinView(context)));
-  void indexWorkspace(index, tree, api, indexDiagnostics);
+  benchmarkState.indexing = true;
+  const indexReady = indexWorkspaceAndImportedRoots(index, tree, api, indexDiagnostics, benchmarkState);
+  benchmarkState.ready = indexReady.then(() => { benchmarkState.indexing = false; benchmarkState.onChange?.(); }, error => { benchmarkState.indexing = false; benchmarkState.onChange?.(); throw error; });
   if (api.workspace.createFileSystemWatcher) {
     for (const pattern of ['**/*.yaml', '**/*.yml']) {
       const watcher = api.workspace.createFileSystemWatcher(pattern);
-      context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); }));
+      context.subscriptions.push(watcher, watcher.onDidCreate((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics, benchmarkState)), watcher.onDidChange((uri: any) => void updateIndexedUri(index, uri, tree, api, indexDiagnostics, benchmarkState)), watcher.onDidDelete((uri: any) => { index.remove(uri.toString()); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); benchmarkState.onChange?.(); }));
     }
   }
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAssessmentAuthoringPrototype', async (argument: any) => {
@@ -1954,6 +2632,27 @@ export function activate(context: vscode.ExtensionContext) {
     await api.commands.executeCommand('workbench.action.openView');
     void api.window.showInformationMessage('Select the SCAP-NG Authoring view from the Open View picker.');
   }));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openWelcome', () => WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo)));
+  context.subscriptions.push(api.commands.registerCommand('scapNg.openAssessmentFile', async () => {
+    const contexts = benchmarkContexts(index, benchmarkState.importedRoots);
+    const selected = benchmarkContextForKey(contexts, benchmarkState.activeKey);
+    if (benchmarkState.authoringMode === 'benchmark' && selected) {
+      await openBenchmarkAssessmentPanel(context, index, api, benchmarkState);
+      return;
+    }
+    await openStandaloneAssessmentFile(api);
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.refreshContentIndex', async () => {
+    const refresh = () => refreshContentIndex(index, tree, api, indexDiagnostics, benchmarkState);
+    try {
+      const count = api.window.withProgress
+        ? await api.window.withProgress({ location: api.ProgressLocation?.Window ?? 10, title: 'Refreshing Benchmark data…' }, refresh)
+        : await refresh();
+      await api.window.showInformationMessage(`Benchmark data refreshed (${count} YAML files indexed).`);
+    } catch (error) {
+      await api.window.showErrorMessage(`Benchmark data refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
   context.subscriptions.push(api.commands.registerCommand('scapNg.configureYamlSchemas', async () => {
     if (!pack) { await api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before associating native YAML schemas.'); return; }
@@ -1965,10 +2664,37 @@ export function activate(context: vscode.ExtensionContext) {
   }));
   context.subscriptions.push(api.commands.registerCommand('scapNg.openAssessmentStudio', async (argument: any) => {
     const uri = argument?.uri ?? argument ?? api.window.activeTextEditor?.document?.uri;
-    if (!uri || !/\.assessment\.ya?ml$/i.test(uri.fsPath ?? '')) { await api.window.showWarningMessage('Open an *.assessment.yaml or *.assessment.yml document first.'); return; }
+    // The graphical-editor command is also exposed prominently in the empty
+    // Assessment Studio view. Never strand a first-time user with a file-first
+    // warning: without an Assessment, Home is the actionable creation surface.
+    if (!uri || !isAssessmentFilePath(uri.fsPath ?? '')) {
+      WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo);
+      return;
+    }
+    const selected = benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey);
+    if (selected && !selected.assessments.some(assessment => assessment.uri === uri.toString())) {
+      await api.window.showWarningMessage('This Assessment is not associated with the selected Benchmark. Use Home to change Benchmark context or open an associated Assessment.');
+      return;
+    }
     await api.commands.executeCommand('vscode.openWith', uri, 'scapNg.assessment', { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
   }));
-  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
+  const scopeForAssessment = (document: any): AssessmentEditorScope => {
+    const contexts = benchmarkContexts(index, benchmarkState.importedRoots);
+    const selected = benchmarkState.authoringMode === 'benchmark'
+      ? benchmarkContextForKey(contexts, benchmarkState.activeKey)
+      : undefined;
+    const path = String(document?.uri?.fsPath ?? document?.fileName ?? '');
+    // A Benchmark Assessment is identified by its selected content package, not
+    // by a source filename. This also covers newly saved Assessments before the
+    // asynchronous workspace index has observed the file.
+    if (selected && pathWithinRoot(selected.packagePath, path)) {
+      const label = benchmarkContextLabels(contexts).get(selected.key)
+        ?? selected.benchmark.title ?? selected.benchmark.id ?? 'Selected Benchmark';
+      return { mode: 'benchmark', benchmarkLabel: label };
+    }
+    return { mode: 'standalone' };
+  };
+  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack, scopeForAssessment), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(api.commands.registerCommand('scapNg.showYamlStatus', async () => {
@@ -2018,7 +2744,32 @@ export function activate(context: vscode.ExtensionContext) {
     ]) channel.appendLine(line);
     channel.show(true);
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack, index)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.createGuidedAssessment', () => GuidedPanel.open(context, pack, index, tree, indexDiagnostics, benchmarkState)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.createStandaloneAssessment', () => GuidedPanel.open(context, pack, index, tree, indexDiagnostics, benchmarkState, true)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.enterStandaloneMode', () => setStandaloneMode(benchmarkState)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.clearBenchmarkContext', () => clearBenchmarkContext(api, benchmarkState)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.chooseBenchmarkRoot', () => chooseBenchmarkRootAndBenchmark(context, index, tree, api, indexDiagnostics, benchmarkState)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.selectBenchmark', () => selectBenchmarkRoot(context, index, tree, api, indexDiagnostics, benchmarkState)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.selectBenchmarkRoot', () => selectBenchmarkRoot(context, index, tree, api, indexDiagnostics, benchmarkState)));
+  // Keep the Home counters on dedicated commands.  Webview command arguments
+  // are intentionally not used for these primary navigation targets: older
+  // retained Home panels can otherwise replay the generic context command and
+  // land on the Benchmark overview instead of the searchable source chooser.
+  const openBenchmarkSection = async (section: 'rules' | 'applicability' | 'conditions' | 'assessments') => {
+    if (section === 'assessments') return openBenchmarkAssessmentPanel(context, index, api, benchmarkState);
+    return openBenchmarkSourceChooserPanel(context, index, api, benchmarkState, section, () => pack);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scapNg.openBenchmarkRules', () => openBenchmarkSection('rules')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkApplicability', () => openBenchmarkSection('applicability')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkConditions', () => openBenchmarkSection('conditions')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkAssessments', () => openBenchmarkSection('assessments')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkContext', async (argument?: any) => {
+      const section = typeof argument?.section === 'string' ? argument.section : undefined;
+      if (section === 'assessments' || section === 'rules' || section === 'applicability' || section === 'conditions') return openBenchmarkSection(section);
+      return openBenchmarkContextPanel(context, index, tree, indexDiagnostics, benchmarkState, section);
+    })
+  );
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', (argument: any) => RegexTesterPanel.open(context, argument?.document ?? api.window.activeTextEditor?.document, pack, { useFirst: argument?.useFirst === true })));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testObject', () => SampleObjectTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
   const inspect = (document: vscode.TextDocument) => {
@@ -2036,5 +2787,13 @@ export function activate(context: vscode.ExtensionContext) {
   if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { authoringSidebar.setEditor(editor); void refreshYamlStatus(editor?.document); }));
   if (api.window.onDidChangeTextEditorSelection) context.subscriptions.push(api.window.onDidChangeTextEditorSelection((event: any) => authoringSidebar.setEditor(event.textEditor)));
   if (api.window.activeTextEditor?.document) { authoringSidebar.setEditor(api.window.activeTextEditor); inspect(api.window.activeTextEditor.document); void refreshYamlStatus(api.window.activeTextEditor.document); }
+  // On every workspace activation with no document open, put the
+  // spacious product Home tab in front of generic VS Code Get Started.
+  // This is intentionally per-launch rather than a permanent workspace flag:
+  // users commonly close the tab and expect it to be available again after
+  // restarting VS Code. Keep the Authoring sidebar focused on editing.
+  if (!api.window.activeTextEditor?.document) {
+    setTimeout(() => WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo), 500);
+  }
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }

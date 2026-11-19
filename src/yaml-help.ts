@@ -2,6 +2,7 @@ import { parseDocument } from 'yaml';
 import { readFileSync } from 'node:fs';
 import { MetadataPack, type Context } from './metadata.js';
 import { schemaNodes as sharedSchemaNodes, schemaEnumValues as sharedSchemaEnumValues, schemaChildUri } from './schema-resolver.js';
+import { isAssessmentFilePath } from './editor-preferences.js';
 
 type Api = any;
 type SchemaTarget = { uri: string; key: string; path: string[]; capability?: string };
@@ -272,7 +273,7 @@ export function registerYamlHoverProvider(context: any, getPack: () => MetadataP
   if (!api.languages?.registerHoverProvider) return;
   const snapshots = new Map<string, { version: number; snapshot: DocumentSnapshot }>();
   const provider = { provideHover(document: any, position: any) {
-    if (!/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) return undefined;
+    if (!isAssessmentFilePath(document.uri?.fsPath ?? document.fileName ?? '')) return undefined;
     const pack = getPack(); if (!pack) return undefined;
     const key = document.uri?.toString?.() ?? document.fileName ?? '';
     const version = typeof document.version === 'number' ? document.version : -1;
@@ -293,7 +294,7 @@ export function registerYamlDefinitionProvider(context: any, getPack: () => Meta
   if (!api.languages?.registerDefinitionProvider) return;
   const snapshots = new Map<string, { version: number; snapshot: DocumentSnapshot }>();
   const provider = { provideDefinition(document: any, position: any) {
-    if (!/\.assessment\.ya?ml$/i.test(document.uri?.fsPath ?? document.fileName ?? '')) return undefined;
+    if (!isAssessmentFilePath(document.uri?.fsPath ?? document.fileName ?? '')) return undefined;
     const pack = getPack(); if (!pack) return undefined;
     const key = document.uri?.toString?.() ?? document.fileName ?? '';
     const version = typeof document.version === 'number' ? document.version : -1;

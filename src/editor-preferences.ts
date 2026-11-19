@@ -6,12 +6,19 @@
  */
 export const assessmentEditorAssociationPatterns = [
   '**/*.assessment.yaml',
-  '**/*.assessment.yml'
+  '**/*.assessment.yml',
+  '**/*-assessment.yaml',
+  '**/*-assessment.yml'
 ] as const;
 
 export const assessmentEditorModes = ['yaml', 'graphical', 'split'] as const;
 export type AssessmentEditorMode = typeof assessmentEditorModes[number];
 export const assessmentCustomEditorId = 'scapNg.assessment';
+
+/** Recognize both editor-authored dot names and converted corpus hyphen names. */
+export function isAssessmentFilePath(value: unknown): value is string {
+  return typeof value === 'string' && /(?:^|[\/.-])assessment\.ya?ml$/i.test(value);
+}
 
 export function isAssessmentEditorMode(value: unknown): value is AssessmentEditorMode {
   return value === 'yaml' || value === 'graphical' || value === 'split';

@@ -8,9 +8,10 @@ export interface IndexDiagnostic { code: IndexDiagnosticCode; message: string; u
 export interface AssessmentReference { targetId: string; expectedVersion?: string | number; path: string; purpose?: 'assessment' | 'applicability'; }
 export interface ApplicabilityCondition { name: string; targetId: string; path: string; catalogUri: string; }
 export interface ApplicabilityOption { key: string; value: string; label: string; description?: string; condition: string; assessmentId: string; expectedVersion: string | number; catalogUri: string; targetUri?: string; available: boolean; }
+export interface BenchmarkProfile { id?: string; title?: string; disabledRuleCount: number; }
 export interface IndexedDocument {
   uri: string; path: string; kind: DocumentKind; id?: string; version?: string | number; title?: string;
-  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
+  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
   diagnostics: readonly IndexDiagnostic[];
 }
 
@@ -19,7 +20,33 @@ const roots: DocumentKind[] = ['assessment', 'rule', 'benchmark', 'applicability
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function pointerPart(value: string) { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
 function pointer(...parts: (string | number)[]) { return '/' + parts.map(part => pointerPart(String(part))).join('/'); }
-function version(value: any): string | number | undefined { return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)) ? value : undefined; }
+function version(value: any): string | number | undefined {
+  if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) return value;
+  if (object(value)) return version(value.value);
+  return undefined;
+}
+function title(value: any): string | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const entry = value.find(candidate => object(candidate) && typeof candidate.text === 'string');
+    return entry?.text;
+  }
+  return undefined;
+}
+function benchmarkProfiles(value: any): BenchmarkProfile[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(object).map(profile => ({
+    id: typeof profile.id === 'string' ? profile.id : undefined,
+    title: title(profile.title),
+    disabledRuleCount: Array.isArray(profile.disabled_rules) ? profile.disabled_rules.length : 0
+  }));
+}
+function packageRootForPath(value: string): string | undefined {
+  const normalized = value.replaceAll('\\', '/');
+  const marker = '/authoring/direct-slice/';
+  const index = normalized.lastIndexOf(marker);
+  return index >= 0 ? normalized.slice(0, index) : undefined;
+}
 
 export class WorkspaceIndex {
   private readonly documents = new Map<string, MutableDocument>();
@@ -29,7 +56,7 @@ export class WorkspaceIndex {
     let record: MutableDocument;
     const parsed = parseDocument(text, { uniqueKeys: true });
     if (parsed.errors.length) {
-      record = { uri, path, kind: 'unknown', capabilities: [], references: [], applicabilityConditions: [], sourceHash: sha256(text) };
+      record = { uri, path, kind: 'unknown', capabilities: [], references: [], applicabilityConditions: [], profiles: [], sourceHash: sha256(text) };
     } else {
       const value = parsed.toJS({ maxAliasCount: 50 }) as Record<string, any>;
       const present = roots.filter(root => object(value) && Object.hasOwn(value, root));
@@ -58,13 +85,25 @@ export class WorkspaceIndex {
       }
       const capabilities = kind === 'assessment' && object(body.tests) ? Object.values(body.tests).flatMap(test => object(test) && typeof test.capability === 'string' ? [test.capability] : []) : [];
       const localReferenceAnalysis = kind === 'assessment' ? analyzeAssessmentReferences(body) : undefined;
-      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: typeof (body.title ?? body.assessment_title ?? body.benchmark_title) === 'string' ? (body.title ?? body.assessment_title ?? body.benchmark_title) : undefined, mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, localReferenceAnalysis, sourceHash: sha256(text) };
+      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
     }
     this.documents.set(uri, record); if (rebuild) this.rebuildDiagnostics(); return this.get(uri)!;
   }
 
   updateMany(entries: readonly { uri: string; text: string; path?: string }[]) {
     for (const entry of entries) this.update(entry.uri, entry.text, entry.path ?? entry.uri, false);
+    this.rebuildDiagnostics();
+    return this.all();
+  }
+
+  /** Index large converted corpora without monopolizing the extension host event loop. */
+  async updateManyAsync(entries: readonly { uri: string; text: string; path?: string }[], batchSize = 250) {
+    const size = Math.max(1, Math.floor(batchSize));
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      this.update(entry.uri, entry.text, entry.path ?? entry.uri, false);
+      if ((index + 1) % size === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
+    }
     this.rebuildDiagnostics();
     return this.all();
   }
@@ -76,18 +115,26 @@ export class WorkspaceIndex {
   byKind(kind: DocumentKind): IndexedDocument[] { return this.all().filter(document => document.kind === kind); }
   find(id: string): IndexedDocument[] { return this.byId.get(id) ?? []; }
   usedBy(id: string): IndexedDocument[] { return this.all().filter(document => document.references.some(reference => reference.targetId === id)); }
-  applicabilityOptions(): ApplicabilityOption[] {
+  applicabilityOptions(packagePath?: string): ApplicabilityOption[] {
     const options: ApplicabilityOption[] = [];
-    for (const catalog of this.byKind('applicability')) for (const condition of catalog.applicabilityConditions) {
-      const targets = this.find(condition.targetId).filter(document => document.kind === 'assessment');
+    const inPackage = (document: IndexedDocument) => {
+      if (!packagePath) return true;
+      const canonical = packageRootForPath(document.path);
+      if (canonical) return canonical === packagePath;
+      const path = document.path.replaceAll('\\', '/').replace(/\/+$/, '');
+      const root = packagePath.replaceAll('\\', '/').replace(/\/+$/, '');
+      return path === root || path.startsWith(root + '/');
+    };
+    for (const catalog of this.byKind('applicability').filter(inPackage)) for (const condition of catalog.applicabilityConditions) {
+      const targets = this.find(condition.targetId).filter(document => document.kind === 'assessment' && inPackage(document));
       const target = targets.length === 1 ? targets[0] : undefined;
       options.push({ key: `${catalog.uri}#${condition.name}`, value: condition.name, label: target?.title ? `${condition.name} — ${target.title}` : condition.name, description: target ? `${condition.targetId} · version ${target.version ?? 'unknown'}` : `${condition.targetId} · unresolved`, condition: condition.name, assessmentId: condition.targetId, expectedVersion: target?.version ?? 1, catalogUri: condition.catalogUri, targetUri: target?.uri, available: targets.length === 1 });
     }
     // A catalog is authoritative, but a dependency explicitly marked for
     // applicability is still useful while a catalog is being assembled.
-    for (const source of this.byKind('assessment')) for (const reference of source.references.filter(reference => reference.purpose === 'applicability')) {
+    for (const source of this.byKind('assessment').filter(inPackage)) for (const reference of source.references.filter(reference => reference.purpose === 'applicability')) {
       if (options.some(option => option.assessmentId === reference.targetId)) continue;
-      const targets = this.find(reference.targetId).filter(document => document.kind === 'assessment');
+      const targets = this.find(reference.targetId).filter(document => document.kind === 'assessment' && inPackage(document));
       const target = targets.length === 1 ? targets[0] : undefined;
       options.push({ key: `assessment:${reference.targetId}`, value: reference.targetId, label: target?.title ? `${target.title} (${reference.targetId})` : reference.targetId, description: target ? `Referenced applicability Assessment · version ${target.version ?? 'unknown'}` : 'Referenced applicability Assessment is unresolved', condition: reference.targetId, assessmentId: reference.targetId, expectedVersion: target?.version ?? reference.expectedVersion ?? 1, catalogUri: '', targetUri: target?.uri, available: targets.length === 1 });
     }
