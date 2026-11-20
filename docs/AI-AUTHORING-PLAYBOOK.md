@@ -18,9 +18,11 @@ authoritative.
 4. Write one or more complete Tests. A Test's Object selects Items; its Require
    expresses Item existence/satisfaction and field predicates. Do not replace a
    missing predicate with an empty Object or a presence-only placeholder.
-5. Connect multiple Tests with an explicit Evaluate expression. Validate the
+5. Set `reported_elements` to the scalar `all` or `compared` enum, or to an
+   array of explicit field names. Do not serialize `all` as an array.
+6. Connect multiple Tests with an explicit Evaluate expression. Validate the
    complete Assessment against the supplied 0.4.1 schema before returning it.
-6. Mark every inference and unresolved limitation for author review. Return
+7. Mark every inference and unresolved limitation for author review. Return
    manual-only when an objective predicate, population, relationship, or
    schema-authorized branch cannot be represented completely.
 
@@ -70,6 +72,15 @@ require:
   fields:
     value:
       equals: expected
+```
+
+For a populated field, use one comparison operator inside the field map; do not
+put `values_matching` beside that operator. For example:
+
+```yaml
+fields:
+  stdout_line:
+    matches_regex: '^\s*\S+\s+wifi\s+'
 ```
 
 For an absence check, use a field existence predicate and retain the Item count:
