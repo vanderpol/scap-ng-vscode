@@ -115,6 +115,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /analyzeBenchmarkAutomation/);
   assert.match(extensionSource, /withProgress/);
   assert.match(extensionSource, /generatedMode === 'automated'/);
+  assert.match(extensionSource, /item\.automationStatus==='needs-automation'/);
+  assert.match(extensionSource, /canCreateAutomation=model\.automationDisposition!=='manual-only'/);
+  assert.match(extensionSource, /already has automation or is marked manual-only/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {
