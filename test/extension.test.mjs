@@ -180,6 +180,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
   assert.match(authoringSidebarSource, /id=\"aiMode\"/);
+  assert.match(authoringSidebarSource, /id=\"configureAi\"/);
+  assert.match(authoringSidebarSource, /id=\"aiDialog\"/);
+  assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'offline\'/);
+  assert.match(authoringSidebarSource, /AI-assisted authoring configuration/);
   assert.match(authoringSidebarSource, /Offline only/);
   assert.match(authoringSidebarSource, /VS Code AI provider/);
   assert.match(authoringSidebarSource, /Configured remote AI/);

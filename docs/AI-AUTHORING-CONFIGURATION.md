@@ -1,7 +1,9 @@
 # AI-assisted authoring configuration
 
 The Authoring Sidebar **Options** tab now contains the first configuration slice
-for optional AI-assisted authoring. This slice intentionally configures no
+for optional AI-assisted authoring. The provider details stay behind a
+**Configure AI…** popup and that button is hidden while **Offline only** is
+selected. This slice intentionally configures no
 provider and makes no network requests.
 
 ## Modes
