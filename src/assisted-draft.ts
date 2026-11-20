@@ -29,6 +29,8 @@ interface ConditionalBranch { label: string; object: Record<string, Json>; }
 interface Candidate {
   capability: string;
   object: Record<string, Json>;
+  /** Candidate has deliberately supplied a complete Object even when its fields are not selector-tagged. */
+  objectComplete?: boolean;
   fields?: Record<string, Json>;
   testCandidates?: Array<{ title: string; object?: Record<string, Json>; fields?: Record<string, Json>; presenceOnly?: boolean; itemFound?: string }>;
   conditionalBranches?: ConditionalBranch[];
@@ -932,11 +934,42 @@ function textFileContentCandidate(text: string): Candidate | undefined {
   } as Record<string, Json>;
   return { capability: 'independent.textfilecontent', object, fields, confidence: lineValue ? 'high' : 'medium', assumptions: ['Interpreted the command as a text-file check using the named file and setting; confirm that this matches the original requirement.', 'Review the generated regular expression and accepted values against the original check.'] };
 }
+function postconfCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(postconf\s+-n\s+([A-Za-z0-9_]+))/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const parameter = match[2];
+  const quotedAllowed = [...text.matchAll(/["']([A-Za-z][A-Za-z0-9_-]*)["']/g)].map(item => item[1]);
+  const phraseAllowed = text.match(/entries?\s+other\s+than\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?\s+(?:and|or)\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?/i);
+  const allowed = [...new Set((phraseAllowed ? [phraseAllowed[1], phraseAllowed[2]] : quotedAllowed).filter(Boolean))];
+  if (allowed.length < 2 || !/(?:entries?|values?|parameters?).{0,80}(?:other than|anything other than|only)/i.test(text)) return undefined;
+  const token = `(?:${allowed.map(escapeRegex).join('|')})`;
+  const listPattern = String.raw`^\s*${token}(?:\s*,\s*${token})*\s*$`;
+  const objectPattern = String.raw`^\s*${escapeRegex(parameter)}\s*=\s*(.*)\s*$`;
+  return {
+    capability: 'independent.shellcommand',
+    object: shellCommandObject(command, objectPattern),
+    objectComplete: true,
+    fields: { subexpression: { matches_regex: listPattern } },
+    presenceOnly: false,
+    itemFound: 'one_or_more',
+    confidence: 'medium',
+    assumptions: [
+      `Inferred the Postfix configuration query '${command}'.`,
+      `Inferred that the '${parameter}' value may contain only: ${allowed.join(', ')}.`
+    ],
+    review: [
+      'Confirm the postconf output format, list ordering, duplicate handling, and whether whitespace or additional approved restrictions are permitted.',
+      'Confirm that the generated whole-list regular expression matches the scanner regex dialect and the target Postfix version.'
+    ]
+  };
+}
+
 function packageGatedTextFileCandidate(text: string): Candidate | undefined {
   const packageMatch = text.match(/\b(?:yum|dnf)\s+(?:list|info)\s+(?:installed|--installed)\s+([A-Za-z0-9_.+:-]+)/i)
     ?? text.match(/\brpm\s+-q(?:\s+--[A-Za-z-]+)?\s+([A-Za-z0-9_.+:-]+)/i);
   if (!packageMatch || !/(?:not\s+installed|not\s+present|not\s+available)[\s\S]{0,220}(?:not\s+applicable|N\/?A)|(?:not\s+applicable|N\/?A)[\s\S]{0,220}(?:not\s+installed|not\s+present|not\s+available)/i.test(text)) return undefined;
-  const base = textFileContentCandidate(text);
+  const base = textFileContentCandidate(text) ?? postconfCandidate(text);
   if (!base) return undefined;
   const packageName = packageMatch[1];
   const branchLabel = `${packageName} installed`;
@@ -1268,7 +1301,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1311,7 +1344,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   const catalog = new GuidedCatalog(pack);
   const required = catalog.objectRequirements(candidate.capability);
   const authoredObjectFields = new Set(Object.keys(candidate.object));
-  const complete = candidate.presenceOnly || authoredObjectFields.size === 0 || required.some(branch => branch.fields.every(field => authoredObjectFields.has(field)));
+  const complete = candidate.objectComplete === true || candidate.presenceOnly || authoredObjectFields.size === 0 || required.some(branch => branch.fields.every(field => authoredObjectFields.has(field)));
   if (!complete) {
     return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], ['The inferred Object does not satisfy a complete schema-required selector branch.']);
   }

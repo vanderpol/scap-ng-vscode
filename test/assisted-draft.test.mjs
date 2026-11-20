@@ -481,6 +481,42 @@ If the "server_args" line does not have a "-s" option and a subdirectory is not 
   assert.ok(result.assumptions.some(reason => /applicability Assessment placeholder/i.test(reason)));
 });
 
+test('assisted package-gated postconf checks preserve applicability and allowed-list logic', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The system must prevent unrestricted mail relaying.',
+    checkText: `Verify the system is configured to prevent unrestricted mail relaying.
+
+Determine if "postfix" is installed with the following commands:
+
+# yum list installed postfix
+postfix-2.6.6-6.el7.x86_64.rpm
+
+If postfix is not installed, this is Not Applicable.
+
+If postfix is installed, determine if it is configured to reject connections from unknown or untrusted networks with the following command:
+
+# postconf -n smtpd_client_restrictions
+smtpd_client_restrictions = permit_mynetworks, reject
+
+If the "smtpd_client_restrictions" parameter contains any entries other than "permit_mynetworks" and "reject", this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const assessment = result.document.assessment;
+  const test = Object.values(assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.equal(test.object.command, 'postconf -n smtpd_client_restrictions');
+  assert.match(test.object.pattern, /smtpd_client_restrictions/);
+  assert.match(test.require.fields.subexpression.matches_regex, /permit_mynetworks/);
+  assert.match(test.require.fields.subexpression.matches_regex, /reject/);
+  assert.equal(assessment.evaluate.if.assessment, 'applicability-postfix-installed');
+  assert.equal(assessment.dependencies['applicability-postfix-installed'].purpose, 'applicability');
+  assert.equal(assessment.evaluate.then.test, Object.keys(assessment.tests)[0]);
+  assert.match(assessment.evaluate.else.not_evaluated.reason, /postfix.*Not Applicable/i);
+});
+
 test('assisted RHEL find nogroup checks preserve the command and generate an absence test', () => {
   const result = createAssistedAssessment(pack, {
     platform: 'rhel',
