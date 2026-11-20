@@ -1152,6 +1152,15 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       `The best automated guess failed pinned schema validation: ${generated.diagnostics.join('; ')}`
     ]);
   }
+  const generatedTests = Object.values((generated.document as any)?.assessment?.tests ?? {}) as Array<Record<string, any>>;
+  const selectorlessPlaceholder = generatedTests.some(test =>
+    Object.keys(test.object ?? {}).length === 0 && Object.keys(test.require?.fields ?? {}).length === 0
+  );
+  if (selectorlessPlaceholder) {
+    return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], [
+      'The heuristic recognized the requirement but did not infer a concrete Object selector or field predicate; no empty-object automated draft was emitted.'
+    ]);
+  }
   const unresolved = candidate.conditionalBranches ? [`Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
   const notes = annotation({ title, checkText }, candidate.confidence, assumptions, unresolved);

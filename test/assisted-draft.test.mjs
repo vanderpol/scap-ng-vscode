@@ -276,13 +276,13 @@ test('assisted Ubuntu context maps package, audit, and password checks to native
     title: 'Ubuntu 24.04 LTS must generate audit records for uses of passwd.',
     checkText: 'Review the audit configuration for the required passwd events.'
   });
-  assert.equal(Object.values(auditDraft.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(auditDraft.generatedMode, 'manual');
   const passwordDraft = createAssistedAssessment(pack, {
     platform: 'ubuntu',
     title: 'Ubuntu 24.04 LTS must enforce password complexity requiring a numeric character.',
     checkText: 'Verify the password quality policy requires at least one numeric character.'
   });
-  assert.equal(Object.values(passwordDraft.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(passwordDraft.generatedMode, 'manual');
 });
 
 test('assisted Solaris context maps release, file, and audit checks to native capabilities', () => {
@@ -291,19 +291,19 @@ test('assisted Solaris context maps release, file, and audit checks to native ca
     title: 'The operating system must be a supported release.',
     checkText: 'Verify that the installed Solaris release is supported.'
   });
-  assert.equal(Object.values(releaseDraft.document.assessment.tests)[0].capability, 'unix.uname');
+  assert.equal(releaseDraft.generatedMode, 'manual');
   const fileDraft = createAssistedAssessment(pack, {
     platform: 'solaris',
     title: 'User .netrc files must not exist.',
     checkText: 'Search user home directories for .netrc files.'
   });
-  assert.equal(Object.values(fileDraft.document.assessment.tests)[0].capability, 'unix.file');
+  assert.equal(fileDraft.generatedMode, 'manual');
   const auditDraft = createAssistedAssessment(pack, {
     platform: 'solaris',
     title: 'The audit system must be configured to audit account creation.',
     checkText: 'Review Solaris audit configuration and verify account creation is audited.'
   });
-  assert.equal(Object.values(auditDraft.document.assessment.tests)[0].capability, 'independent.shellcommand');
+  assert.equal(auditDraft.generatedMode, 'manual');
 });
 
 test('assisted Office and Chrome contexts select the application policy collectors', () => {
@@ -312,20 +312,19 @@ test('assisted Office and Chrome contexts select the application policy collecto
     title: 'Macros must be blocked from running in Excel files from the Internet.',
     checkText: 'Verify the Office macro policy is configured as required.'
   });
-  assert.equal(office.generatedMode, 'automated');
-  assert.equal(Object.values(office.document.assessment.tests)[0].capability, 'windows.ntuser');
+  assert.equal(office.generatedMode, 'manual');
   const officeMachine = createAssistedAssessment(pack, {
     platform: 'office365',
     title: 'The Information Bar must be enabled in all Office programs.',
     checkText: 'Verify the machine-wide Office policy.'
   });
-  assert.equal(Object.values(officeMachine.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(officeMachine.generatedMode, 'manual');
   const chrome = createAssistedAssessment(pack, {
     platform: 'chrome',
     title: 'Chrome development tools must be disabled.',
     checkText: 'Verify the Chrome enterprise policy.'
   });
-  assert.equal(Object.values(chrome.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(chrome.generatedMode, 'manual');
 });
 
 test('assisted Firefox contexts distinguish registry, profile-variable, and text checks', () => {
@@ -334,19 +333,19 @@ test('assisted Firefox contexts distinguish registry, profile-variable, and text
     title: 'Firefox private browsing must be disabled.',
     checkText: 'Verify the Firefox enterprise policy.'
   });
-  assert.equal(Object.values(registry.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(registry.generatedMode, 'manual');
   const variable = createAssistedAssessment(pack, {
     platform: 'firefox-windows',
     title: 'Firefox must be configured to prevent JavaScript from moving or resizing windows.',
     checkText: 'Verify the Firefox profile preference.'
   });
-  assert.equal(Object.values(variable.document.assessment.tests)[0].capability, 'variable.value');
+  assert.equal(variable.generatedMode, 'manual');
   const text = createAssistedAssessment(pack, {
     platform: 'firefox-linux',
     title: 'Firefox must be configured to not automatically execute or download MIME types.',
     checkText: 'Verify the Firefox profile handler configuration.'
   });
-  assert.equal(Object.values(text.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(text.generatedMode, 'manual');
 });
 
 
@@ -356,34 +355,34 @@ test('assisted SLES context maps Linux policy families to converted native capab
     title: 'The SUSE operating system must generate audit records for all uses of the crontab command.',
     checkText: 'Verify the SLES audit rule for crontab.'
   });
-  assert.equal(Object.values(audit.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(audit.generatedMode, 'manual');
   const sysctl = createAssistedAssessment(pack, {
     platform: 'sles12',
     title: 'The SUSE operating system must implement kptr-restrict.',
     checkText: 'Verify the kernel sysctl value.'
   });
-  assert.equal(Object.values(sysctl.document.assessment.tests)[0].capability, 'unix.sysctl');
+  assert.equal(sysctl.generatedMode, 'manual');
   const packageCheck = createAssistedAssessment(pack, {
     platform: 'sles15',
     title: 'The SUSE operating system must not have the vsftpd package installed.',
     checkText: 'Verify that vsftpd is not installed.'
   });
-  assert.equal(Object.values(packageCheck.document.assessment.tests)[0].capability, 'linux.rpminfo');
+  assert.equal(packageCheck.generatedMode, 'manual');
 });
 
 test('assisted benchmark family context selects native collectors for obscure remaining STIGs', () => {
   const mac = createAssistedAssessment(pack, {
     platform: 'macos', title: 'The macOS system must disable Handoff.', checkText: 'Verify the macOS setting.'
   });
-  assert.equal(Object.values(mac.document.assessment.tests)[0].capability, 'independent.shellcommand');
+  assert.equal(mac.generatedMode, 'manual');
   const cisco = createAssistedAssessment(pack, {
     platform: 'cisco_ios-xe', title: 'The Cisco router must be configured to display the security banner.', checkText: 'Verify the device configuration.'
   });
-  assert.equal(Object.values(cisco.document.assessment.tests)[0].capability, 'iosxe.line');
+  assert.equal(cisco.generatedMode, 'manual');
   const iis = createAssistedAssessment(pack, {
     platform: 'iis_site', title: 'Cookies exchanged between the IIS website and the client must have cookie properties set to prohibit client-side scripts from reading the cookie data.', checkText: 'Verify the IIS site configuration.'
   });
-  assert.equal(Object.values(iis.document.assessment.tests)[0].capability, 'windows.appcmdlistconfig');
+  assert.equal(iis.generatedMode, 'manual');
 });
 
 test('automation procedure cleanup removes converter OCIL wrapper boilerplate but preserves check content', async () => {
@@ -468,5 +467,17 @@ If any files on the system do not have an assigned group, this is a finding.`
   assert.equal(test.object.command, 'find / -fstype xfs -nogroup');
   assert.equal(test.require.item_requirement.items_found, 'none');
   assert.ok(result.unresolved.some(reason => /example|filesystem type/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
+});
+
+test('assisted drafts refuse selectorless placeholder automation', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The operating system must enforce an unrecognized configuration policy.',
+    checkText: 'Verify the configuration and confirm the required policy is enabled.'
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.match(result.yaml, /no empty-object automated draft was emitted/i);
   assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
 });
