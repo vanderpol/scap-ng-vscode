@@ -68,6 +68,13 @@ Assessment YAML, missing mode declarations and partial/unresolved coverage befor
 linking a draft. A `manual-only` response is preserved as a review result and
 cannot be linked as automated.
 
+Rule-local applicability is expected to remain inside the generated Assessment:
+internal Tests feed an explicit `evaluate` `if`/`then`/`else` expression whose
+branch can be `not_applicable`. An external applicability Assessment is appropriate
+only when the Benchmark already supplies a reusable condition/dependency. The
+review gate rejects an automated draft that merely mentions a Not Applicable
+branch without representing it.
+
 The result is never scanner/runtime proof and never asserts compliance. The author
 must review the assumptions, unresolved questions, citations and generated YAML.
 Only the existing explicit **Create and link automated Assessment** action writes
