@@ -189,6 +189,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /AI-assisted authoring configuration/);
   assert.match(aiConfigurationPanelSource, /createWebviewPanel/);
   assert.match(aiConfigurationPanelSource, /Safety contract/);
+  assert.match(aiConfigurationPanelSource, /Check available VS Code providers/);
+  assert.match(aiConfigurationPanelSource, /selectChatModels/);
   assert.match(authoringSidebarSource, /None \(no AI\)/);
   assert.match(authoringSidebarSource, /VS Code AI provider/);
   assert.match(authoringSidebarSource, /Configured remote AI/);
