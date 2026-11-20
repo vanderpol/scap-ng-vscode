@@ -909,21 +909,24 @@ function policyCandidate(text: string, platform?: string): Candidate | undefined
 function textFileContentCandidate(text: string): Candidate | undefined {
   const command = text.match(/\b(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?([A-Za-z][A-Za-z0-9_.-]*)\s+(\/[^\s,;:)]+)/i);
   const line = text.match(/\b([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*([A-Za-z0-9_.+-]+)/);
-  const key = command?.[1] ?? line?.[1];
+  const commandKey = command?.[1];
+  const lineWithoutEquals = commandKey
+    ? text.match(new RegExp(`^\\s*${escapeRegex(commandKey)}\\s+([^\\s#]+)`, 'im'))
+    : undefined;
+  const key = commandKey ?? line?.[1];
   const path = command?.[2] ?? text.match(/(?:^|\s)(\/(?:etc|var|usr|opt|home|root|srv)\/[A-Za-z0-9_./-]+)/)?.[1];
   if (!key || !path || !/(?:grep|egrep|text file|configuration file|config file|line)/i.test(text)) return undefined;
-  const lineValue = line?.[1] === key ? line[2] : undefined;
+  const lineValue = line?.[1] === key ? line[2] : lineWithoutEquals?.[1];
   const alternatives = new Set<string>(); if (lineValue) alternatives.add(lineValue);
   const valuePhrase = text.match(new RegExp(escapeRegex(key) + String.raw`[^.\n]{0,120}?(?:set to|value of|equals?)\s+["']?([A-Za-z0-9_.+-]+)`, 'i'))?.[1];
   if (valuePhrase) alternatives.add(valuePhrase);
-  for (const value of text.matchAll(/\b(?:True|False|true|false|yes|no|enabled|disabled)\b/g)) alternatives.add(value[0]);
   if (!alternatives.size) return undefined;
   const escaped = [...alternatives].map(escapeRegex);
-  const pattern = String.raw`^\s*${escapeRegex(key)}\s*=\s*(\w+)\b\s*$`;
+  const pattern = String.raw`^\s*${escapeRegex(key)}\s*(?:=|\s+)\s*(.+?)\s*$`;
   const fields = { subexpression: { matches_regex: `^(${escaped.join('|')})$` } };
   const object = {
     full_path: { equals: path }, pattern: { matches_regex: pattern }, instance: { greater_than_or_equal: 1 },
-    ignore_case: false, multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
+    ignore_case: /\bgrep\s+-[A-Za-z]*i[A-Za-z]*\b/i.test(text), multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
   } as Record<string, Json>;
   return { capability: 'independent.textfilecontent', object, fields, confidence: lineValue ? 'high' : 'medium', assumptions: ['Interpreted the command as a text-file check using the named file and setting; confirm that this matches the original requirement.', 'Review the generated regular expression and accepted values against the original check.'] };
 }
@@ -935,7 +938,7 @@ function shellCommandCandidate(text: string): Candidate | undefined {
   if (!command) return undefined;
   const shell = /^(?:Get-|Set-|Test-|Invoke-|Start-|Stop-|Select-|Where-|ForEach-|AuditPol|dsquery|dsmgmt|Get-WinEvent)/i.test(command) ? 'powershell' : 'bash';
   const object: Record<string, Json> = { shell, command, error_if_exit_status_not_0: false, error_if_stderr_exists: false };
-  return { capability: 'independent.shellcommand', object, presenceOnly: true, confidence: quoted ? 'medium' : 'low', assumptions: ['Inferred a shell command Object from an explicitly pasted command.', 'The generated draft checks command collection only; command semantics and output predicates require author review.'] };
+  return { capability: 'independent.shellcommand', object, presenceOnly: true, confidence: quoted ? 'medium' : 'low', manualOnlyReason: 'The procedure supplied a command but no reliable output predicate; collecting command output alone would not automate the requirement.', assumptions: ['Inferred a shell command Object from an explicitly pasted command.', 'No reliable command-output predicate was inferred; the generated draft would otherwise check collection only.'] };
 }
 function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
   if (/(?:audit.*(?:cron|crontab)|crontab.*audit)/i.test(text) && /\bauditctl\b/i.test(text)) return undefined;
@@ -948,28 +951,184 @@ function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
     full_path: { equals: path }, pattern: { matches_regex: '.*' }, instance: { greater_than_or_equal: 1 },
     ignore_case: false, multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
   };
-  return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern is intentionally broad; replace it with the exact requirement predicate before use.'] };
+  return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', manualOnlyReason: 'The procedure provided a configuration path but no reliable expected pattern or field predicate; a broad text-file collection would be misleading.', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern would be intentionally broad; review the exact requirement predicate before attempting automation.'] };
+}
+
+function shellCommandObject(command: string, pattern?: string): Record<string, Json> {
+  return {
+    shell: 'bash', command, ...(pattern ? { pattern } : {}),
+    error_if_exit_status_not_0: false, error_if_stderr_exists: false
+  };
+}
+
+function graphicalDisplayCandidate(text: string): Candidate | undefined {
+  if (!/systemctl\s+get-default/i.test(text) || !/rpm\s+-qa\b/i.test(text) || !/xorg|graphical display manager/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: [
+      { title: 'Default target is multi-user.target', object: shellCommandObject('systemctl get-default', '^\\s*multi-user\\.target\\s*$'), presenceOnly: true, itemFound: 'one_or_more' },
+      { title: 'No Xorg server package is installed', object: shellCommandObject('rpm -qa | grep xorg | grep server', 'xorg.*server'), presenceOnly: true, itemFound: 'none' }
+    ],
+    assumptions: ['Inferred separate boot-target and Xorg package checks from the source procedure.'],
+    review: ['The source permits an ISSO-documented graphical-interface exception; this draft cannot encode that organizational approval.']
+  };
+}
+
+function auditRuleCandidate(text: string): Candidate | undefined {
+  if (!/\/etc\/audit\/audit\.rules\b/i.test(text) || !/\bgrep\b/i.test(text)) return undefined;
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(grep\s+(?:-[A-Za-z]+\s+)*(?:"[^"]+"|'[^']+'|\S+)\s+\/etc\/audit\/audit\.rules[^\n.;]*)/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const multiArchitecture = /arch=b32|arch=b64/i.test(command);
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: [
+      `Inferred the audit-rule inspection command '${command}'.`,
+      'Inferred that matching audit-rule output represents the required audit rule.'
+    ],
+    review: [
+      multiArchitecture
+        ? 'Confirm that every required architecture and syscall rule is present; this draft only requires command output.'
+        : 'Confirm the complete audit rule, filters, architecture, and key against the source requirement.',
+      'Confirm the effective loaded audit configuration, not only the source audit.rules file.'
+    ]
+  };
+}
+
+function awkViolationCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(awk\s+-F:\s+[^\n.;]+\s+\/(?:etc)\/(?:shadow|passwd)[^\n.;]*)/im);
+  if (!match) return undefined;
+  const source = match[1].trim();
+  const shadow = /\/etc\/shadow\b/i.test(source);
+  const uidZero = /\$3\s*==\s*0/i.test(source) && /\/etc\/passwd\b/i.test(source);
+  if (!shadow && !uidZero) return undefined;
+  const command = uidZero ? `awk -F: '$3 == 0 && $1 != "root" {print $1}' /etc/passwd` : source;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [
+      `Inferred the account-database violation scan '${command}'.`,
+      'Inferred that any command output represents a noncompliant account.'
+    ],
+    review: [
+      'Confirm exclusions for system accounts and organizational exceptions before relying on the no-output result.',
+      uidZero ? 'The generated command excludes root so only additional UID 0 accounts are findings.' : 'Confirm the awk field index and threshold against the source account-database requirement.'
+    ]
+  };
+}
+
+function promiscuousInterfaceCandidate(text: string): Candidate | undefined {
+  if (!/\bip\s+link\b/i.test(text) || !/promisc/i.test(text)) return undefined;
+  const command = 'ip link | grep -i promisc';
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command, 'promisc'),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: ['Inferred the ip-link promiscuous-mode scan from the source procedure.', 'Inferred that matching promisc output represents an unapproved finding.'],
+    review: ['The source allows an ISSO-documented exception; this draft only checks for matching interfaces and does not encode approval metadata.']
+  };
+}
+
+function auditFailureCandidate(text: string): Candidate | undefined {
+  if (!/\bauditctl\s+-s\b/i.test(text) || !/\bfailure\s+[12]\b/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject('auditctl -s | grep -i "fail"', '^\\s*failure\\s+(?:1|2)\\s*$'),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: ['Inferred the auditctl failure-action query and accepted failure values 1 or 2 from the procedure.'],
+    review: ['If failure=1 is used, verify the documented availability exception and monitoring of the kernel log; the draft cannot encode that organizational decision.']
+  };
+}
+
+function shostsEquivCandidate(text: string): Candidate | undefined {
+  if (!/shosts\.equiv/i.test(text) || !/\bfind\b/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: { filepath: { matches_regex: '(^|/)shosts\\.equiv$' } },
+    presenceOnly: true, itemFound: 'none', confidence: 'high',
+    assumptions: ['Inferred a system-wide shosts.equiv file search from the find procedure.', 'Inferred that matching files must be absent.'],
+    review: ['Confirm filesystem scope and traversal policy for the target scanner.']
+  };
+}
+
+function worldWritableDirectoryCandidate(text: string): Candidate | undefined {
+  if (!/\bfind\b/i.test(text) || !/-perm\s+-0002/i.test(text) || !/-type\s+d/i.test(text) || !/world-writable/i.test(text)) return undefined;
+  const groupOrOwner = /-gid\s+\+?999/i.test(text) ? 'group owner' : /-uid\s+\+?999/i.test(text) ? 'owner' : undefined;
+  if (!groupOrOwner) return undefined;
+  const command = `find / -xdev -type d -perm -0002 ${groupOrOwner === 'group owner' ? '-gid +999' : '-uid +999'} -print`;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [`Inferred a world-writable directory scan for non-system ${groupOrOwner}s.`, 'Inferred that command output represents a finding.'],
+    review: ['The source says to run this once per local partition; replace / with each applicable partition or confirm the scanner traversal policy.']
+  };
+}
+
+function releaseCandidate(text: string): Candidate | undefined {
+  if (!/\/etc\/redhat-release\b/i.test(text) || !/\bcat\b/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject('cat /etc/redhat-release', '^\\s*Red Hat Enterprise Linux .*release\\s+7\\.[0-9]+'),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: ['Inferred the RHEL release query from cat /etc/redhat-release and the sample output.'],
+    review: ['Confirm the supported-release boundary and lifecycle status externally; the command only identifies the installed release.']
+  };
+}
+
+function mfaCandidate(text: string): Candidate | undefined {
+  if (!/\bauthconfig\s+--test\b/i.test(text) || !/smartcard|pam_pkcs11/i.test(text)) return undefined;
+  const checks = [
+    ['authconfig --test | grep "pam_pkcs11 is enabled"', 'pam_pkcs11\\s+is\\s+enabled'],
+    ['authconfig --test | grep "smartcard removal action"', 'smartcard\\s+removal\\s+action\\s+\\S+'],
+    ['authconfig --test | grep "smartcard module"', 'smartcard\\s+module\\s+\\S+']
+  ];
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: checks.map(([command, pattern]) => ({ title: `MFA configuration: ${command}`, object: shellCommandObject(command, pattern), presenceOnly: true, itemFound: 'one_or_more' })),
+    assumptions: ['Inferred three required authconfig smartcard/MFA evidence checks from the procedure.'],
+    review: ['The source permits other AO-approved MFA mechanisms; confirm the organization uses smartcard authentication before relying on this draft.']
+  };
+}
+
+function deviceLabelCandidate(text: string): Candidate | undefined {
+  if (!/find\s+\/dev\b/i.test(text) || !/(?:device_t|unlabeled_t)/i.test(text)) return undefined;
+  const checks = [
+    ['find /dev -context *:device_t:* \\( -type c -o -type b \\) -printf "%p %Z\\n"', 'device_t'],
+    ['find /dev -context *:unlabeled_t:* \\( -type c -o -type b \\) -printf "%p %Z\\n"', 'unlabeled_t']
+  ];
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: checks.map(([command, label]) => ({ title: `Device label scan: ${label}`, object: shellCommandObject(command), presenceOnly: true, itemFound: 'none' })),
+    assumptions: ['Inferred the two SELinux device-label scans from the source procedure.', 'Inferred that either command producing output represents a mislabeled device finding.'],
+    review: ['Confirm documented virtual-machine exceptions such as /dev/vmci and the complete device search scope.']
+  };
+}
+
+function sshPrivateKeyCandidate(text: string): Candidate | undefined {
+  if (!/ssh_host.*key/i.test(text) || !/\bfind\b/i.test(text) || !/0640/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: { filepath: { matches_regex: '.*/ssh_host[^/]*key$' } },
+    fields: { owner_execute: { equals: false }, group_write: { equals: false }, group_execute: { equals: false }, other_read: { equals: false }, other_write: { equals: false }, other_execute: { equals: false } },
+    confidence: 'medium', assumptions: ['Inferred an SSH private host-key file selector from the find procedure.', 'Inferred the forbidden permission bits for mode 0640 or less permissive.'],
+    review: ['Confirm that the required owner read/write bits, group ownership, and private-key path set are also enforced by the source policy.']
+  };
 }
 
 function findNoGroupCandidate(text: string): Candidate | undefined {
-  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(find\s+\/[^\n.;]*?-fstype\s+([A-Za-z0-9_.-]+)[^\n.;]*?-nogroup[^\n.;]*)/im);
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(find\s+\/[^\n.;]*?-(nogroup|nouser)[^\n.;]*)/im);
   if (!match) return undefined;
   const command = match[1].trim();
-  const filesystemType = match[2];
+  const kind = match[2].toLowerCase() === 'nouser' ? 'owner' : 'group';
+  const filesystemType = text.match(/-fstype\s+([A-Za-z0-9_.-]+)/i)?.[1];
   return {
-    capability: 'independent.shellcommand',
-    object: {
-      shell: 'bash', command,
-      error_if_exit_status_not_0: false, error_if_stderr_exists: false
-    },
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
     presenceOnly: true, itemFound: 'none', confidence: 'medium',
     assumptions: [
-      `Inferred the find command '${command}' from the source procedure.`,
-      'Inferred that any command output represents a file without a resolvable group owner.'
+      `Inferred the find scan for files without a resolvable ${kind} from '${command}'.`,
+      'Inferred that any command output represents a finding.'
     ],
     review: [
-      `The procedure labels '${filesystemType}' as an example; replace it or broaden the command for every filesystem type required by the benchmark.`,
-      'Confirm that the scanner execution identity and filesystem traversal scope are appropriate for the target.'
+      filesystemType
+        ? `The procedure labels '${filesystemType}' as an example; replace it or broaden the command for every filesystem type required by the benchmark.`
+        : 'Confirm filesystem scope and traversal policy for the target scanner.',
+      'Confirm the scanner execution identity and account-database semantics before relying on the no-output result.'
     ]
   };
 }
@@ -1056,7 +1215,8 @@ function unixFileCandidate(text: string): Candidate | undefined {
   if (/mode\s+0*0{3,4}|mode\s+0000/i.test(text)) {
     for (const name of ['setuid','setgid','sticky','owner_read','owner_write','owner_execute','group_read','group_write','group_execute','other_read','other_write','other_execute']) fields[name] = { equals: false };
   }
-  return { capability: 'unix.file', object, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !Object.keys(fields).length, itemFound: shosts ? 'none' : undefined, confidence: Object.keys(fields).length || shosts ? 'high' : 'medium', assumptions: [shosts ? 'Inferred a Unix file search for .shosts files.' : `Inferred a Unix file Object from the absolute path '${path}'.`, ...(Object.keys(fields).length ? ['Inferred ownership or permission predicates from the requirement text.'] : ['The expected file state still needs author review; this draft checks Item presence only.'])] };
+  const needsStatePredicate = !Object.keys(fields).length && !shosts && /(?:owner|ownership|group|permission|mode|writable|executable)/i.test(text);
+  return { capability: 'unix.file', object, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !Object.keys(fields).length, itemFound: shosts ? 'none' : undefined, confidence: Object.keys(fields).length || shosts ? 'high' : 'medium', manualOnlyReason: needsStatePredicate ? 'The procedure identifies a file path but the required ownership, group, mode, or permission predicate was not safely inferred.' : undefined, assumptions: [shosts ? 'Inferred a Unix file search for .shosts files.' : `Inferred a Unix file Object from the absolute path '${path}'.`, ...(Object.keys(fields).length ? ['Inferred ownership or permission predicates from the requirement text.'] : ['The expected file state still needs author review; this draft checks Item presence only.'])] };
 }
 
 function annotation(input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
@@ -1078,7 +1238,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {

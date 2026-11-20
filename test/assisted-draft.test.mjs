@@ -131,7 +131,6 @@ test('assisted common command and policy patterns stay native and schema-valid',
     ['linux.systemdunitproperty', 'Service must be active', 'Verify with: $ systemctl is-active systemd-journald active'],
     ['windows.passwordpolicy', 'Password history must be 24', 'If Enforce password history is less than 24 passwords remembered, this is a finding.'],
     ['independent.textfilecontent', 'Configuration must be enabled', 'Verify with: $ grep localpkg_gpgcheck /etc/dnf/dnf.conf localpkg_gpgcheck=1 If localpkg_gpgcheck is not set to 1 or True, this is a finding.'],
-    ['independent.shellcommand', 'Directory memberships must be reviewed', 'Open PowerShell and enter "Get-ADGroupMember -Identity EnterpriseAdmins".']
   ];
   for (const [capability, title, checkText] of cases) {
     const result = createAssistedAssessment(pack, { title, checkText });
@@ -200,10 +199,9 @@ test('assisted shell fallback preserves explicit complex command collection with
     title: 'Audit rules must be configured',
     checkText: 'Verify with: $ sudo auditctl -l | grep /etc/sudoers -w /etc/sudoers -p wa'
   });
-  assert.equal(result.generatedMode, 'automated');
-  assert.equal(result.document.assessment.tests['audit-rules-must-be-configured-test'].capability, 'independent.shellcommand');
-  assert.match(result.yaml, /command collection only/);
-  assert.deepEqual(result.document.assessment.tests['audit-rules-must-be-configured-test'].require, { item_requirement: { items_found: 'one_or_more' } });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.match(result.yaml, /no reliable output predicate|collecting command output alone/i);
 });
 
 test('assisted draft preserves a selected shared applicability dependency', () => {
@@ -480,4 +478,49 @@ test('assisted drafts refuse selectorless placeholder automation', () => {
   assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
   assert.match(result.yaml, /no empty-object automated draft was emitted/i);
   assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
+});
+
+test('assisted RHEL audit, account, and graphical procedures preserve concrete command predicates', () => {
+  const audit = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The system must audit use of semanage.',
+    checkText: '# sudo grep -w "/usr/sbin/semanage" /etc/audit/audit.rules -a always,exit -F path=/usr/sbin/semanage -F perm=x -F auid>=1000'
+  });
+  assert.equal(audit.generatedMode, 'automated');
+  assert.equal(audit.confidence, 'medium');
+  const auditTest = Object.values(audit.document.assessment.tests)[0];
+  assert.equal(auditTest.capability, 'independent.shellcommand');
+  assert.match(auditTest.object.command, /semanage/);
+  assert.equal(auditTest.require.item_requirement.items_found, 'one_or_more');
+
+  const accounts = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'Accounts with an invalid shadow entry must be absent.',
+    checkText: '# awk -F: \'!$2 {print $1}\' /etc/shadow\nIf the command returns any results, this is a finding.'
+  });
+  assert.equal(accounts.generatedMode, 'automated');
+  assert.equal(Object.values(accounts.document.assessment.tests)[0].require.item_requirement.items_found, 'none');
+
+  const graphical = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The graphical display manager must not be installed unless approved.',
+    checkText: '$ systemctl get-default\nmulti-user.target\n$ rpm -qa | grep xorg | grep server'
+  });
+  assert.equal(graphical.generatedMode, 'automated');
+  assert.equal(Object.values(graphical.document.assessment.tests).length, 2);
+  assert.ok(graphical.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
+});
+
+test('assisted text configuration parsing preserves case-insensitive keys and multi-token values', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'SSH MAC algorithms must be FIPS-approved.',
+    checkText: '# grep -i macs /etc/ssh/sshd_config\nMACs hmac-sha2-512,hmac-sha2-256\nIf any other hashes are listed, this is a finding.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.equal(test.object.ignore_case, true);
+  assert.match(test.object.pattern.matches_regex, /\(\.\+\?\)/);
+  assert.match(test.require.fields.subexpression.matches_regex, /hmac-sha2-512/);
 });
