@@ -5,7 +5,7 @@
  * not make network calls, select a model, or mutate Assessment YAML. Those
  * behaviors belong to a later provider/review slice.
  */
-export const aiAssistanceModes = ['offline', 'local', 'vscode', 'remote'] as const;
+export const aiAssistanceModes = ['none', 'local', 'vscode', 'remote'] as const;
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
 export interface AiAuthoringConfiguration {
@@ -17,7 +17,7 @@ export interface AiAuthoringConfiguration {
 export function normalizeAiAssistanceMode(value: unknown): AiAssistanceMode {
   return typeof value === 'string' && (aiAssistanceModes as readonly string[]).includes(value)
     ? value as AiAssistanceMode
-    : 'offline';
+    : 'none';
 }
 
 export function aiAssistanceModeLabel(mode: AiAssistanceMode): string {
@@ -25,7 +25,7 @@ export function aiAssistanceModeLabel(mode: AiAssistanceMode): string {
     case 'local': return 'Local AI';
     case 'vscode': return 'VS Code AI provider';
     case 'remote': return 'Configured remote AI';
-    default: return 'Offline only';
+    default: return 'None (no AI)';
   }
 }
 
@@ -34,7 +34,7 @@ export function aiAssistanceModeDescription(mode: AiAssistanceMode): string {
     case 'local': return 'Use a model served by a local endpoint. No internet connection is required.';
     case 'vscode': return 'Use an approved model exposed through the VS Code Language Model API when available.';
     case 'remote': return 'Use an explicitly configured enterprise or remote endpoint after reviewing the data scope.';
-    default: return 'Use the deterministic offline workflow. No model or network access is used.';
+    default: return 'Do not use AI assistance. The separate deterministic offline workflow remains available.';
   }
 }
 
@@ -47,7 +47,7 @@ export function aiAssistanceModeDescription(mode: AiAssistanceMode): string {
  */
 export function aiEndpointError(mode: AiAssistanceMode, endpoint: string): string | undefined {
   const value = endpoint.trim();
-  if (!value || mode === 'offline' || mode === 'vscode') return undefined;
+  if (!value || mode === 'none' || mode === 'vscode') return undefined;
   let parsed: URL;
   try { parsed = new URL(value); }
   catch { return 'AI endpoint must be a valid URL.'; }

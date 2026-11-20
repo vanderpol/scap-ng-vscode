@@ -2,14 +2,14 @@
 
 The Authoring Sidebar **Options** tab now contains the first configuration slice
 for optional AI-assisted authoring. The provider details stay behind a
-**Configure AI…** popup and that button is hidden while **Offline only** is
+**Configure AI…** popup and that button is hidden while **None (no AI)** is
 selected. This slice intentionally configures no
 provider and makes no network requests.
 
 ## Modes
 
-- **Offline only** (default): use the deterministic offline workflow; no model
-  or network access is used.
+- **None (no AI)** (default): do not use AI assistance. The deterministic
+  offline workflow remains available separately and does not use a model.
 - **Local AI**: reserve a loopback endpoint for a locally hosted model. The
   endpoint is restricted to `localhost`, `127.0.0.1`, or `::1` and may use HTTP
   or HTTPS.

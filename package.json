@@ -280,20 +280,20 @@
         "scapNg.ai.mode": {
           "type": "string",
           "enum": [
-            "offline",
+            "none",
             "local",
             "vscode",
             "remote"
           ],
           "enumDescriptions": [
-            "Use only the deterministic offline workflow; no model or network access is used.",
+            "Do not use AI assistance. The deterministic offline workflow remains available separately.",
             "Use a model served by a local loopback endpoint; no internet connection is required.",
             "Use an approved model exposed through the VS Code Language Model API when available.",
             "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope."
           ],
-          "default": "offline",
+          "default": "none",
           "scope": "window",
-          "description": "AI assistance mode for proposing Assessment authoring changes. AI is opt-in and never writes YAML without review."
+          "description": "AI assistance mode for proposing Assessment authoring changes. None is the default; AI is opt-in and never writes YAML without review."
         },
         "scapNg.ai.endpoint": {
           "type": "string",

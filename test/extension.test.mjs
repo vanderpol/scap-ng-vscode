@@ -38,8 +38,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
-  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['offline', 'local', 'vscode', 'remote']);
-  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.mode'].default, 'offline');
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['none', 'local', 'vscode', 'remote']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.mode'].default, 'none');
   assert.match(packageJson.contributes.configuration.properties['scapNg.ai.mode'].description, /opt-in/i);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.model'].default, '');
@@ -182,9 +182,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /id=\"aiMode\"/);
   assert.match(authoringSidebarSource, /id=\"configureAi\"/);
   assert.match(authoringSidebarSource, /id=\"aiDialog\"/);
-  assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'offline\'/);
+  assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'none\'/);
   assert.match(authoringSidebarSource, /AI-assisted authoring configuration/);
-  assert.match(authoringSidebarSource, /Offline only/);
+  assert.match(authoringSidebarSource, /None \(no AI\)/);
   assert.match(authoringSidebarSource, /VS Code AI provider/);
   assert.match(authoringSidebarSource, /Configured remote AI/);
   assert.match(authoringSidebarSource, /no provider was contacted/);
