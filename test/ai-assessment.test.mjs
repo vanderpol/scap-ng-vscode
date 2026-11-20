@@ -185,4 +185,5 @@ test('AI manual-only wireless output falls back to the validated offline applica
   assert.equal(assessment.evaluate.then.test, Object.keys(assessment.tests)[1]);
   assert.ok(assessment.evaluate.else.not_applicable);
   assert.match(result.yaml, /deterministic offline draft/i);
+  assert.match(result.yaml, /no AI-authored YAML is present/i);
 });
