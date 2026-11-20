@@ -13,6 +13,12 @@ export interface AiAssessmentInput {
   availableConditions?: Array<{ name: string; assessment: string; title?: string; version?: string | number }>;
 }
 
+export interface AiAssessmentCoverage {
+  applicability: 'implemented' | 'not-needed' | 'not-representable';
+  procedureSteps: Array<{ summary: string; represented: boolean; tests?: string[] }>;
+  pathPatterns: Array<{ pattern: string; represented: boolean; strategy?: string }>;
+}
+
 export interface AiAssessmentDraft {
   generatedMode: 'automated' | 'manual-only';
   confidence: 'high' | 'medium' | 'low';
@@ -23,6 +29,7 @@ export interface AiAssessmentDraft {
   unresolved: string[];
   citations: string[];
   rationale?: string;
+  coverage?: AiAssessmentCoverage;
   method: 'configured-ai';
 }
 
@@ -208,6 +215,40 @@ function list(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
 }
 
+function normalizeCoverage(value: unknown): AiAssessmentCoverage | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as any;
+  const applicability = source.applicability;
+  if (applicability !== 'implemented' && applicability !== 'not-needed' && applicability !== 'not-representable') return undefined;
+  const steps = Array.isArray(source.procedure_steps) ? source.procedure_steps : [];
+  const paths = Array.isArray(source.path_patterns) ? source.path_patterns : [];
+  const procedureSteps = steps.filter((step: any) => step && typeof step.summary === 'string' && typeof step.represented === 'boolean').map((step: any) => ({ summary: step.summary.trim(), represented: step.represented, tests: list(step.tests) }));
+  const pathPatterns = paths.filter((path: any) => path && typeof path.pattern === 'string' && typeof path.represented === 'boolean').map((path: any) => ({ pattern: path.pattern.trim(), represented: path.represented, strategy: typeof path.strategy === 'string' ? path.strategy.trim() : undefined }));
+  return { applicability, procedureSteps, pathPatterns };
+}
+
+function procedureNeedsApplicability(text: string): boolean {
+  return /not applicable|\bn\/a\b|not being utilized|not being used|if .*\b(ad|inactive|not installed|not configured)\b/i.test(text);
+}
+
+function procedureHasPathSet(text: string): boolean {
+  return /\*|\[[^\]]+\]|\bconf\.d\b|\bfor each\b|\ball files?\b|\bany files?\b/i.test(text);
+}
+
+function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any): string[] {
+  const coverage = normalizeCoverage(payload?.coverage);
+  if (!coverage) return ['AI response omitted the required procedure coverage manifest; no draft was accepted.'];
+  const diagnostics: string[] = [];
+  if (procedureNeedsApplicability(input.checkText) && coverage.applicability !== 'implemented') diagnostics.push('The procedure contains a Not Applicable/conditional branch, but the AI did not implement that branch in Assessment logic.');
+  if (coverage.procedureSteps.some(step => !step.represented)) diagnostics.push('The AI coverage manifest identifies one or more procedure steps that are not represented; partial automation is not linkable.');
+  if (procedureHasPathSet(input.checkText) && (!coverage.pathPatterns.length || coverage.pathPatterns.some(path => !path.represented))) diagnostics.push('The procedure names a path set, wildcard, or multiple files, but the AI did not represent the complete population.');
+  if (!coverage.procedureSteps.length) diagnostics.push('The AI coverage manifest contains no procedure steps.');
+  const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent/i.test(item));
+  if (unresolvedCritical.length) diagnostics.push('The AI reports unresolved semantic coverage gaps; review or refine the procedure before linking this draft.');
+  if (value?.assessment?.mode === 'automated' && !value?.assessment?.evaluate && coverage.procedureSteps.length > 1) diagnostics.push('Multiple procedure steps require explicit evaluate logic; the draft has no evaluate expression.');
+  return diagnostics;
+}
+
 function draftFromFailure(message: string, assumptions: string[] = []): AiAssessmentDraft {
   return { generatedMode: 'manual-only', confidence: 'low', yaml: '', diagnostics: [message], document: undefined, assumptions, unresolved: [message], citations: [], method: 'configured-ai' };
 }
@@ -219,7 +260,7 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   if ((input.ruleYaml?.length ?? 0) > 50000) return draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.');
   if (input.title.length > 4000 || input.ruleId.length > 1000) return draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.');
   const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
-  const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve organizational/ISSO/SA judgment as manual or unresolved. If the procedure has an applicability branch, use only a supplied existing applicability condition; otherwise return unresolved questions or manual-only rather than inventing an Assessment ID.\n\nYour task is to propose one Assessment for the supplied Rule and check procedure. Return ONLY a JSON object with these keys: generated_mode (automated or manual-only), confidence (high, medium, low), assessment_yaml (a YAML string when automated, empty when manual-only), assumptions (array of strings), unresolved_questions (array of strings), citations (array of short knowledge-pack pointers), and rationale (short string). Do not return Markdown, code fences, compliance PASS/FAIL, or a claim of runtime/scanner proof. The assessment_yaml must be a complete native SCAP-NG 0.4.1 Assessment and must validate against the supplied assessment schema. Use explicit serialized values; never rely on presentation defaults. If the procedure cannot be expressed safely with an existing capability, return manual-only rather than fabricating a selector.\n\nCanonical SCAP-NG knowledge pack (provenance pinned):\n${knowledge}`;
+  const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve organizational/ISSO/SA judgment as manual or unresolved. If the procedure has an applicability branch, use only a supplied existing applicability condition; otherwise return unresolved questions or manual-only rather than inventing an Assessment ID.\n\nYour task is to propose one Assessment for the supplied Rule and check procedure. Return ONLY a JSON object with these keys: generated_mode (automated or manual-only), confidence (high, medium, low), assessment_yaml (a YAML string when automated, empty when manual-only), assumptions (array of strings), unresolved_questions (array of strings), citations (array of short knowledge-pack pointers), rationale (short string), and coverage ({applicability: implemented|not-needed|not-representable, procedure_steps: [{summary, represented, tests}], path_patterns: [{pattern, represented, strategy}]}). Do not return Markdown or code fences, compliance PASS/FAIL, or a claim of runtime/scanner proof. The assessment_yaml must be a complete native SCAP-NG 0.4.1 Assessment and must validate against the supplied assessment schema: include specification, evaluate, test_title, reported_elements, and Test IDs ending in -test. Use explicit serialized values; never rely on presentation defaults. Decompose every command/check into an appropriate Test and connect them with explicit evaluate if/then/else logic. A Not Applicable branch must be represented with not_applicable or an existing applicability Assessment dependency; do not merely mention it in unresolved_questions while returning automated. Preserve every file path and wildcard population using schema-authorized directory/filename/set/for_each constructs; never collapse a wildcard to one file. Return manual-only if any required branch, path population, or predicate cannot be represented completely. Automated plus a partial coverage manifest is invalid. Every Test must include a schema-valid test_title, capability, reported_elements, object and require. Object selectors must use operator maps such as full_path: {equals: /etc/example} and pattern: {matches_regex: regex}, never raw selector strings. For comparison requirements, use item_requirement.items_satisfying and field_requirement.values_matching only with schema cardinalities such as every; one_or_more belongs to items_found/values_found.\n\nCanonical SCAP-NG knowledge pack (provenance pinned):\n${knowledge}`;
   const user = `Generate an AI-assisted draft for this source context. The user explicitly approved sending this bounded context to the configured provider.\n\nRule ID: ${input.ruleId}\nRule title: ${input.title}\nTarget platform context: ${input.platform || 'unknown; do not infer applicability solely from platform'}\n\nManual/check procedure text:\n--- BEGIN PROCEDURE ---\n${input.checkText}\n--- END PROCEDURE ---\n\nCurrent Rule YAML (context only; do not rewrite or mutate it):\n--- BEGIN RULE YAML ---\n${input.ruleYaml || '(not supplied)'}\n--- END RULE YAML ---\n\nExisting Benchmark applicability conditions (reference context only; do not invent IDs):\n${JSON.stringify(input.availableConditions ?? [])}`;
   let raw: string;
   try {
@@ -235,20 +276,23 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   const unresolved = list(payload?.unresolved_questions);
   const citations = list(payload?.citations);
   const rationale = typeof payload?.rationale === 'string' ? payload.rationale.trim() : undefined;
+  const coverage = normalizeCoverage(payload?.coverage);
   const confidence = payload?.confidence === 'high' || payload?.confidence === 'medium' ? payload.confidence : 'low';
-  if (payload?.generated_mode === 'manual-only') return { generatedMode: 'manual-only', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, method: 'configured-ai' };
+  if (payload?.generated_mode === 'manual-only') return { generatedMode: 'manual-only', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (payload?.generated_mode !== 'automated') return draftFromFailure('The AI response did not declare generated_mode as automated or manual-only.', assumptions);
   let yamlText = typeof payload.assessment_yaml === 'string' ? stripCodeFence(payload.assessment_yaml) : '';
   if (!yamlText && payload.assessment && typeof payload.assessment === 'object') yamlText = stringify(payload.assessment);
   if (!yamlText) return draftFromFailure('The AI response did not contain assessment_yaml.', assumptions);
   const document = parseDocument(yamlText, { uniqueKeys: true });
-  if (document.errors.length) return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, method: 'configured-ai' };
+  if (document.errors.length) return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   let value: any;
-  try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, method: 'configured-ai' }; }
+  try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? pack.validate(schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
-  if (diagnostics.length) return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics, assumptions, unresolved, citations, rationale, method: 'configured-ai' };
+  if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
-  return { generatedMode: 'automated', confidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, method: 'configured-ai' };
+  diagnostics.push(...coverageDiagnostics(input, payload, value));
+  const effectiveConfidence = diagnostics.length ? 'low' : confidence;
+  return { generatedMode: 'automated', confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
 }

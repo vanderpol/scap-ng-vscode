@@ -50,7 +50,12 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
     assumptions: ['The file presence wording is unambiguous.'],
     unresolved_questions: ['Confirm target filesystem visibility.'],
     citations: ['schemas/assessment.schema.json', 'relevant_capability_mappings: unix.file'],
-    rationale: 'A native file existence check is available.'
+    rationale: 'A native file existence check is available.',
+    coverage: {
+      applicability: 'not-needed',
+      procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }],
+      path_patterns: []
+    }
   });
   const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'secret-not-logged', 'model-a', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
@@ -112,4 +117,24 @@ test('AI generation fails closed before network use when no key or model is conf
     assert.equal(called, false);
     assert.match(result.diagnostics[0], /API key/i);
   } finally { globalThis.fetch = original; }
+});
+
+test('AI drafts with partial applicability or path coverage are visibly rejected', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [],
+    unresolved_questions: ['The applicability branch is not implemented.', 'Additional conf.d/*.conf files require a complex set evaluation.'],
+    citations: [], rationale: 'Partial draft',
+    coverage: {
+      applicability: 'not-representable',
+      procedure_steps: [{ summary: 'Check configuration', represented: true, tests: ['check-file-test'] }],
+      path_patterns: [{ pattern: '/etc/sssd/conf.d/*.conf', represented: false }]
+    }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'LDAP protection', checkText: 'If LDAP is not being utilized, this is Not Applicable. Check /etc/sssd/sssd.conf and /etc/sssd/conf.d/*.conf.'
+  }));
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.diagnostics.some(item => /Not Applicable|conditional branch/i.test(item)));
+  assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
 });

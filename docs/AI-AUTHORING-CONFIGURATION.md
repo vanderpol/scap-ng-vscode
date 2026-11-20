@@ -61,10 +61,12 @@ shown immediately beside the consent checkbox:
   current authoring examples and editor guidance.
 
 The prompt identifies the exact canonical schema commit and pack manifest hash.
-The provider must return structured JSON. The extension rejects malformed JSON,
-malformed YAML, schema-invalid Assessment YAML, missing mode declarations and
-unsupported output before presenting a draft. A `manual-only` response is preserved
-as a review result and cannot be linked as automated.
+The provider must return structured JSON, including a procedure-coverage manifest
+for applicability branches, individual procedure steps and wildcard/path
+populations. The extension rejects malformed JSON, malformed YAML, schema-invalid
+Assessment YAML, missing mode declarations and partial/unresolved coverage before
+linking a draft. A `manual-only` response is preserved as a review result and
+cannot be linked as automated.
 
 The result is never scanner/runtime proof and never asserts compliance. The author
 must review the assumptions, unresolved questions, citations and generated YAML.
