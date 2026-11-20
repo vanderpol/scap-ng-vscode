@@ -38,6 +38,11 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['offline', 'local', 'vscode', 'remote']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.mode'].default, 'offline');
+  assert.match(packageJson.contributes.configuration.properties['scapNg.ai.mode'].description, /opt-in/i);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.model'].default, '');
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentAuthoringPrototype'));
@@ -174,6 +179,12 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /On every workspace activation/);
   assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
+  assert.match(authoringSidebarSource, /id=\"aiMode\"/);
+  assert.match(authoringSidebarSource, /Offline only/);
+  assert.match(authoringSidebarSource, /VS Code AI provider/);
+  assert.match(authoringSidebarSource, /Configured remote AI/);
+  assert.match(authoringSidebarSource, /no provider was contacted/);
+  assert.match(authoringSidebarSource, /aiEndpointError/);
   assert.match(authoringSidebarSource, /id=\"openHome\"/);
   assert.doesNotMatch(authoringSidebarSource, /Open native YAML beside sidebar/);
   assert.match(authoringSidebarSource, /type:'saveOptions'/);

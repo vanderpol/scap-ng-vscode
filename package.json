@@ -276,6 +276,36 @@
           "default": "tree",
           "scope": "resource",
           "description": "Presentation style for newly authored SCAP-NG Object mappings. Existing YAML is never reformatted on open or save."
+        },
+        "scapNg.ai.mode": {
+          "type": "string",
+          "enum": [
+            "offline",
+            "local",
+            "vscode",
+            "remote"
+          ],
+          "enumDescriptions": [
+            "Use only the deterministic offline workflow; no model or network access is used.",
+            "Use a model served by a local loopback endpoint; no internet connection is required.",
+            "Use an approved model exposed through the VS Code Language Model API when available.",
+            "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope."
+          ],
+          "default": "offline",
+          "scope": "window",
+          "description": "AI assistance mode for proposing Assessment authoring changes. AI is opt-in and never writes YAML without review."
+        },
+        "scapNg.ai.endpoint": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Optional AI endpoint. Local mode accepts loopback HTTP(S); remote mode requires HTTPS. Credentials are not stored in this setting."
+        },
+        "scapNg.ai.model": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Optional model identifier or hint. The VS Code provider will be discovered later when the Language Model API is available."
         }
       }
     },

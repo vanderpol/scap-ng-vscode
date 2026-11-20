@@ -2862,6 +2862,7 @@ export function activate(context: vscode.ExtensionContext) {
       syncEditorPreference();
       void openConfiguredSplitSource(api);
     }
+    if (event?.affectsConfiguration?.('scapNg.ai')) authoringSidebar.refreshContext();
   }));
   const revealAuthoring = async () => {
     // Secondary-bar containers are not consistently addressable through one
