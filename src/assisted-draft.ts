@@ -41,6 +41,8 @@ interface Candidate {
   manualOnlyReason?: string;
   /** Candidate-specific review items, when the heuristic has an explicit caveat. */
   review?: string[];
+  /** Explanation for the false/unknown applicability branch in a conditional Evaluate. */
+  conditionalElseReason?: string;
 }
 
 function slug(value: string, suffix: string): string {
@@ -930,6 +932,34 @@ function textFileContentCandidate(text: string): Candidate | undefined {
   } as Record<string, Json>;
   return { capability: 'independent.textfilecontent', object, fields, confidence: lineValue ? 'high' : 'medium', assumptions: ['Interpreted the command as a text-file check using the named file and setting; confirm that this matches the original requirement.', 'Review the generated regular expression and accepted values against the original check.'] };
 }
+function packageGatedTextFileCandidate(text: string): Candidate | undefined {
+  const packageMatch = text.match(/\b(?:yum|dnf)\s+(?:list|info)\s+(?:installed|--installed)\s+([A-Za-z0-9_.+:-]+)/i)
+    ?? text.match(/\brpm\s+-q(?:\s+--[A-Za-z-]+)?\s+([A-Za-z0-9_.+:-]+)/i);
+  if (!packageMatch || !/(?:not\s+installed|not\s+present|not\s+available)[\s\S]{0,220}(?:not\s+applicable|N\/?A)|(?:not\s+applicable|N\/?A)[\s\S]{0,220}(?:not\s+installed|not\s+present|not\s+available)/i.test(text)) return undefined;
+  const base = textFileContentCandidate(text);
+  if (!base) return undefined;
+  const packageName = packageMatch[1];
+  const branchLabel = `${packageName} installed`;
+  return {
+    ...base,
+    testCandidates: [{
+      title: `${branchLabel}: ${base.testCandidates?.[0]?.title ?? 'configuration check'}`,
+      object: base.object,
+      fields: base.fields,
+      presenceOnly: base.presenceOnly,
+      itemFound: base.itemFound
+    }],
+    conditionalBranches: [{ label: branchLabel, object: base.object }],
+    confidence: base.confidence === 'high' ? 'medium' : base.confidence,
+    assumptions: [
+      ...base.assumptions,
+      `Detected an explicit Not Applicable branch when the '${packageName}' package is not installed.`,
+      `Created an applicability Assessment placeholder for the '${packageName} installed' condition; link it to a package-presence check before relying on this draft.`
+    ],
+    conditionalElseReason: `If the applicability Assessment does not confirm that '${packageName}' is installed, treat this Rule as Not Applicable or leave it not evaluated according to the Benchmark policy.`
+  };
+}
+
 function shellCommandCandidate(text: string): Candidate | undefined {
   const commandStart = '(?:Get-|Set-|Test-|Invoke-|Start-|Stop-|Select-|Where-|ForEach-|AuditPol\\b|auditctl\\b|ausearch\\b|aureport\\b|semanage\\b|getfacl\\b|Secedit\\b|dsquery\\b|dsmgmt\\b|netstat\\b|ss\\b|iptables\\b|nft\\b|firewall-cmd\\b|openssl\\b|kubectl\\b|systemsetup\\b|defaults\\b|launchctl\\b|dscl\\b|security\\b|profiles\\b|fdesetup\\b|nvram\\b|pwpolicy\\b|system_profiler\\b|Get-WinEvent\\b|grep\\b|egrep\\b|awk\\b|sed\\b|find\\b|cat\\b|mount\\b|gsettings\\b|yum\\b|dpkg\\b|ipadm\\b|uname\\b|pkg\\b|zypper\\b|chage\\b|logins\\b|dladm\\b|ls\\b|ps\\b|lastlogin\\b|zoneadm\\b|ufw\\b|ip\\b|postconf\\b|getent\\b|grubby\\b|nmcli\\b|getenforce\\b|pwck\\b|timedatectl\\b|authconfig\\b|df\\b|svcs\\b|projects\\b|blkid\\b|dmesg\\b|fips-mode-setup\\b|update-crypto-policies\\b|passwd\\b|opensc-tool\\b|usbguard\\b|xauth\\b|ipfstat\\b|pfctl\\b|cryptoadm\\b|sxadm\\b|dumpadm\\b|zonecfg\\b|sestatus\\b|ifconfig\\b|findmnt\\b|stat\\b|postmap\\b|systemd-analyze\\b|auditreduce\\b|nginx\\b|icacls\\b|systemctl\\b|sshd\\b|apachectl\\b|httpd\\b|nginx\\b|pfexec\\b|zonename\\b|ipadm\\b|dladm\\b|zfs\\b|zpool\\b|zoneadm\\b|zonecfg\\b|coreadm\\b|logins\\b|lastlogin\\b|gsettings\\b|yum\\b|zypper\\b|postconf\\b|firewall-cmd\\b|ufw\\b|pfctl\\b|ipfstat\\b|cryptoadm\\b|fips-mode-setup\\b|update-crypto-policies\\b|authconfig\\b|grubby\\b|nmcli\\b|dmesg\\b|findmnt\\b|systemd-analyze\\b|auditreduce\\b|auditconfig\\b|svcprop\\b|getsebool\\b|networkmanager\\b|wicked\\b|userattr\\b|xhost\\b|display\\b|routeadm\\b|rmformat\\b|zpool\\b|get-content\\b|get-childitem\\b|more\\b|cut\\b|cd\\b|appcmd\\b|Get-WebConfiguration\\b|Get-IISConfig\\b|netsh\\b|wevtutil\\b|reg\\b|sfc\\b|dism\\b|whoami\\b|tasklist\\b|query\\b|net\\b|sh\\b)';
   const quoted = text.match(new RegExp('[\"\'`](' + commandStart + '[^\"\'`\\n]*)[\"\'`]', 'i'))?.[1];
@@ -1238,7 +1268,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1313,7 +1343,9 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
         conditionalDependencies[alias] = { assessment: `select-${slug(branch.label, 'applicability-assessment')}`, expected_version: 1, purpose: 'applicability' };
         return { alias, test: testIds[index], label: branch.label };
       });
-      return { if: { assessment: conditions[0].alias }, then: { test: conditions[0].test }, else_if: conditions.slice(1).map(condition => ({ if: { assessment: condition.alias }, then: { test: condition.test } })), else: { not_evaluated: { reason: `Select or create applicability Assessments for ${conditions.map(condition => condition.label).join(' and ')} before relying on this draft.` } } };
+      const expression: Record<string, Json> = { if: { assessment: conditions[0].alias }, then: { test: conditions[0].test }, else: { not_evaluated: { reason: candidate.conditionalElseReason ?? `Select or create applicability Assessments for ${conditions.map(condition => condition.label).join(' and ')} before relying on this draft.` } } };
+      if (conditions.length > 1) expression.else_if = conditions.slice(1).map(condition => ({ if: { assessment: condition.alias }, then: { test: condition.test } }));
+      return expression;
     })()
     : undefined;
   const generated = createGuidedAssessment(pack, {
@@ -1338,7 +1370,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       'The heuristic recognized the requirement but did not infer a concrete Object selector or field predicate; no empty-object automated draft was emitted.'
     ]);
   }
-  const unresolved = candidate.conditionalBranches ? [`Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
+  const unresolved = candidate.conditionalBranches ? [candidate.conditionalElseReason ?? `Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
   const notes = annotation({ title, checkText }, candidate.confidence, assumptions, unresolved);
   return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated' };

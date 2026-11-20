@@ -446,6 +446,41 @@ If a wireless interface is configured and its use on the system is not documente
   assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
 });
 
+test('assisted package-gated configuration checks generate an applicability branch', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The TFTP daemon must operate in secure mode if the TFTP server is required.',
+    checkText: `Verify the TFTP daemon is configured to operate in secure mode.
+
+Check to see if a TFTP server has been installed with the following commands:
+
+# yum list installed tftp-server
+tftp-server.x86_64 x.x-x.el7 rhel-7-server-rpms
+
+If a TFTP server is not installed, this is Not Applicable.
+
+If a TFTP server is installed, check for the server arguments with the following command:
+
+# grep server_args /etc/xinetd.d/tftp
+server_args = -s /var/lib/tftpboot
+
+If the "server_args" line does not have a "-s" option and a subdirectory is not assigned, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const assessment = result.document.assessment;
+  const test = Object.values(assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.ok(assessment.dependencies['applicability-tftp-server-installed']);
+  assert.equal(assessment.dependencies['applicability-tftp-server-installed'].purpose, 'applicability');
+  assert.equal(assessment.evaluate.if.assessment, 'applicability-tftp-server-installed');
+  assert.equal(assessment.evaluate.then.test, test.id ?? Object.keys(assessment.tests)[0]);
+  assert.equal(Object.hasOwn(assessment.evaluate, 'else_if'), false);
+  assert.match(assessment.evaluate.else.not_evaluated.reason, /tftp-server.*Not Applicable/i);
+  assert.deepEqual(test.require.fields.subexpression, { matches_regex: '^(-s)$' });
+  assert.ok(result.assumptions.some(reason => /applicability Assessment placeholder/i.test(reason)));
+});
+
 test('assisted RHEL find nogroup checks preserve the command and generate an absence test', () => {
   const result = createAssistedAssessment(pack, {
     platform: 'rhel',
