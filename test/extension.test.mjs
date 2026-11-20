@@ -193,6 +193,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /selectChatModels/);
   assert.match(aiConfigurationPanelSource, /Store API key securely/);
   assert.match(aiConfigurationPanelSource, /Test OpenAI-compatible gateway/);
+  assert.match(aiConfigurationPanelSource, /Query available models/);
+  assert.match(aiConfigurationPanelSource, /modelOptions/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
   assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);

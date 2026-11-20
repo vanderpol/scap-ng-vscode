@@ -2964,9 +2964,17 @@ export function activate(context: vscode.ExtensionContext) {
       const secrets = (context as any).secrets;
       const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
       const target = configuration ?? readAiConfiguration();
-      if (target.mode !== 'remote') return 'Select Configured remote AI before testing a gateway.';
+      if (target.mode !== 'remote') return { message: 'Select Configured remote AI before testing a gateway.' };
       const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
-      return result.message;
+      return { message: result.message, models: result.modelIds };
+    },
+    discoverRemoteModels: async (configuration?: AiAuthoringConfiguration) => {
+      const secrets = (context as any).secrets;
+      const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
+      const target = configuration ?? readAiConfiguration();
+      if (target.mode !== 'remote') return { message: 'Select Configured remote AI before querying models.' };
+      const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
+      return { message: result.message, models: result.modelIds };
     }
   };
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));

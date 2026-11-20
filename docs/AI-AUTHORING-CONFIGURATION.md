@@ -40,6 +40,7 @@ GenAI.mil is one supported example. Use:
 - Model: `gemini-3.5-flash-lite-withtools` (or another approved model)
 - Authentication: STARK API key
 
-The configuration page provides **Store API key securely** and **Test
-OpenAI-compatible gateway** actions. The key is stored with VS Code SecretStorage, never in settings or YAML. The test calls only `GET /models`; it does not send
+The configuration page provides **Store API key securely**, **Query available models**, and **Test
+OpenAI-compatible gateway** actions. The model field is an editable dropdown
+(list suggestions) so nonstandard or newly introduced model IDs remain usable. The key is stored with VS Code SecretStorage, never in settings or YAML. The test calls only `GET /models`; it does not send
 Assessment content.

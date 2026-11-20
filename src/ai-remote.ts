@@ -2,6 +2,7 @@ export interface RemoteConnectionResult {
   ok: boolean;
   message: string;
   models?: number;
+  modelIds?: string[];
 }
 
 /**
@@ -19,12 +20,13 @@ export async function testOpenAiCompatibleGateway(endpoint: string, apiKey: stri
   try {
     const response = await fetch(modelsUrl, { method: 'GET', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: controller.signal });
     if (!response.ok) return { ok: false, message: `Gateway responded with HTTP ${response.status}.` };
-    let models = 0;
+    let modelIds: string[] = [];
     try {
       const body = await response.json() as any;
-      models = Array.isArray(body?.data) ? body.data.length : Array.isArray(body?.models) ? body.models.length : 0;
+      const entries = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
+      modelIds = entries.map((entry: any) => typeof entry === 'string' ? entry : entry?.id ?? entry?.name ?? entry?.model).filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0);
     } catch { /* A successful gateway response is still useful even without a JSON model list. */ }
-    return { ok: true, models, message: models ? `Connection succeeded; ${models} model(s) are available.` : 'Connection succeeded; the gateway returned no model list.' };
+    return { ok: true, models: modelIds.length, modelIds, message: modelIds.length ? `Connection succeeded; ${modelIds.length} model(s) are available.` : 'Connection succeeded; the gateway returned no model list.' };
   } catch (error) {
     return { ok: false, message: error instanceof Error && error.name === 'AbortError' ? 'The gateway connection timed out.' : `Gateway connection failed: ${error instanceof Error ? error.message : String(error)}` };
   } finally { clearTimeout(timer); }

@@ -25,6 +25,7 @@ test('GenAI gateway probe uses the OpenAI-compatible models endpoint', async () 
     const result = await testOpenAiCompatibleGateway('https://api.genai.mil/v1', 'STARK_test_key');
     assert.equal(result.ok, true);
     assert.equal(result.models, 1);
+    assert.deepEqual(result.modelIds, ['gemini-test']);
     assert.equal(request.url, 'https://api.genai.mil/v1/models');
     assert.equal(request.options.headers.Authorization, 'Bearer STARK_test_key');
     assert.equal(request.options.method, 'GET');
