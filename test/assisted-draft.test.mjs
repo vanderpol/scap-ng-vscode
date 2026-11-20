@@ -124,6 +124,24 @@ test('assisted labeled Windows registry input infers hive, path, value name, typ
   assert.equal(test.require.fields.value.equals, 1);
 });
 
+test('assisted firewall fallback procedures stay manual when applicability and policy are organization-specific', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The access control program must grant or deny access to specific hosts and services.',
+    checkText: `If the "firewalld" package is not installed, ask the System Administrator (SA) if another firewall application such as iptables is installed. If an application firewall is not installed, this is a finding.
+
+Check to see if firewalld is active with systemctl status firewalld.
+
+If firewalld is not active, determine whether tcpwrappers is being used by checking /etc/hosts.allow and /etc/hosts.deny.
+
+If firewalld and tcpwrappers are not installed, configured, and active, ask the SA if another access control program is installed and active.`
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.unresolved.some(reason => /multi-branch|organization-specific|applicability/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /capability: linux\.systemdunitproperty/);
+});
+
 test('assisted common command and policy patterns stay native and schema-valid', () => {
   const cases = [
     ['unix.sysctl', 'Restrict kernel pointers', 'Run: $ sudo sysctl kernel.kptr_restrict kernel.kptr_restrict = 1'],
