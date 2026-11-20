@@ -75,10 +75,12 @@ internal Tests feed an explicit `evaluate` `if`/`then`/`else` expression whose
 branch can be `not_applicable`. An external applicability Assessment is appropriate
 only when the Benchmark already supplies a reusable condition/dependency. If the
 technical check is automatable but an ISSO/owner exception cannot be verified,
-the generated Assessment may use `not_evaluated` with an explicit follow-up
-instead of discarding the objective Test. The review gate rejects an automated
-draft that merely mentions a Not Applicable or human-exception branch without
-representing it.
+the generated Assessment keeps the objective Test and its real pass/fail result.
+An approved deviation is recorded after evaluation by the organization; it is not
+modeled as `not_evaluated`. Use `not_evaluated` only when the technical check
+itself cannot be performed or the required evidence is unavailable. The review
+gate rejects an automated draft that merely mentions a Not Applicable branch
+without representing it.
 
 The result is never scanner/runtime proof and never asserts compliance. The author
 must review the assumptions, unresolved questions, citations and generated YAML.

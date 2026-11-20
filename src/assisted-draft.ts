@@ -1223,26 +1223,19 @@ function nmcliWirelessCandidate(text: string): Candidate | undefined {
       shell: 'bash', command, pattern: wirelessPattern,
       error_if_exit_status_not_0: false, error_if_stderr_exists: false
     },
-    // The filtered shellcommand still creates an Item. A matching stdout line
-    // is therefore a comparison Test; an empty filtered stdout is represented
-    // by a false Test, not by item absence.
-    fields: { stdout_line: { matches_regex: wirelessPattern } },
-    presenceOnly: false, itemFound: 'one_or_more', confidence: 'medium',
-    evaluateExpression: testIds => ({
-      if: { test: testIds[0] },
-      then: { not_evaluated: {
-        reason: 'A wireless interface was found; review the required ISSO documentation and approved exception.',
-        follow_up: 'Verify and record the approved ISSO exception before relying on this Assessment.'
-      } },
-      else: { not_applicable: { reason: 'No wireless interface was detected.' } }
-    }),
+    // The filtered shellcommand always creates an Item. Model the required
+    // absence on stdout_line, so a matching wireless row is an ordinary failed
+    // technical check. An ISSO deviation is decided after that result; it is
+    // not an unknown/not_evaluated branch of the technical Assessment.
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
     assumptions: [
       `Inferred the nmcli wireless-interface inventory command '${command}'.`,
-      'Inferred that matching wifi rows represent wireless interfaces requiring human exception review.'
+      'Inferred that matching wifi rows are findings; an ISSO-approved deviation is handled after the technical result.'
     ],
     review: [
-      'The source permits an ISSO-documented exception; the technical branch is automated, while approval remains explicit not_evaluated.',
-      'Confirm the nmcli output format and wireless-interface predicate on the target platform.'
+      'The source permits an ISSO-documented exception; this Assessment intentionally fails when a matching wireless row is found so the deviation can be recorded after evaluation.',
+      'Confirm the nmcli output format and wireless-interface predicate on the target platform.',
+      'nmcli output alone may not distinguish absent hardware from an unconfigured adapter; confirm the benchmark applicability treatment.'
     ]
   };
 }

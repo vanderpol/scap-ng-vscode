@@ -176,9 +176,7 @@ test('AI manual-only wireless output falls back to the validated offline applica
   const assessment = result.document.assessment;
   const test = Object.values(assessment.tests)[0];
   assert.equal(test.capability, 'independent.shellcommand');
-  assert.deepEqual(test.require.fields.stdout_line, { matches_regex: test.object.pattern });
-  assert.ok(assessment.evaluate.if.test);
-  assert.ok(assessment.evaluate.then.not_evaluated);
-  assert.ok(assessment.evaluate.else.not_applicable);
+  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
+  assert.equal(assessment.evaluate.test, Object.keys(assessment.tests)[0]);
   assert.match(result.yaml, /deterministic offline draft/i);
 });
