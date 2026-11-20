@@ -171,6 +171,7 @@ test('AI manual-only wireless output falls back to the validated offline applica
   assert.equal(requests.length, 1);
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.method, 'configured-ai+offline-fallback');
+  assert.equal(result.linkable, false);
   assert.equal(result.diagnostics.length, 0);
   const assessment = result.document.assessment;
   const test = Object.values(assessment.tests)[0];

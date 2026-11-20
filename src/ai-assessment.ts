@@ -32,6 +32,8 @@ export interface AiAssessmentDraft {
   rationale?: string;
   coverage?: AiAssessmentCoverage;
   method: 'configured-ai' | 'configured-ai+offline-fallback';
+  /** Provider-rejected fallbacks are preview-only until the author reruns/reviews the offline workflow. */
+  linkable?: boolean;
 }
 
 function compactMapping(value: any) {
@@ -311,7 +313,8 @@ function offlineFallback(pack: MetadataPack, input: AiAssessmentInput, providerR
     citations: [...(previous?.citations ?? []), 'ASSISTED-ASSESSMENT-DRAFTS.md (deterministic fallback)'],
     rationale: 'The provider response was rejected locally; this review-only draft comes from the pinned offline heuristic and remains subject to author review.',
     coverage: previous?.coverage,
-    method: 'configured-ai+offline-fallback'
+    method: 'configured-ai+offline-fallback',
+    linkable: false
   };
 }
 
