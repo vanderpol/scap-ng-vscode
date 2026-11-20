@@ -35,6 +35,8 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.equal(knowledge.contract.runtime_execution_proof, false);
   assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
+  assert.match(knowledge.current_authoring_examples.applicability_gate_with_failure, /not_applicable/);
   assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
   assert.match(knowledge.current_authoring_examples.shellcommand_existence, /field_requirement/);
   assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /always creates an Item/);
@@ -174,9 +176,13 @@ test('AI manual-only wireless output falls back to the validated offline applica
   assert.equal(result.linkable, false);
   assert.equal(result.diagnostics.length, 0);
   const assessment = result.document.assessment;
-  const test = Object.values(assessment.tests)[0];
-  assert.equal(test.capability, 'independent.shellcommand');
-  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
-  assert.equal(assessment.evaluate.test, Object.keys(assessment.tests)[0]);
+  const tests = Object.values(assessment.tests);
+  assert.equal(tests.length, 2);
+  assert.equal(tests[0].capability, 'independent.shellcommand');
+  assert.deepEqual(tests[0].require.fields.stdout_line, { matches_regex: tests[0].object.pattern });
+  assert.deepEqual(tests[1].require.fields.stdout_line, { values_found: 'none' });
+  assert.equal(assessment.evaluate.if.test, Object.keys(assessment.tests)[0]);
+  assert.equal(assessment.evaluate.then.test, Object.keys(assessment.tests)[1]);
+  assert.ok(assessment.evaluate.else.not_applicable);
   assert.match(result.yaml, /deterministic offline draft/i);
 });

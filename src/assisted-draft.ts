@@ -1216,30 +1216,50 @@ function nmcliWirelessCandidate(text: string): Candidate | undefined {
   if (!/\bnmcli\s+(?:device|dev)\b/i.test(text) || !/(?:wireless|\bwifi\b|network interfaces?|network adapters?)/i.test(text)) return undefined;
   const command = text.match(/\bnmcli\s+(?:device|dev)(?:\s+status)?\b/i)?.[0] ?? 'nmcli device';
   const wirelessPattern = '^\\s*\\S+\\s+[Ww][Ii][Ff][Ii]\\s+';
+  const object = {
+    shell: 'bash', command, pattern: wirelessPattern,
+    error_if_exit_status_not_0: false, error_if_stderr_exists: false
+  } as Record<string, Json>;
   return {
     capability: 'independent.shellcommand',
     objectComplete: true,
-    object: {
-      shell: 'bash', command, pattern: wirelessPattern,
-      error_if_exit_status_not_0: false, error_if_stderr_exists: false
-    },
-    // The filtered shellcommand always creates an Item. Model the required
-    // absence on stdout_line, so a matching wireless row is an ordinary failed
-    // technical check. An ISSO deviation is decided after that result; it is
-    // not an unknown/not_evaluated branch of the technical Assessment.
-    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    object,
+    // Keep the population/applicability gate separate from the technical
+    // requirement. If a wireless adapter is present, the second Test is an
+    // ordinary absence check and therefore fails when a matching row exists.
+    testCandidates: [
+      {
+        title: 'Determine whether a wireless adapter is present',
+        object,
+        fields: { stdout_line: { matches_regex: wirelessPattern } },
+        presenceOnly: false,
+        itemFound: 'one_or_more'
+      },
+      {
+        title: 'No wireless interface is configured',
+        object,
+        presenceOnly: true,
+        itemFound: 'none'
+      }
+    ],
+    evaluateExpression: testIds => ({
+      if: { test: testIds[0] },
+      then: { test: testIds[1] },
+      else: { not_applicable: { reason: 'No wireless network adapter was detected.' } }
+    }),
+    confidence: 'medium',
     assumptions: [
       `Inferred the nmcli wireless-interface inventory command '${command}'.`,
-      'Inferred that matching wifi rows are findings; an ISSO-approved deviation is handled after the technical result.'
+      'Used a separate population Test so no-adapter systems can be Not Applicable.',
+      'Inferred that a wireless row is a technical finding; an ISSO-approved deviation is handled after the failed technical result.'
     ],
     review: [
-      'The source permits an ISSO-documented exception; this Assessment intentionally fails when a matching wireless row is found so the deviation can be recorded after evaluation.',
+      'The source permits an ISSO-documented exception; the technical absence Test intentionally fails when a matching wireless row is found so the deviation can be recorded after evaluation.',
       'Confirm the nmcli output format and wireless-interface predicate on the target platform.',
-      'nmcli output alone may not distinguish absent hardware from an unconfigured adapter; confirm the benchmark applicability treatment.'
+      'The source command may not distinguish absent hardware from an unconfigured adapter; confirm that the population Test is an acceptable applicability proxy.'
     ]
   };
 }
-
 function rhelSemanticCandidate(text: string, platform?: string): Candidate | undefined {
   const contextual = /(?:rhel|oracle[_ -]?linux|toss)/i.test(platform ?? '');
   if (!contextual && !/(?:RHEL|Red Hat|Linux|system-auth|password-auth|auditd|SSH daemon|\bOL\s*[0-9]+)/i.test(text)) return undefined;
@@ -1407,7 +1427,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
     : undefined;
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
+    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: explicitEvaluate || conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
     tests: normalizedTests.map((test, index) => ({
       id: testIds[index], title: test.title, capability: candidate.capability,
       object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound
