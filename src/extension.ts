@@ -215,6 +215,7 @@ function cleanRuleDiscussion(value: unknown): string {
 interface BenchmarkAutomationAnalysis {
   state: 'not-run' | 'complete';
   likelyAutomatable: number;
+  likelyRuleUris: string[];
   scanned: number;
   total: number;
   analyzedAt?: string;
@@ -228,6 +229,7 @@ interface BenchmarkAutomationAnalysis {
 async function analyzeBenchmarkAutomation(api: any, index: WorkspaceIndex, state: BenchmarkContextState, pack: MetadataPack, selected: BenchmarkContextSummary, progress?: any, token?: any): Promise<BenchmarkAutomationAnalysis> {
   const gaps = selected.rules.filter(rule => rule.automationStatus === 'needs-automation');
   let likelyAutomatable = 0;
+  const likelyRuleUris: string[] = [];
   let scanned = 0;
   for (const rule of gaps) {
     if (token?.isCancellationRequested) break;
@@ -244,14 +246,14 @@ async function analyzeBenchmarkAutomation(api: any, index: WorkspaceIndex, state
             checkText: cleanProcedureForAutomation(procedure),
             platform: benchmarkContextPlatform(selected)
           });
-          if (result.generatedMode === 'automated' && result.diagnostics.length === 0) likelyAutomatable++;
+          if (result.generatedMode === 'automated' && result.diagnostics.length === 0) { likelyAutomatable++; likelyRuleUris.push(rule.uri); }
         }
       }
     } catch { /* One malformed/missing manual source must not abort the batch. */ }
     scanned++;
     progress?.report?.({ increment: gaps.length ? 100 / gaps.length : 100, message: `${scanned}/${gaps.length} Rules analyzed` });
   }
-  return { state: 'complete', likelyAutomatable, scanned, total: gaps.length, analyzedAt: new Date().toISOString() };
+  return { state: 'complete', likelyAutomatable, likelyRuleUris, scanned, total: gaps.length, analyzedAt: new Date().toISOString() };
 }
 
 async function ruleAutomationSeed(api: any, context: BenchmarkContextSummary | undefined, rule: any, ruleDocument: any): Promise<RuleAutomationSeed> {
@@ -2035,7 +2037,7 @@ async function openBenchmarkGraphicalEditor(extensionContext: vscode.ExtensionCo
   send();
 }
 
-function benchmarkSourceChooserData(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection, filter = '') {
+function benchmarkSourceChooserData(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection, filter = '', automationAnalysis?: BenchmarkAutomationAnalysis) {
   if (!context) return undefined;
   const label = benchmarkContextLabels([context]).get(context.key) ?? context.benchmark.title ?? context.benchmark.id ?? 'Benchmark';
   const entries = section === 'rules'
@@ -2045,24 +2047,26 @@ function benchmarkSourceChooserData(context: BenchmarkContextSummary | undefined
       : context.conditions.map(condition => ({ uri: condition.sourceUri, title: condition.name, id: condition.targetId, path: condition.path, conditionName: condition.name }));
   const filteredEntries = section === 'rules' && filter === 'needs-automation'
     ? entries.filter(entry => 'automationStatus' in entry && entry.automationStatus === 'needs-automation')
-    : entries;
+    : section === 'rules' && filter === 'likely-automatable'
+      ? entries.filter(entry => automationAnalysis?.state === 'complete' && automationAnalysis.likelyRuleUris.includes(entry.uri))
+      : entries;
   const titles: Record<BenchmarkSourceSection, string> = { rules: 'Rules', applicability: 'Applicability', conditions: 'Conditions' };
   return { label, section, title: titles[section], entries: filteredEntries, filter };
 }
 
-function benchmarkSourceChooserHtml(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection, initialFilter = '') {
-  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-benchmark-source-chooser';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:18px;max-width:900px}h1{font-size:20px;margin:0 0 7px}.hint,.muted{color:var(--vscode-descriptionForeground)}.context{font-weight:600;margin:15px 0 8px}.search{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}.list{display:grid;gap:6px;margin-top:17px}.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--vscode-panel-border)}.name{font-weight:600;overflow-wrap:anywhere}.meta{display:block;color:var(--vscode-descriptionForeground);font-size:11px;margin-top:3px}.item-actions{display:flex;gap:6px}.item button,button{font:inherit;padding:6px 9px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}.empty{border:1px dashed var(--vscode-panel-border);padding:15px;margin:16px 0}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.error{color:var(--vscode-errorForeground)}@media(max-width:650px){.item{grid-template-columns:1fr}.item-actions{justify-content:flex-start}}</style></head><body><h1>Open Benchmark ${escapeHtml(section === 'rules' ? 'Rule' : section === 'applicability' ? 'Applicability' : 'Condition')}</h1><p class="hint">Search the selected Benchmark's ${escapeHtml(section)} and open the authored YAML source for editing.</p><p id="context" class="context"></p><input id="search" class="search" type="search" placeholder="Search ${escapeHtml(section)}"><div id="list" class="list"></div><div id="empty" class="empty" hidden><strong>No ${escapeHtml(section)} are indexed yet.</strong><p class="muted">Refresh Benchmark data after adding files.</p></div><p id="status" class="muted" role="status" aria-live="polite">Loading ${escapeHtml(section)}…</p><div class="actions"><button id="switch">Change Benchmark</button><button id="cancel">Cancel</button></div><script nonce="benchmark-source-chooser">const vscode=acquireVsCodeApi();const initial=${scriptJson(benchmarkSourceChooserData(context,section,initialFilter))};const singular=${scriptJson(section === 'applicability' ? 'applicability' : section.slice(0,-1))};let data=initial;let query='';const contextNode=document.getElementById('context');const listNode=document.getElementById('list');const empty=document.getElementById('empty');const status=document.getElementById('status');function render(next){data=next||undefined;contextNode.textContent=data?'Current Benchmark: '+data.label:'';const items=(data?.entries||[]).filter(item=>!query||[item.title,item.id,item.path,item.automationStatus].filter(Boolean).some(value=>String(value).toLocaleLowerCase().includes(query)));listNode.replaceChildren();for(const item of items){const row=document.createElement('div');row.className='item';const body=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=item.title;body.append(name);const meta=document.createElement('span');meta.className='meta';meta.textContent=[item.id,item.path,item.automationStatus&&('automation: '+item.automationStatus)].filter(Boolean).join(' · ');body.append(meta);const actions=document.createElement('div');actions.className='item-actions';const button=document.createElement('button');button.textContent='YAML';button.title='Open source YAML for editing';button.onclick=()=>vscode.postMessage({type:'open',uri:item.uri});actions.append(button);const graphical=document.createElement('button');graphical.textContent='Graphical';graphical.title='Open graphical editor';graphical.onclick=()=>vscode.postMessage({type:'graphical',uri:item.uri,conditionName:item.conditionName});actions.append(graphical);if(${scriptJson(section)}==='rules'&&item.automationStatus==='needs-automation'){const automate=document.createElement('button');automate.textContent='Automate';automate.title='Generate and review an automated Assessment from this Rule';automate.onclick=()=>vscode.postMessage({type:'createAutomation',uri:item.uri});actions.append(automate)}row.append(body,actions);listNode.append(row);}empty.hidden=items.length>0;if(!data)status.textContent='Loading '+${scriptJson(section)}+'…';else if(!data.entries.length)status.textContent=data.filter==='needs-automation'?'No Rules needing automation were found.':'No '+${scriptJson(section)}+' are indexed yet.';else status.textContent=items.length+' matching '+singular+(items.length===1?'':'s')+'.';}document.getElementById('search').oninput=event=>{query=event.target.value.trim().toLocaleLowerCase();render(data);};document.getElementById('switch').onclick=()=>vscode.postMessage({type:'switch'});document.getElementById('cancel').onclick=()=>vscode.postMessage({type:'cancel'});window.addEventListener('message',event=>{if(event.data.type==='context')render(event.data.context);if(event.data.type==='status'){status.className=event.data.error?'error':'muted';status.textContent=event.data.message||'';}});vscode.postMessage({type:'ready'});render(data);</script></body></html>`;
+function benchmarkSourceChooserHtml(context: BenchmarkContextSummary | undefined, section: BenchmarkSourceSection, initialFilter = '', automationAnalysis?: BenchmarkAutomationAnalysis) {
+  return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-benchmark-source-chooser';"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:18px;max-width:900px}h1{font-size:20px;margin:0 0 7px}.hint,.muted{color:var(--vscode-descriptionForeground)}.context{font-weight:600;margin:15px 0 8px}.search{width:100%;box-sizing:border-box;padding:7px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);font:inherit}.list{display:grid;gap:6px;margin-top:17px}.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--vscode-panel-border)}.name{font-weight:600;overflow-wrap:anywhere}.meta{display:block;color:var(--vscode-descriptionForeground);font-size:11px;margin-top:3px}.item-actions{display:flex;gap:6px}.item button,button{font:inherit;padding:6px 9px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}.empty{border:1px dashed var(--vscode-panel-border);padding:15px;margin:16px 0}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.error{color:var(--vscode-errorForeground)}@media(max-width:650px){.item{grid-template-columns:1fr}.item-actions{justify-content:flex-start}}</style></head><body><h1>Open Benchmark ${escapeHtml(section === 'rules' ? 'Rule' : section === 'applicability' ? 'Applicability' : 'Condition')}</h1><p class="hint">Search the selected Benchmark's ${escapeHtml(section)} and open the authored YAML source for editing.</p><p id="context" class="context"></p><input id="search" class="search" type="search" placeholder="Search ${escapeHtml(section)}"><div id="list" class="list"></div><div id="empty" class="empty" hidden><strong>No ${escapeHtml(section)} are indexed yet.</strong><p class="muted">Refresh Benchmark data after adding files.</p></div><p id="status" class="muted" role="status" aria-live="polite">Loading ${escapeHtml(section)}…</p><div class="actions"><button id="switch">Change Benchmark</button><button id="cancel">Cancel</button></div><script nonce="benchmark-source-chooser">const vscode=acquireVsCodeApi();const initial=${scriptJson(benchmarkSourceChooserData(context,section,initialFilter,automationAnalysis))};const singular=${scriptJson(section === 'applicability' ? 'applicability' : section.slice(0,-1))};let data=initial;let query='';const contextNode=document.getElementById('context');const listNode=document.getElementById('list');const empty=document.getElementById('empty');const status=document.getElementById('status');function render(next){data=next||undefined;contextNode.textContent=data?'Current Benchmark: '+data.label:'';const items=(data?.entries||[]).filter(item=>!query||[item.title,item.id,item.path,item.automationStatus].filter(Boolean).some(value=>String(value).toLocaleLowerCase().includes(query)));listNode.replaceChildren();for(const item of items){const row=document.createElement('div');row.className='item';const body=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=item.title;body.append(name);const meta=document.createElement('span');meta.className='meta';meta.textContent=[item.id,item.path,item.automationStatus&&('automation: '+item.automationStatus)].filter(Boolean).join(' · ');body.append(meta);const actions=document.createElement('div');actions.className='item-actions';const button=document.createElement('button');button.textContent='YAML';button.title='Open source YAML for editing';button.onclick=()=>vscode.postMessage({type:'open',uri:item.uri});actions.append(button);const graphical=document.createElement('button');graphical.textContent='Graphical';graphical.title='Open graphical editor';graphical.onclick=()=>vscode.postMessage({type:'graphical',uri:item.uri,conditionName:item.conditionName});actions.append(graphical);if(${scriptJson(section)}==='rules'&&item.automationStatus==='needs-automation'){const automate=document.createElement('button');automate.textContent='Automate';automate.title='Generate and review an automated Assessment from this Rule';automate.onclick=()=>vscode.postMessage({type:'createAutomation',uri:item.uri});actions.append(automate)}row.append(body,actions);listNode.append(row);}empty.hidden=items.length>0;if(!data)status.textContent='Loading '+${scriptJson(section)}+'…';else if(!data.entries.length)status.textContent=data.filter==='needs-automation'?'No Rules needing automation were found.':data.filter==='likely-automatable'?'No likely automatable Rules were found.':'No '+${scriptJson(section)}+' are indexed yet.';else status.textContent=items.length+' matching '+singular+(items.length===1?'':'s')+'.';}document.getElementById('search').oninput=event=>{query=event.target.value.trim().toLocaleLowerCase();render(data);};document.getElementById('switch').onclick=()=>vscode.postMessage({type:'switch'});document.getElementById('cancel').onclick=()=>vscode.postMessage({type:'cancel'});window.addEventListener('message',event=>{if(event.data.type==='context')render(event.data.context);if(event.data.type==='status'){status.className=event.data.error?'error':'muted';status.textContent=event.data.message||'';}});vscode.postMessage({type:'ready'});render(data);</script></body></html>`;
 }
 
-async function openBenchmarkSourceChooserPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, api: any, state: BenchmarkContextState, section: BenchmarkSourceSection, getPack: () => MetadataPack | undefined, filter = '') {
+async function openBenchmarkSourceChooserPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, api: any, state: BenchmarkContextState, section: BenchmarkSourceSection, getPack: () => MetadataPack | undefined, filter = '', getAutomationAnalysis: (key: string) => BenchmarkAutomationAnalysis | undefined = () => undefined) {
   const selected = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
   if (!selected) return false;
   const title = section === 'rules' ? 'Open Benchmark Rules' : section === 'applicability' ? 'Open Benchmark Applicability' : 'Open Benchmark Conditions';
   const panel = api.window.createWebviewPanel(`scapNg.${section}Chooser`, title, api.ViewColumn?.Active ?? 1, { enableScripts: true, retainContextWhenHidden: true });
-  panel.webview.html = benchmarkSourceChooserHtml(selected, section, filter);
+  panel.webview.html = benchmarkSourceChooserHtml(selected, section, filter, getAutomationAnalysis(selected.key));
   const refresh = () => {
     const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
-    void panel.webview.postMessage({ type: 'context', context: benchmarkSourceChooserData(current, section, filter) });
+    void panel.webview.postMessage({ type: 'context', context: benchmarkSourceChooserData(current, section, filter, current ? getAutomationAnalysis(current.key) : undefined) });
   };
   state.refreshListeners.add(refresh);
   const listener = panel.webview.onDidReceiveMessage(async (message: any) => {
@@ -2071,7 +2075,7 @@ async function openBenchmarkSourceChooserPanel(extensionContext: vscode.Extensio
     if (message.type === 'switch') { panel.dispose(); await api.commands.executeCommand('scapNg.selectBenchmarkRoot'); return; }
     if (!['open', 'graphical', 'createAutomation'].includes(message.type) || typeof message.uri !== 'string') return;
     const current = benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey);
-    const data = benchmarkSourceChooserData(current, section, filter);
+    const data = benchmarkSourceChooserData(current, section, filter, current ? getAutomationAnalysis(current.key) : undefined);
     const entry = data?.entries.find(candidate => candidate.uri === message.uri && (section !== 'conditions' || candidate.conditionName === message.conditionName));
     if (!entry) { panel.webview.postMessage({ type: 'status', error: true, message: `That ${data?.title ?? 'source'} is not associated with the current Benchmark.` }); return; }
     try {
@@ -2819,7 +2823,7 @@ export function activate(context: vscode.ExtensionContext) {
       applicabilityCount: selected.applicabilityCount,
       conditionCount: selected.conditionCount,
       automation: selected.automation,
-      automationAnalysis: automationAnalysis.get(selected.key) ?? { state: 'not-run', likelyAutomatable: 0, scanned: 0, total: selected.automation.needsAutomation }
+      automationAnalysis: automationAnalysis.get(selected.key) ?? { state: 'not-run', likelyAutomatable: 0, likelyRuleUris: [], scanned: 0, total: selected.automation.needsAutomation }
     };
   };
   const tree = new StudioTree(index);
@@ -3041,11 +3045,13 @@ export function activate(context: vscode.ExtensionContext) {
   // land on the Benchmark overview instead of the searchable source chooser.
   const openBenchmarkSection = async (section: 'rules' | 'applicability' | 'conditions' | 'assessments', filter = '') => {
     if (section === 'assessments') return openBenchmarkAssessmentPanel(context, index, api, benchmarkState);
-    return openBenchmarkSourceChooserPanel(context, index, api, benchmarkState, section, () => pack, filter);
+    const analysisLookup = filter === 'likely-automatable' ? (key: string) => automationAnalysis.get(key) : undefined;
+    return openBenchmarkSourceChooserPanel(context, index, api, benchmarkState, section, () => pack, filter, analysisLookup);
   };
   context.subscriptions.push(
     vscode.commands.registerCommand('scapNg.openBenchmarkRules', (filter?: string) => openBenchmarkSection('rules', typeof filter === 'string' ? filter : '')),
     vscode.commands.registerCommand('scapNg.openBenchmarkAutomationGaps', () => openBenchmarkSection('rules', 'needs-automation')),
+    vscode.commands.registerCommand('scapNg.openBenchmarkLikelyAutomation', () => openBenchmarkSection('rules', 'likely-automatable')),
     vscode.commands.registerCommand('scapNg.openBenchmarkApplicability', () => openBenchmarkSection('applicability')),
     vscode.commands.registerCommand('scapNg.openBenchmarkConditions', () => openBenchmarkSection('conditions')),
     vscode.commands.registerCommand('scapNg.openBenchmarkAssessments', () => openBenchmarkSection('assessments')),

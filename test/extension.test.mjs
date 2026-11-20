@@ -74,7 +74,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
 });
 
 test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
-  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.analyzeBenchmarkAutomation', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
+  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.openBenchmarkLikelyAutomation', 'scapNg.analyzeBenchmarkAutomation', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
     assert.ok(packageJson.contributes.commands.some(item => item.command === command), command);
   }
   assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
@@ -87,6 +87,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /automationDisposition/);
   assert.match(welcomeSource, /Needs automation/);
   assert.match(welcomeSource, /Likely automatable/);
+  assert.match(welcomeSource, /likely-automatable/);
+  assert.match(extensionSource, /likelyRuleUris/);
+  assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
   assert.match(welcomeSource, /Analyze automation gaps/);
   assert.match(welcomeSource, /action\.dataset\.command='scapNg\.analyzeBenchmarkAutomation'/);
   assert.doesNotMatch(welcomeSource, /automation\.innerHTML=automationCardHtml/);
