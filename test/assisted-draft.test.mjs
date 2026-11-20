@@ -440,7 +440,8 @@ If a wireless interface is configured and its use on the system is not documente
   assert.equal(test.capability, 'independent.shellcommand');
   assert.equal(test.object.command, 'nmcli device');
   assert.match(test.object.pattern, /\[Ww\].*\[Ii\].*\[Ff\].*\[Ii\]/);
-  assert.equal(test.require.item_requirement.items_found, 'none');
+  assert.equal(test.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
   assert.ok(result.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
   assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
 });
@@ -463,7 +464,8 @@ If any files on the system do not have an assigned group, this is a finding.`
   const test = Object.values(result.document.assessment.tests)[0];
   assert.equal(test.capability, 'independent.shellcommand');
   assert.equal(test.object.command, 'find / -fstype xfs -nogroup');
-  assert.equal(test.require.item_requirement.items_found, 'none');
+  assert.equal(test.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
   assert.ok(result.unresolved.some(reason => /example|filesystem type/i.test(reason)));
   assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
 });
@@ -499,7 +501,9 @@ test('assisted RHEL audit, account, and graphical procedures preserve concrete c
     checkText: '# awk -F: \'!$2 {print $1}\' /etc/shadow\nIf the command returns any results, this is a finding.'
   });
   assert.equal(accounts.generatedMode, 'automated');
-  assert.equal(Object.values(accounts.document.assessment.tests)[0].require.item_requirement.items_found, 'none');
+  const accountTest = Object.values(accounts.document.assessment.tests)[0];
+  assert.equal(accountTest.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(accountTest.require.fields.stdout_line, { values_found: 'none' });
 
   const graphical = createAssistedAssessment(pack, {
     platform: 'rhel',

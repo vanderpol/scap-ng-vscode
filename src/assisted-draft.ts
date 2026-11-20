@@ -1286,7 +1286,24 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
     return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], ['The inferred Object does not satisfy a complete schema-required selector branch.']);
   }
   const testCandidates = candidate.testCandidates ?? [{ title: generatedTestTitle(pack, { capability: candidate.capability, object: candidate.object, fields: candidate.fields, presenceOnly: candidate.presenceOnly }), fields: candidate.fields ?? {}, presenceOnly: candidate.presenceOnly, itemFound: candidate.itemFound }];
-  const testIds = testCandidates.map((_, index) => candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'));
+  // OVAL 5.12.3 shellcommand collection always yields one Item so stderr and
+  // exit status remain observable, even when stdout is empty or filtered out.
+  // Native absence therefore belongs on the stdout_line field, not on the
+  // Item cardinality. Keep this normalization at the generator boundary so
+  // every shellcommand heuristic gets the same safe semantics.
+  const normalizedTests = testCandidates.map(test => {
+    const requestedItemFound = test.itemFound ?? candidate.itemFound;
+    const authoredFields = test.fields ?? candidate.fields;
+    const shellCommand = candidate.capability === 'independent.shellcommand';
+    const absenceOnly = shellCommand && requestedItemFound === 'none' && Object.keys(authoredFields ?? {}).length === 0;
+    return {
+      ...test,
+      fields: absenceOnly ? { stdout_line: { values_found: 'none' } } : authoredFields,
+      presenceOnly: absenceOnly ? false : test.presenceOnly,
+      itemFound: shellCommand ? 'one_or_more' : requestedItemFound
+    };
+  });
+  const testIds = normalizedTests.map((_, index) => candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'));
   const conditionalDependencies: Record<string, Json> = {};
   const conditionalEvaluate = candidate.conditionalBranches?.length
     ? (() => {
@@ -1302,9 +1319,9 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
     mode: 'automated', className: firstClass(pack), evaluate: conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
-    tests: testCandidates.map((test, index) => ({
+    tests: normalizedTests.map((test, index) => ({
       id: testIds[index], title: test.title, capability: candidate.capability,
-      object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound ?? candidate.itemFound
+      object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound
     }))
   });
   if (generated.diagnostics.length) {
