@@ -65,8 +65,10 @@ The provider must return structured JSON, including a procedure-coverage manifes
 for applicability branches, individual procedure steps and wildcard/path
 populations. The extension rejects malformed JSON, malformed YAML, schema-invalid
 Assessment YAML, missing mode declarations and partial/unresolved coverage before
-linking a draft. A `manual-only` response is preserved as a review result and
-cannot be linked as automated.
+linking a draft. The extension may make one additional bounded correction request,
+including the local validator diagnostics, before showing the final result. A
+`manual-only` response is preserved as a review result and cannot be linked as
+automated.
 
 Rule-local applicability is expected to remain inside the generated Assessment:
 internal Tests feed an explicit `evaluate` `if`/`then`/`else` expression whose

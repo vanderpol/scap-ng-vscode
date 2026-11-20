@@ -267,22 +267,7 @@ function draftFromFailure(message: string, assumptions: string[] = []): AiAssess
   return { generatedMode: 'manual-only', confidence: 'low', yaml: '', diagnostics: [message], document: undefined, assumptions, unresolved: [message], citations: [], method: 'configured-ai' };
 }
 
-export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
-  // Bound user-controlled source before constructing a provider request. This
-  // protects the authoring host and makes the exact outbound scope predictable.
-  if (input.checkText.length > 60000) return draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.');
-  if ((input.ruleYaml?.length ?? 0) > 50000) return draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.');
-  if (input.title.length > 4000 || input.ruleId.length > 1000) return draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.');
-  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
-  const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve organizational/ISSO/SA judgment as manual or unresolved. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.\n\nYour task is to propose one Assessment for the supplied Rule and check procedure. Return ONLY a JSON object with these keys: generated_mode (automated or manual-only), confidence (high, medium, low), assessment_yaml (a YAML string when automated, empty when manual-only), assumptions (array of strings), unresolved_questions (array of strings), citations (array of short knowledge-pack pointers), rationale (short string), and coverage ({applicability: implemented|not-needed|not-representable, procedure_steps: [{summary, represented, tests}], path_patterns: [{pattern, represented, strategy}]}). Do not return Markdown or code fences, compliance PASS/FAIL, or a claim of runtime/scanner proof. The assessment_yaml must be a complete native SCAP-NG 0.4.1 Assessment and must validate against the supplied assessment schema: include specification, evaluate, test_title, reported_elements, and Test IDs ending in -test. Use explicit serialized values; never rely on presentation defaults. Decompose every command/check into an appropriate Test and connect them with explicit evaluate if/then/else logic. A Not Applicable branch must be represented with not_applicable or an existing applicability Assessment dependency; do not merely mention it in unresolved_questions while returning automated. Preserve every file path and wildcard population using schema-authorized directory/filename/set/for_each constructs; never collapse a wildcard to one file. Return manual-only if any required branch, path population, or predicate cannot be represented completely. Automated plus a partial coverage manifest is invalid. Every Test must include a schema-valid test_title, capability, reported_elements, object and require. Object selectors must use operator maps such as full_path: {equals: /etc/example} and pattern: {matches_regex: regex}, never raw selector strings. For comparison requirements, use item_requirement.items_satisfying and field_requirement.values_matching only with schema cardinalities such as every; one_or_more belongs to items_found/values_found.\n\nCanonical SCAP-NG knowledge pack (provenance pinned):\n${knowledge}`;
-  const user = `Generate an AI-assisted draft for this source context. The user explicitly approved sending this bounded context to the configured provider.\n\nRule ID: ${input.ruleId}\nRule title: ${input.title}\nTarget platform context: ${input.platform || 'unknown; do not infer applicability solely from platform'}\n\nManual/check procedure text:\n--- BEGIN PROCEDURE ---\n${input.checkText}\n--- END PROCEDURE ---\n\nCurrent Rule YAML (context only; do not rewrite or mutate it):\n--- BEGIN RULE YAML ---\n${input.ruleYaml || '(not supplied)'}\n--- END RULE YAML ---\n\nExisting Benchmark applicability conditions (reference context only; do not invent IDs):\n${JSON.stringify(input.availableConditions ?? [])}`;
-  let raw: string;
-  try {
-    const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
-    raw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, messages);
-  } catch (error) {
-    return draftFromFailure(error instanceof Error ? error.message : String(error));
-  }
+function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
   try { payload = JSON.parse(stripCodeFence(raw)); }
   catch { return draftFromFailure('The AI response was not valid JSON; no draft was accepted.'); }
@@ -298,9 +283,9 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   if (!yamlText && payload.assessment && typeof payload.assessment === 'object') yamlText = stringify(payload.assessment);
   if (!yamlText) return draftFromFailure('The AI response did not contain assessment_yaml.', assumptions);
   const document = parseDocument(yamlText, { uniqueKeys: true });
-  if (document.errors.length) return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+  if (document.errors.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   let value: any;
-  try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence, yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
+  try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? pack.validate(schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
@@ -309,4 +294,57 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   diagnostics.push(...coverageDiagnostics(input, payload, value));
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
   return { generatedMode: 'automated', confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+}
+
+export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
+  // Bound user-controlled source before constructing a provider request. This
+  // protects the authoring host and makes the exact outbound scope predictable.
+  if (input.checkText.length > 60000) return draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.');
+  if ((input.ruleYaml?.length ?? 0) > 50000) return draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.');
+  if (input.title.length > 4000 || input.ruleId.length > 1000) return draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.');
+  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
+  const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve organizational/ISSO/SA judgment as manual or unresolved. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.
+
+Your task is to propose one Assessment for the supplied Rule and check procedure. Return ONLY a JSON object with these keys: generated_mode (automated or manual-only), confidence (high, medium, low), assessment_yaml (a YAML string when automated, empty when manual-only), assumptions (array of strings), unresolved_questions (array of strings), citations (array of short knowledge-pack pointers), rationale (short string), and coverage ({applicability: implemented|not-needed|not-representable, procedure_steps: [{summary, represented, tests}], path_patterns: [{pattern, represented, strategy}]}). Do not return Markdown or code fences, compliance PASS/FAIL, or a claim of runtime/scanner proof. The assessment_yaml must be a complete native SCAP-NG 0.4.1 Assessment and must validate against the supplied assessment schema: include specification, evaluate, test_title, reported_elements, and Test IDs ending in -test. Use explicit serialized values; never rely on presentation defaults. Decompose every command/check into an appropriate Test and connect them with explicit evaluate if/then/else logic. A Not Applicable branch must be represented with not_applicable or an existing applicability Assessment dependency; do not merely mention it in unresolved_questions while returning automated. Preserve every file path and wildcard population using schema-authorized directory/filename/set/for_each constructs; never collapse a wildcard to one file. Return manual-only if any required branch, path population, or predicate cannot be represented completely. Automated plus a partial coverage manifest is invalid. Every Test must include a schema-valid test_title, capability, reported_elements, object and require. Object selectors must use operator maps such as full_path: {equals: /etc/example} and pattern: {matches_regex: regex}, never raw selector strings. For comparison requirements, use item_requirement.items_satisfying and field_requirement.values_matching only with schema cardinalities such as every; one_or_more belongs to items_found/values_found.
+
+Canonical SCAP-NG knowledge pack (provenance pinned):
+${knowledge}`;
+  const user = `Generate an AI-assisted draft for this source context. The user explicitly approved sending this bounded context to the configured provider.
+
+Rule ID: ${input.ruleId}
+Rule title: ${input.title}
+Target platform context: ${input.platform || 'unknown; do not infer applicability solely from platform'}
+
+Manual/check procedure text:
+--- BEGIN PROCEDURE ---
+${input.checkText}
+--- END PROCEDURE ---
+
+Current Rule YAML (context only; do not rewrite or mutate it):
+--- BEGIN RULE YAML ---
+${input.ruleYaml || '(not supplied)'}
+--- END RULE YAML ---
+
+Existing Benchmark applicability conditions (reference context only; do not invent IDs):
+${JSON.stringify(input.availableConditions ?? [])}`;
+  const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
+  let raw: string;
+  try { raw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, messages); }
+  catch (error) { return draftFromFailure(error instanceof Error ? error.message : String(error)); }
+  let draft = parseAiAssessmentResponse(pack, input, raw);
+  if (!draft.diagnostics.length) return draft;
+
+  // One bounded repair pass gives a capable provider a chance to correct schema
+  // and applicability mistakes using the local validator's exact diagnostics.
+  const repairSystem = `${system}\n\nThis is a single correction pass. Correct every local validation error below. Do not defend or describe the prior draft. Return a complete replacement JSON object, not a patch. If the procedure cannot be represented completely, return generated_mode: manual-only.`;
+  const repairUser = `${user}\n\nThe previous candidate was rejected by the local 0.4.1 validator. Diagnostics:\n${draft.diagnostics.slice(0, 30).join('\\n')}\n\nPrevious candidate (for correction only):\n${raw.slice(0, 30000)}`;
+  try {
+    const repairedRaw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, [{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }]);
+    const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
+    if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
+    return repaired;
+  } catch (error) {
+    draft.diagnostics.push(`Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`);
+    return draft;
+  }
 }

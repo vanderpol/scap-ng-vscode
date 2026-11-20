@@ -79,7 +79,7 @@ test('malformed AI JSON and schema-invalid YAML are rejected without a usable dr
     ruleId: 'bad-rule', title: 'Bad', checkText: 'Review manually.'
   }));
   assert.equal(malformed.result.generatedMode, 'manual-only');
-  assert.match(malformed.result.diagnostics[0], /valid JSON/i);
+  assert.ok(malformed.result.diagnostics.some(message => /valid JSON|correction pass/i.test(message)));
 
   const invalid = await withFetch(() => response(JSON.stringify({ generated_mode: 'automated', confidence: 'high', assessment_yaml: 'assessment:\n  mode: automated\n', assumptions: [], unresolved_questions: [], citations: [] })), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
     ruleId: 'invalid-rule', title: 'Invalid', checkText: 'Review.'
@@ -137,4 +137,22 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
   assert.equal(result.confidence, 'low');
   assert.ok(result.diagnostics.some(item => /Not Applicable|conditional branch/i.test(item)));
   assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
+});
+
+test('AI generation performs one bounded correction pass after local rejection', async () => {
+  let calls = 0;
+  const repaired = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Corrected draft',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => {
+    calls++;
+    return response(calls === 1 ? JSON.stringify({ generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml, assumptions: [], unresolved_questions: [], citations: [] }) : repaired);
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.rationale, 'Corrected draft');
 });
