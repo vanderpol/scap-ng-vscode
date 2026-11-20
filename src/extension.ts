@@ -212,6 +212,48 @@ function cleanRuleDiscussion(value: unknown): string {
   return String(value ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+interface BenchmarkAutomationAnalysis {
+  state: 'not-run' | 'complete';
+  likelyAutomatable: number;
+  scanned: number;
+  total: number;
+  analyzedAt?: string;
+}
+
+/**
+ * Run the expensive assisted heuristic only for the selected Benchmark's
+ * actual automation gaps. This is deliberately opt-in: indexing and Home
+ * rendering never open source files or execute the heuristic.
+ */
+async function analyzeBenchmarkAutomation(api: any, index: WorkspaceIndex, state: BenchmarkContextState, pack: MetadataPack, selected: BenchmarkContextSummary, progress?: any, token?: any): Promise<BenchmarkAutomationAnalysis> {
+  const gaps = selected.rules.filter(rule => rule.automationStatus === 'needs-automation');
+  let likelyAutomatable = 0;
+  let scanned = 0;
+  for (const rule of gaps) {
+    if (token?.isCancellationRequested) break;
+    const manualId = rule.manualAssessmentId;
+    const manual = manualId ? selected.assessments.find(assessment => assessment.id === manualId) : undefined;
+    try {
+      if (manual?.path && api.workspace?.openTextDocument && api.Uri?.file) {
+        const document = await api.workspace.openTextDocument(api.Uri.file(manual.path));
+        const assessment = new SourceBuffer(document.getText()).json() as any;
+        const procedure = assessment?.assessment?.procedure;
+        if (typeof procedure === 'string' && procedure.trim()) {
+          const result = createAssistedAssessment(pack, {
+            title: rule.title ?? rule.id ?? 'Untitled Rule',
+            checkText: cleanProcedureForAutomation(procedure),
+            platform: benchmarkContextPlatform(selected)
+          });
+          if (result.generatedMode === 'automated' && result.diagnostics.length === 0) likelyAutomatable++;
+        }
+      }
+    } catch { /* One malformed/missing manual source must not abort the batch. */ }
+    scanned++;
+    progress?.report?.({ increment: gaps.length ? 100 / gaps.length : 100, message: `${scanned}/${gaps.length} Rules analyzed` });
+  }
+  return { state: 'complete', likelyAutomatable, scanned, total: gaps.length, analyzedAt: new Date().toISOString() };
+}
+
 async function ruleAutomationSeed(api: any, context: BenchmarkContextSummary | undefined, rule: any, ruleDocument: any): Promise<RuleAutomationSeed> {
   const body = new SourceBuffer(ruleDocument.getText()).json() as any;
   const ruleBody = body?.rule ?? {};
@@ -2752,6 +2794,7 @@ export function activate(context: vscode.ExtensionContext) {
   syncEditorPreference();
   const index = new WorkspaceIndex();
   const benchmarkState = contextState(context);
+  const automationAnalysis = new Map<string, BenchmarkAutomationAnalysis>();
   const welcomeContextInfo = (): WelcomeContextInfo => {
     const contexts = benchmarkContexts(index, benchmarkState.importedRoots);
     const selected = benchmarkState.authoringMode === 'benchmark' ? benchmarkContextForKey(contexts, benchmarkState.activeKey) : undefined;
@@ -2773,7 +2816,8 @@ export function activate(context: vscode.ExtensionContext) {
       assessmentCount: selected.assessmentCount,
       applicabilityCount: selected.applicabilityCount,
       conditionCount: selected.conditionCount,
-      automation: selected.automation
+      automation: selected.automation,
+      automationAnalysis: automationAnalysis.get(selected.key) ?? { state: 'not-run', likelyAutomatable: 0, scanned: 0, total: selected.automation.needsAutomation }
     };
   };
   const tree = new StudioTree(index);
@@ -2880,6 +2924,7 @@ export function activate(context: vscode.ExtensionContext) {
     await openStandaloneAssessmentFile(api);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.refreshContentIndex', async () => {
+    automationAnalysis.clear();
     const refresh = () => refreshContentIndex(index, tree, api, indexDiagnostics, benchmarkState);
     try {
       const count = api.window.withProgress
@@ -3008,6 +3053,18 @@ export function activate(context: vscode.ExtensionContext) {
       return openBenchmarkContextPanel(context, index, tree, indexDiagnostics, benchmarkState, section);
     })
   );
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.analyzeBenchmarkAutomation', async () => {
+    const selected = benchmarkState.authoringMode === 'benchmark'
+      ? benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey)
+      : undefined;
+    if (!selected) { await api.window.showInformationMessage('Select a Benchmark before analyzing automation gaps.'); return; }
+    const loaded = loadPack(selected.benchmark.path) ?? pack;
+    if (!loaded) { await api.window.showWarningMessage('A verified offline metadata pack is required for automation analysis.'); return; }
+    const result = await api.window.withProgress({ location: api.ProgressLocation?.Notification ?? 15, title: 'Analyzing Benchmark automation gaps…', cancellable: true }, (progress: any, token: any) => analyzeBenchmarkAutomation(api, index, benchmarkState, loaded, selected, progress, token));
+    automationAnalysis.set(selected.key, result);
+    WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
+    await api.window.showInformationMessage(`Automation analysis complete: ${result.likelyAutomatable} of ${result.total} Rules look promising for author review.`);
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', (argument: any) => RegexTesterPanel.open(context, argument?.document ?? api.window.activeTextEditor?.document, pack, { useFirst: argument?.useFirst === true })));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testObject', () => SampleObjectTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
   const inspect = (document: vscode.TextDocument) => {
@@ -3020,7 +3077,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (activeEditor?.document?.uri?.toString?.() === document.uri?.toString?.()) authoringSidebar.setEditor(activeEditor);
     void refreshYamlStatus(document);
   };
-  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(inspect));
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(inspect), vscode.workspace.onDidSaveTextDocument(document => { automationAnalysis.clear(); inspect(document); }));
   if (api.workspace.onDidChangeTextDocument) context.subscriptions.push(api.workspace.onDidChangeTextDocument((event: any) => inspect(event.document)));
   if (api.window.onDidChangeActiveTextEditor) context.subscriptions.push(api.window.onDidChangeActiveTextEditor((editor: any) => { authoringSidebar.setEditor(editor); void refreshYamlStatus(editor?.document); }));
   if (api.window.onDidChangeTextEditorSelection) context.subscriptions.push(api.window.onDidChangeTextEditorSelection((event: any) => authoringSidebar.setEditor(event.textEditor)));

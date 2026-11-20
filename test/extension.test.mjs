@@ -74,7 +74,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
 });
 
 test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
-  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
+  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.analyzeBenchmarkAutomation', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
     assert.ok(packageJson.contributes.commands.some(item => item.command === command), command);
   }
   assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
@@ -86,6 +86,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Manual-only flag/);
   assert.match(extensionSource, /automationDisposition/);
   assert.match(welcomeSource, /Needs automation/);
+  assert.match(welcomeSource, /Likely automatable/);
+  assert.match(welcomeSource, /Analyze automation gaps/);
   assert.match(welcomeSource, /scapNg\.openBenchmarkAutomationGaps/);
   assert.doesNotMatch(welcomeSource, /data-filter=\"needs-automation\"/);
   assert.match(extensionSource, /selectedPackagePath/);
@@ -110,6 +112,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /script-src 'nonce-scap-ng-entity-editor'/);
   assert.doesNotMatch(extensionSource, /id=\"initialFallback\"/);
   assert.match(extensionSource, /message.type === 'webviewError'/);
+  assert.match(extensionSource, /analyzeBenchmarkAutomation/);
+  assert.match(extensionSource, /withProgress/);
+  assert.match(extensionSource, /generatedMode === 'automated'/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {
