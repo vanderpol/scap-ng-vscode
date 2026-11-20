@@ -2980,6 +2980,22 @@ export function activate(context: vscode.ExtensionContext) {
       const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
       return { message: result.message, models: result.modelIds };
     },
+    testAuthoring: async (configuration?: AiAuthoringConfiguration) => {
+      const target = configuration ?? readAiConfiguration();
+      if (target.mode !== 'remote') return { message: 'Select Configured remote AI before running the AI authoring self-test.' };
+      const secrets = (context as any).secrets;
+      const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
+      const activePack = pack;
+      if (!activePack) return { message: 'A verified offline SCAP-NG 0.4.1 metadata pack is required for the AI authoring self-test.' };
+      const draft = await createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, {
+        ruleId: 'scap-ng-ai-self-test-rule',
+        title: 'SCAP-NG AI authoring self-test',
+        checkText: 'Verify that the file /etc/passwd is present on the system.',
+        platform: 'linux'
+      });
+      if (draft.diagnostics.length) return { message: `AI request completed, but the self-test draft was rejected: ${draft.diagnostics.slice(0, 3).join(' ')}` };
+      return { message: `AI authoring self-test succeeded: ${draft.generatedMode} draft, confidence ${draft.confidence}. No workspace files were changed.` };
+    },
     discoverRemoteModels: async (configuration?: AiAuthoringConfiguration) => {
       const secrets = (context as any).secrets;
       const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
@@ -3000,6 +3016,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
   const configuredAiGenerator = () => readAiConfiguration().mode === 'remote' ? aiAssessmentGenerator : undefined;
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.testAiAuthoring', async () => { const result = await aiConfigurationActions.testAuthoring(); const message = result.message; if (/succeeded/i.test(message)) await api.window.showInformationMessage(message); else await api.window.showWarningMessage(message); return result; }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {
     const mode = normalizeAiAssistanceMode(value);
     const configuration = api.workspace.getConfiguration('scapNg.ai');

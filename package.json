@@ -81,7 +81,8 @@
     "onCommand:scapNg.openBenchmarkApplicability",
     "onCommand:scapNg.openBenchmarkConditions",
     "onCommand:scapNg.analyzeBenchmarkAutomation",
-    "onCommand:scapNg.openAiConfiguration"
+    "onCommand:scapNg.openAiConfiguration",
+    "onCommand:scapNg.testAiAuthoring"
   ],
   "contributes": {
     "commands": [
@@ -204,6 +205,10 @@
       {
         "command": "scapNg.openBenchmarkConditions",
         "title": "SCAP-NG: Open Benchmark Conditions"
+      },
+      {
+        "command": "scapNg.testAiAuthoring",
+        "title": "SCAP-NG: Test configured AI authoring"
       }
     ],
     "viewsContainers": {
