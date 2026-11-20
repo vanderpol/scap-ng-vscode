@@ -2,8 +2,8 @@
  * User-facing AI authoring configuration.
  *
  * This module deliberately contains configuration and validation only. It does
- * not make network calls, select a model, or mutate Assessment YAML. Those
- * behaviors belong to a later provider/review slice.
+ * not make network calls, select a model, or mutate Assessment YAML. Provider
+ * requests and review-only draft validation live in ai-assessment.ts.
  */
 export const aiAssistanceModes = ['none', 'local', 'vscode', 'remote'] as const;
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
