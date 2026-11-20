@@ -160,7 +160,7 @@ test('AI generation performs one bounded correction pass after local rejection',
   assert.equal(result.rationale, 'Corrected draft');
 });
 
-test('AI manual-only wireless output falls back to the validated offline applicability draft', async () => {
+test('AI manual-only output remains provider-authored review state without offline content injection', async () => {
   const wireless = `Verify that there are no wireless interfaces configured on the system.\n\nThis is N/A for systems that do not have wireless network adapters.\n\nCheck for the presence of active wireless interfaces with the following command:\n\n# nmcli device\nDEVICE TYPE STATE\neth0 ethernet connected\nwlp3s0 wifi disconnected\nlo loopback unmanaged\n\nIf a wireless interface is configured and its use on the system is not documented with the Information System Security Officer (ISSO), this is a finding.`;
   const payload = JSON.stringify({
     generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
@@ -171,19 +171,10 @@ test('AI manual-only wireless output falls back to the validated offline applica
     ruleId: 'wireless-rule', title: 'Wireless interfaces must be disabled', checkText: wireless, platform: 'rhel'
   }));
   assert.equal(requests.length, 1);
-  assert.equal(result.generatedMode, 'automated');
-  assert.equal(result.method, 'configured-ai+offline-fallback');
-  assert.equal(result.linkable, false);
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.method, 'configured-ai');
+  assert.equal(result.yaml, '');
+  assert.equal(result.document, undefined);
   assert.equal(result.diagnostics.length, 0);
-  const assessment = result.document.assessment;
-  const tests = Object.values(assessment.tests);
-  assert.equal(tests.length, 2);
-  assert.equal(tests[0].capability, 'independent.shellcommand');
-  assert.deepEqual(tests[0].require.fields.stdout_line, { matches_regex: tests[0].object.pattern });
-  assert.deepEqual(tests[1].require.fields.stdout_line, { values_found: 'none' });
-  assert.equal(assessment.evaluate.if.test, Object.keys(assessment.tests)[0]);
-  assert.equal(assessment.evaluate.then.test, Object.keys(assessment.tests)[1]);
-  assert.ok(assessment.evaluate.else.not_applicable);
-  assert.match(result.yaml, /deterministic offline draft/i);
-  assert.match(result.yaml, /no AI-authored YAML is present/i);
+  assert.ok(result.unresolved.includes('ISSO review is required.'));
 });
