@@ -73,9 +73,12 @@ automated.
 Rule-local applicability is expected to remain inside the generated Assessment:
 internal Tests feed an explicit `evaluate` `if`/`then`/`else` expression whose
 branch can be `not_applicable`. An external applicability Assessment is appropriate
-only when the Benchmark already supplies a reusable condition/dependency. The
-review gate rejects an automated draft that merely mentions a Not Applicable
-branch without representing it.
+only when the Benchmark already supplies a reusable condition/dependency. If the
+technical check is automatable but an ISSO/owner exception cannot be verified,
+the generated Assessment may use `not_evaluated` with an explicit follow-up
+instead of discarding the objective Test. The review gate rejects an automated
+draft that merely mentions a Not Applicable or human-exception branch without
+representing it.
 
 The result is never scanner/runtime proof and never asserts compliance. The author
 must review the assumptions, unresolved questions, citations and generated YAML.
