@@ -37,6 +37,7 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
   assert.match(knowledge.current_authoring_examples.shellcommand_existence, /field_requirement/);
+  assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /always creates an Item/);
   // Keep the outbound prompt bounded enough for an enterprise gateway while
   // retaining schema/mapping/history context.
   assert.ok(JSON.stringify(knowledge).length < 250_000);
