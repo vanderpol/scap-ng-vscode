@@ -459,7 +459,10 @@ If a wireless interface is configured and its use on the system is not documente
   assert.equal(test.object.command, 'nmcli device');
   assert.match(test.object.pattern, /\[Ww\].*\[Ii\].*\[Ff\].*\[Ii\]/);
   assert.equal(test.require.item_requirement.items_found, 'one_or_more');
-  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
+  assert.deepEqual(test.require.fields.stdout_line, { matches_regex: test.object.pattern });
+  assert.ok(result.document.assessment.evaluate.if.test);
+  assert.ok(result.document.assessment.evaluate.then.not_evaluated);
+  assert.ok(result.document.assessment.evaluate.else.not_applicable);
   assert.ok(result.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
   assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
 });

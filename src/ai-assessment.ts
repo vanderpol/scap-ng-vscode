@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parseDocument, stringify } from 'yaml';
 import type { MetadataPack } from './metadata.js';
 import { requestOpenAiCompatibleChat, type OpenAiChatMessage } from './ai-remote.js';
+import { createAssistedAssessment } from './assisted-draft.js';
 
 export interface AiAssessmentInput {
   ruleId: string;
@@ -30,7 +31,7 @@ export interface AiAssessmentDraft {
   citations: string[];
   rationale?: string;
   coverage?: AiAssessmentCoverage;
-  method: 'configured-ai';
+  method: 'configured-ai' | 'configured-ai+offline-fallback';
 }
 
 function compactMapping(value: any) {
@@ -278,6 +279,42 @@ function draftFromFailure(message: string, assumptions: string[] = []): AiAssess
   return { generatedMode: 'manual-only', confidence: 'low', yaml: '', diagnostics: [message], document: undefined, assumptions, unresolved: [message], citations: [], method: 'configured-ai' };
 }
 
+/**
+ * Never expose a provider's malformed or semantically incomplete YAML as the
+ * usable result. When the provider fails, reuse the same deterministic,
+ * schema-validated offline authoring path used by the non-AI button. This is
+ * deliberately conservative: a fallback is only returned when that path
+ * produces a complete automated Assessment; otherwise the provider failure
+ * stays visible as manual-only and non-linkable.
+ */
+function offlineFallback(pack: MetadataPack, input: AiAssessmentInput, providerReason: string, previous?: AiAssessmentDraft): AiAssessmentDraft | undefined {
+  let result;
+  try {
+    result = createAssistedAssessment(pack, {
+      title: input.title,
+      checkText: input.checkText,
+      platform: input.platform
+    });
+  } catch {
+    return undefined;
+  }
+  if (result.generatedMode !== 'automated' || result.diagnostics.length || !result.document) return undefined;
+  const reason = `Configured AI did not produce a usable 0.4.1 Assessment (${providerReason}); the editor supplied its deterministic offline draft instead.`;
+  return {
+    generatedMode: 'automated',
+    confidence: result.confidence,
+    yaml: `# ${reason}\n${result.yaml}`,
+    document: result.document,
+    diagnostics: [],
+    assumptions: [...(previous?.assumptions ?? []), reason, ...result.assumptions],
+    unresolved: [...(previous?.unresolved ?? []), ...result.unresolved],
+    citations: [...(previous?.citations ?? []), 'ASSISTED-ASSESSMENT-DRAFTS.md (deterministic fallback)'],
+    rationale: 'The provider response was rejected locally; this review-only draft comes from the pinned offline heuristic and remains subject to author review.',
+    coverage: previous?.coverage,
+    method: 'configured-ai+offline-fallback'
+  };
+}
+
 function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
   try { payload = JSON.parse(stripCodeFence(raw)); }
@@ -344,7 +381,12 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
   try { raw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, messages); }
   catch (error) { return draftFromFailure(error instanceof Error ? error.message : String(error)); }
   let draft = parseAiAssessmentResponse(pack, input, raw);
-  if (!draft.diagnostics.length) return draft;
+  if (!draft.diagnostics.length) {
+    if (draft.generatedMode === 'manual-only') {
+      return offlineFallback(pack, input, 'the provider classified the procedure as manual-only', draft) ?? draft;
+    }
+    return draft;
+  }
 
   // One bounded repair pass gives a capable provider a chance to correct schema
   // and applicability mistakes using the local validator's exact diagnostics.
@@ -353,10 +395,16 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
   try {
     const repairedRaw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, [{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }]);
     const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
-    if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
-    return repaired;
+    if (!repaired.diagnostics.length) {
+      if (repaired.generatedMode === 'manual-only') {
+        return offlineFallback(pack, input, 'the provider correction classified the procedure as manual-only', repaired) ?? repaired;
+      }
+      return repaired;
+    }
+    repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
+    return offlineFallback(pack, input, 'the provider and its one correction pass both failed local validation', repaired) ?? repaired;
   } catch (error) {
-    draft.diagnostics.push(`Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`);
-    return draft;
+    const message = `Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`;
+    return offlineFallback(pack, input, message, draft) ?? (() => { draft.diagnostics.push(message); return draft; })();
   }
 }

@@ -45,6 +45,8 @@ interface Candidate {
   review?: string[];
   /** Explanation for the false/unknown applicability branch in a conditional Evaluate. */
   conditionalElseReason?: string;
+  /** Optional explicit Evaluate expression built after generated Test IDs are known. */
+  evaluateExpression?: (testIds: string[]) => Json;
 }
 
 function slug(value: string, suffix: string): string {
@@ -1213,19 +1215,33 @@ function findNoGroupCandidate(text: string): Candidate | undefined {
 function nmcliWirelessCandidate(text: string): Candidate | undefined {
   if (!/\bnmcli\s+(?:device|dev)\b/i.test(text) || !/(?:wireless|\bwifi\b|network interfaces?|network adapters?)/i.test(text)) return undefined;
   const command = text.match(/\bnmcli\s+(?:device|dev)(?:\s+status)?\b/i)?.[0] ?? 'nmcli device';
+  const wirelessPattern = '^\\s*\\S+\\s+[Ww][Ii][Ff][Ii]\\s+';
   return {
     capability: 'independent.shellcommand',
+    objectComplete: true,
     object: {
-      shell: 'bash', command, pattern: '^\\s*\\S+\\s+[Ww][Ii][Ff][Ii]\\s+',
+      shell: 'bash', command, pattern: wirelessPattern,
       error_if_exit_status_not_0: false, error_if_stderr_exists: false
     },
-    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    // The filtered shellcommand still creates an Item. A matching stdout line
+    // is therefore a comparison Test; an empty filtered stdout is represented
+    // by a false Test, not by item absence.
+    fields: { stdout_line: { matches_regex: wirelessPattern } },
+    presenceOnly: false, itemFound: 'one_or_more', confidence: 'medium',
+    evaluateExpression: testIds => ({
+      if: { test: testIds[0] },
+      then: { not_evaluated: {
+        reason: 'A wireless interface was found; review the required ISSO documentation and approved exception.',
+        follow_up: 'Verify and record the approved ISSO exception before relying on this Assessment.'
+      } },
+      else: { not_applicable: { reason: 'No wireless interface was detected.' } }
+    }),
     assumptions: [
       `Inferred the nmcli wireless-interface inventory command '${command}'.`,
-      'Inferred that matching wifi rows represent wireless interfaces that must be absent.'
+      'Inferred that matching wifi rows represent wireless interfaces requiring human exception review.'
     ],
     review: [
-      'The source permits an ISSO-documented exception; this draft models only the no-wireless-interface branch and does not encode organizational approval.',
+      'The source permits an ISSO-documented exception; the technical branch is automated, while approval remains explicit not_evaluated.',
       'Confirm the nmcli output format and wireless-interface predicate on the target platform.'
     ]
   };
@@ -1382,6 +1398,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   });
   const testIds = normalizedTests.map((_, index) => candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'));
   const conditionalDependencies: Record<string, Json> = {};
+  const explicitEvaluate = candidate.evaluateExpression?.(testIds);
   const conditionalEvaluate = candidate.conditionalBranches?.length
     ? (() => {
       const branches = candidate.conditionalBranches;
@@ -1397,7 +1414,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
     : undefined;
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), evaluate: conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
+    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
     tests: normalizedTests.map((test, index) => ({
       id: testIds[index], title: test.title, capability: candidate.capability,
       object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound

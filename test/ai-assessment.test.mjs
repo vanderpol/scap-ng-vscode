@@ -157,3 +157,27 @@ test('AI generation performs one bounded correction pass after local rejection',
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.rationale, 'Corrected draft');
 });
+
+test('AI manual-only wireless output falls back to the validated offline applicability draft', async () => {
+  const wireless = `Verify that there are no wireless interfaces configured on the system.\n\nThis is N/A for systems that do not have wireless network adapters.\n\nCheck for the presence of active wireless interfaces with the following command:\n\n# nmcli device\nDEVICE TYPE STATE\neth0 ethernet connected\nwlp3s0 wifi disconnected\nlo loopback unmanaged\n\nIf a wireless interface is configured and its use on the system is not documented with the Information System Security Officer (ISSO), this is a finding.`;
+  const payload = JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
+    assumptions: ['The provider could not represent the wireless branch.'],
+    unresolved_questions: ['ISSO review is required.'], citations: []
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'wireless-rule', title: 'Wireless interfaces must be disabled', checkText: wireless, platform: 'rhel'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.method, 'configured-ai+offline-fallback');
+  assert.equal(result.diagnostics.length, 0);
+  const assessment = result.document.assessment;
+  const test = Object.values(assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.deepEqual(test.require.fields.stdout_line, { matches_regex: test.object.pattern });
+  assert.ok(assessment.evaluate.if.test);
+  assert.ok(assessment.evaluate.then.not_evaluated);
+  assert.ok(assessment.evaluate.else.not_applicable);
+  assert.match(result.yaml, /deterministic offline draft/i);
+});
