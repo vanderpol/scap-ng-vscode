@@ -951,6 +951,29 @@ function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
   return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern is intentionally broad; replace it with the exact requirement predicate before use.'] };
 }
 
+function findNoGroupCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(find\s+\/[^\n.;]*?-fstype\s+([A-Za-z0-9_.-]+)[^\n.;]*?-nogroup[^\n.;]*)/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const filesystemType = match[2];
+  return {
+    capability: 'independent.shellcommand',
+    object: {
+      shell: 'bash', command,
+      error_if_exit_status_not_0: false, error_if_stderr_exists: false
+    },
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [
+      `Inferred the find command '${command}' from the source procedure.`,
+      'Inferred that any command output represents a file without a resolvable group owner.'
+    ],
+    review: [
+      `The procedure labels '${filesystemType}' as an example; replace it or broaden the command for every filesystem type required by the benchmark.`,
+      'Confirm that the scanner execution identity and filesystem traversal scope are appropriate for the target.'
+    ]
+  };
+}
+
 function nmcliWirelessCandidate(text: string): Candidate | undefined {
   if (!/\bnmcli\s+(?:device|dev)\b/i.test(text) || !/(?:wireless|\bwifi\b|network interfaces?|network adapters?)/i.test(text)) return undefined;
   const command = text.match(/\bnmcli\s+(?:device|dev)(?:\s+status)?\b/i)?.[0] ?? 'nmcli device';
@@ -1055,7 +1078,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? nmcliWirelessCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {

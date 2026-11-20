@@ -447,3 +447,26 @@ If a wireless interface is configured and its use on the system is not documente
   assert.ok(result.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
   assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
 });
+
+test('assisted RHEL find nogroup checks preserve the command and generate an absence test', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all files and directories have a valid group owner.',
+    checkText: `Verify all files and directories on the system have a valid group.
+
+Check the owner of all files and directories with the following command:
+
+# find / -fstype xfs -nogroup
+
+If any files on the system do not have an assigned group, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.equal(test.object.command, 'find / -fstype xfs -nogroup');
+  assert.equal(test.require.item_requirement.items_found, 'none');
+  assert.ok(result.unresolved.some(reason => /example|filesystem type/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
+});
