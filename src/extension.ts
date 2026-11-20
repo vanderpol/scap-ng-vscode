@@ -25,6 +25,8 @@ import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } f
 import { assessmentSectionBeforeKey } from './assessment-order.js';
 import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 import { assessmentFileName } from './assessment-filename.js';
+import { AiConfigurationPanel } from './ai-configuration-panel.js';
+import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
 const schemaBase = SCHEMA_BASE;
@@ -2851,6 +2853,23 @@ export function activate(context: vscode.ExtensionContext) {
     loadPack((api.window as any).activeTextEditor?.document?.uri?.fsPath);
   };
   const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, () => { resetPack(); syncEditorPreference(); });
+  const readAiConfiguration = (): AiAuthoringConfiguration => {
+    const configuration = api.workspace.getConfiguration('scapNg.ai');
+    return { mode: normalizeAiAssistanceMode(configuration.get('mode')), endpoint: configuration.get('endpoint', '') ?? '', model: configuration.get('model', '') ?? '' };
+  };
+  const writeAiConfiguration = async (value: AiAuthoringConfiguration): Promise<AiAuthoringConfiguration> => {
+    const endpointError = aiEndpointError(value.mode, value.endpoint);
+    if (endpointError) throw new Error(endpointError);
+    const configuration = api.workspace.getConfiguration('scapNg.ai');
+    if (typeof configuration?.update !== 'function') throw new Error('AI settings are unavailable in this VS Code session.');
+    const saved = { mode: normalizeAiAssistanceMode(value.mode), endpoint: value.endpoint.trim(), model: value.model.trim() };
+    await configuration.update('mode', saved.mode, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('endpoint', saved.endpoint || undefined, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('model', saved.model || undefined, api.ConfigurationTarget?.Global ?? 1);
+    authoringSidebar.refreshContext();
+    AiConfigurationPanel.update(saved);
+    return saved;
+  };
   benchmarkState.onChange = () => {
     WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
     authoringSidebar.refreshContext();
@@ -2919,6 +2938,17 @@ export function activate(context: vscode.ExtensionContext) {
     if (await revealAuthoring()) return;
     await api.commands.executeCommand('workbench.action.openView');
     void api.window.showInformationMessage('Select the SCAP-NG Authoring view from the Open View picker.');
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {
+    const mode = normalizeAiAssistanceMode(value);
+    const configuration = api.workspace.getConfiguration('scapNg.ai');
+    if (typeof configuration?.update !== 'function') throw new Error('AI settings are unavailable in this VS Code session.');
+    await configuration.update('mode', mode, api.ConfigurationTarget?.Global ?? 1);
+    const saved = readAiConfiguration();
+    authoringSidebar.refreshContext();
+    AiConfigurationPanel.update(saved);
+    return saved;
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openWelcome', () => WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo)));
   context.subscriptions.push(api.commands.registerCommand('scapNg.openAssessmentFile', async () => {

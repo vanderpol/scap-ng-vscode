@@ -80,7 +80,8 @@
     "onCommand:scapNg.openBenchmarkAssessments",
     "onCommand:scapNg.openBenchmarkApplicability",
     "onCommand:scapNg.openBenchmarkConditions",
-    "onCommand:scapNg.analyzeBenchmarkAutomation"
+    "onCommand:scapNg.analyzeBenchmarkAutomation",
+    "onCommand:scapNg.openAiConfiguration"
   ],
   "contributes": {
     "commands": [
@@ -95,6 +96,10 @@
       {
         "command": "scapNg.openAuthoringSidebar",
         "title": "SCAP-NG: Open Authoring Sidebar"
+      },
+      {
+        "command": "scapNg.openAiConfiguration",
+        "title": "SCAP-NG: Configure AI-assisted authoring"
       },
       {
         "command": "scapNg.openWelcome",

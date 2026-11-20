@@ -6,6 +6,7 @@ const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import
 const authoringSidebarSource = readFileSync(new URL('../src/authoring-sidebar.ts', import.meta.url), 'utf8');
 const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/welcome.ts', import.meta.url), 'utf8');
+const aiConfigurationPanelSource = readFileSync(new URL('../src/ai-configuration-panel.ts', import.meta.url), 'utf8');
 test('P0 extension manifest exposes offline Assessment Studio and exact pin descriptor', () => {
   assert.equal(packageJson.main, './dist/extension.js');
   assert.equal(packageJson.publisher, 'vanderpol');
@@ -23,6 +24,7 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openBenchmarkContext'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openWelcome'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentFile'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAiConfiguration'));
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open an Assessment File/);
   assert.doesNotMatch(packageJson.contributes.viewsWelcome[0].contents, /Open Authoring tools/);
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open SCAP-NG Home/);
@@ -181,14 +183,18 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
   assert.match(authoringSidebarSource, /id=\"aiMode\"/);
   assert.match(authoringSidebarSource, /id=\"configureAi\"/);
-  assert.match(authoringSidebarSource, /id=\"aiDialog\"/);
+  assert.doesNotMatch(authoringSidebarSource, /id=\"aiDialog\"/);
   assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'none\'/);
-  assert.match(authoringSidebarSource, /AI-assisted authoring configuration/);
+  assert.match(authoringSidebarSource, /openAiConfiguration/);
+  assert.match(aiConfigurationPanelSource, /AI-assisted authoring configuration/);
+  assert.match(aiConfigurationPanelSource, /createWebviewPanel/);
+  assert.match(aiConfigurationPanelSource, /Safety contract/);
   assert.match(authoringSidebarSource, /None \(no AI\)/);
   assert.match(authoringSidebarSource, /VS Code AI provider/);
   assert.match(authoringSidebarSource, /Configured remote AI/);
-  assert.match(authoringSidebarSource, /no provider was contacted/);
-  assert.match(authoringSidebarSource, /aiEndpointError/);
+  assert.match(aiConfigurationPanelSource, /does not make a request/);
+  assert.match(extensionSource, /scapNg\.openAiConfiguration/);
+  assert.match(extensionSource, /scapNg\.setAiMode/);
   assert.match(authoringSidebarSource, /id=\"openHome\"/);
   assert.doesNotMatch(authoringSidebarSource, /Open native YAML beside sidebar/);
   assert.match(authoringSidebarSource, /type:'saveOptions'/);
