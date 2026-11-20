@@ -295,6 +295,47 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   return diagnostics;
 }
 
+function schemaValidationDiagnostics(pack: MetadataPack, schemaUri: string, value: any): string[] {
+  const errors = pack.validateDetailed(schemaUri, value) as Array<{ instancePath?: string; keyword?: string; params?: Record<string, any>; message?: string }>;
+  const diagnostics: string[] = [];
+  const seen = new Set<string>();
+  const path = (error: any) => error.instancePath || '/';
+  const add = (message: string) => { if (!seen.has(message)) { seen.add(message); diagnostics.push(message); } };
+  for (const error of errors) {
+    const location = path(error);
+    const params = error.params ?? {};
+    switch (error.keyword) {
+      case 'required':
+        add(`${location}: missing required property '${params.missingProperty}'.`);
+        break;
+      case 'additionalProperties':
+        add(`${location}: remove unsupported property '${params.additionalProperty}'.`);
+        break;
+      case 'oneOf':
+        add(`${location}: choose exactly one schema form. For a comparison Test use item_requirement (items_found/items_satisfying), field_requirement (values_found/values_matching), then fields; for existence-only use item_requirement only.`);
+        break;
+      case 'not':
+        add(`${location}: legacy or conflicting Test/Require shape is not allowed by the pinned 0.4.1 schema.`);
+        break;
+      case 'const':
+      case 'enum':
+      case 'type':
+      case 'pattern':
+      case 'minProperties':
+      case 'minItems':
+        add(`${location}: ${error.message ?? 'value is not valid for the pinned 0.4.1 schema'}.`);
+        break;
+      default:
+        if (error.message) add(`${location}: ${error.message}.`);
+        break;
+    }
+  }
+  const text = diagnostics.join('\n');
+  if (/\/require\/fields\//.test(text) || /\/require$/.test(text)) add('Require guidance: a field predicate is never {values_found: one_or_more}; use a comparison operator such as matches_regex/equals, or use {values_found: none} only inside fields.<field> for confirmed absence.');
+  if (/field_requirement/.test(text)) add('Field requirement guidance: values_found: none is not valid under require.field_requirement; comparison Tests need values_found: one_or_more and values_matching: every as a pair.');
+  return diagnostics.slice(0, 18);
+}
+
 function draftFromFailure(message: string, assumptions: string[] = []): AiAssessmentDraft {
   return { generatedMode: 'manual-only', confidence: 'low', yaml: '', diagnostics: [message], document: undefined, assumptions, unresolved: [message], citations: [], method: 'configured-ai' };
 }
@@ -319,7 +360,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   let value: any;
   try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
-  const diagnostics = schemaUri ? pack.validate(schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
+  const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
   if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [...diagnostics, ...semanticDiagnostics], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');

@@ -90,7 +90,11 @@ require:
 `independent.shellcommand` always creates one Item so stdout/stderr can be
 reported. It must not use `items_found: zero_or_more` to model empty stdout. Put
 a line filter in the shellcommand Object's `pattern`; then apply a valid
-`stdout_line` predicate to the filtered values.
+`stdout_line` predicate to the filtered values. A field predicate cannot be only
+`{values_found: one_or_more}`: use a comparison such as
+`{matches_regex: pattern}` for a populated field. Conversely,
+`{values_found: none}` is valid only inside `fields.<field>` and must not be put
+under `require.field_requirement`; the latter is a paired comparison cardinality.
 
 ## Safety and provenance
 
