@@ -191,6 +191,11 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /Safety contract/);
   assert.match(aiConfigurationPanelSource, /Check available VS Code providers/);
   assert.match(aiConfigurationPanelSource, /selectChatModels/);
+  assert.match(aiConfigurationPanelSource, /Store API key securely/);
+  assert.match(aiConfigurationPanelSource, /Test OpenAI-compatible gateway/);
+  assert.match(extensionSource, /context as any\)\.secrets/);
+  assert.match(extensionSource, /remoteApiKey/);
+  assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
   assert.match(authoringSidebarSource, /None \(no AI\)/);
   assert.match(authoringSidebarSource, /VS Code AI provider/);
   assert.match(authoringSidebarSource, /Configured remote AI/);

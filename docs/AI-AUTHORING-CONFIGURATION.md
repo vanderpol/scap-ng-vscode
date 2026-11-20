@@ -30,3 +30,16 @@ consent, include the pinned schema-pack identity, return a structured proposal,
 validate proposed YAML locally, and show a human-reviewable diff before saving
 or linking an Assessment. AI must not declare compliance or silently mutate
 source files.
+
+## GenAI.mil
+
+The current remote configuration supports generic OpenAI-compatible gateways.
+GenAI.mil is one supported example. Use:
+
+- Endpoint: `https://api.genai.mil/v1`
+- Model: `gemini-3.5-flash-lite-withtools` (or another approved model)
+- Authentication: STARK API key
+
+The configuration page provides **Store API key securely** and **Test
+OpenAI-compatible gateway** actions. The key is stored with VS Code SecretStorage, never in settings or YAML. The test calls only `GET /models`; it does not send
+Assessment content.

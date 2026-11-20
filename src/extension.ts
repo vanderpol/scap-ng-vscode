@@ -27,6 +27,7 @@ import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 import { assessmentFileName } from './assessment-filename.js';
 import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
+import { testOpenAiCompatibleGateway } from './ai-remote.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
 const schemaBase = SCHEMA_BASE;
@@ -2855,7 +2856,10 @@ export function activate(context: vscode.ExtensionContext) {
   const authoringSidebar = new AuthoringSidebarProvider(context, () => pack, profile, build, () => { resetPack(); syncEditorPreference(); });
   const readAiConfiguration = (): AiAuthoringConfiguration => {
     const configuration = api.workspace.getConfiguration('scapNg.ai');
-    return { mode: normalizeAiAssistanceMode(configuration.get('mode')), endpoint: configuration.get('endpoint', '') ?? '', model: configuration.get('model', '') ?? '' };
+    const mode = normalizeAiAssistanceMode(configuration.get('mode'));
+    const endpoint = configuration.get('endpoint', '') ?? '';
+    const model = configuration.get('model', '') ?? '';
+    return { mode, endpoint, model };
   };
   const writeAiConfiguration = async (value: AiAuthoringConfiguration): Promise<AiAuthoringConfiguration> => {
     const endpointError = aiEndpointError(value.mode, value.endpoint);
@@ -2939,7 +2943,33 @@ export function activate(context: vscode.ExtensionContext) {
     await api.commands.executeCommand('workbench.action.openView');
     void api.window.showInformationMessage('Select the SCAP-NG Authoring view from the Open View picker.');
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration)));
+  const remoteApiKeySecret = 'scapNg.ai.remoteApiKey';
+  const aiConfigurationActions = {
+    storeRemoteApiKey: async () => {
+      const secrets = (context as any).secrets;
+      if (typeof secrets?.store !== 'function') throw new Error('VS Code SecretStorage is unavailable in this session.');
+      const value = await api.window.showInputBox({ prompt: 'Enter the API key for the configured remote gateway', password: true, ignoreFocusOut: true, placeHolder: 'The key is stored only in VS Code SecretStorage.' });
+      if (value === undefined) return 'Key entry canceled.';
+      if (!String(value).trim()) return 'No key was stored.';
+      await secrets.store(remoteApiKeySecret, String(value).trim());
+      return 'Remote API key stored securely. The key is not displayed or written to settings.';
+    },
+    clearRemoteApiKey: async () => {
+      const secrets = (context as any).secrets;
+      if (typeof secrets?.delete !== 'function') throw new Error('VS Code SecretStorage is unavailable in this session.');
+      await secrets.delete(remoteApiKeySecret);
+      return 'Stored remote API key deleted.';
+    },
+    testRemote: async (configuration?: AiAuthoringConfiguration) => {
+      const secrets = (context as any).secrets;
+      const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
+      const target = configuration ?? readAiConfiguration();
+      if (target.mode !== 'remote') return 'Select Configured remote AI before testing a gateway.';
+      const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
+      return result.message;
+    }
+  };
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {
     const mode = normalizeAiAssistanceMode(value);
     const configuration = api.workspace.getConfiguration('scapNg.ai');
