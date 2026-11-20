@@ -258,7 +258,7 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   if (coverage.procedureSteps.some(step => !step.represented)) diagnostics.push('The AI coverage manifest identifies one or more procedure steps that are not represented; partial automation is not linkable.');
   if (procedureHasPathSet(input.checkText) && (!coverage.pathPatterns.length || coverage.pathPatterns.some(path => !path.represented))) diagnostics.push('The procedure names a path set, wildcard, or multiple files, but the AI did not represent the complete population.');
   if (!coverage.procedureSteps.length) diagnostics.push('The AI coverage manifest contains no procedure steps.');
-  const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent/i.test(item));
+  const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent|ISSO|manual (?:policy )?exception|not managed/i.test(item));
   if (unresolvedCritical.length) diagnostics.push('The AI reports unresolved semantic coverage gaps; review or refine the procedure before linking this draft.');
   if (value?.assessment?.mode === 'automated' && !value?.assessment?.evaluate && coverage.procedureSteps.length > 1) diagnostics.push('Multiple procedure steps require explicit evaluate logic; the draft has no evaluate expression.');
   for (const [testId, test] of Object.entries(value?.assessment?.tests ?? {}) as Array<[string, any]>) {
@@ -292,10 +292,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? pack.validate(schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
-  if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+  const semanticDiagnostics = coverageDiagnostics(input, payload, value);
+  if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [...diagnostics, ...semanticDiagnostics], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
-  diagnostics.push(...coverageDiagnostics(input, payload, value));
+  diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
   return { generatedMode: 'automated', confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
 }
