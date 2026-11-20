@@ -38,6 +38,7 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
   assert.match(knowledge.current_authoring_examples.applicability_gate_with_failure, /not_applicable/);
   assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
+  assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /population gate|technical Test/i);
   assert.match(knowledge.current_authoring_examples.shellcommand_existence, /field_requirement/);
   assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /always creates an Item/);
   // Keep the outbound prompt bounded enough for an enterprise gateway while
