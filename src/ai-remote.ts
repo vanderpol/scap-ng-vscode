@@ -191,51 +191,71 @@ export async function requestOpenAiCompatibleChatWithTools(
   const completionUrl = new URL('chat/completions', `${base.toString().replace(/\/$/, '')}/`).toString();
   const deadline = Date.now() + timeoutMs;
   const messages: OpenAiChatMessage[] = initialMessages.map(message => ({ ...message }));
+  // Cline/AI-SDK normally sends the first profile. The bounded alternatives
+  // handle gateways that reject a harmless optional field or only implement
+  // non-streaming tool responses. Once a profile succeeds, it is reused.
+  const wireProfiles = [
+    { stream: true, temperature: 0.1 },
+    { stream: true },
+    { stream: false }
+  ] as const;
+  let wireProfileIndex = 0;
   for (let turn = 0; turn < 8; turn++) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new Error('The AI request timed out.');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), remaining);
-    try {
-      const response = await fetch(completionUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
-        // Match the wire shape used by Cline/AI-SDK OpenAI-compatible clients:
-        // tools are offered, the response is streamed, and tool_choice is left
-        // at the provider default instead of forcing an often-unsupported
-        // explicit `auto` value.
-        body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000, tools, stream: true }),
-        signal: controller.signal
-      });
-      const body = await response.text();
-      if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
-      const parsed = parseChatCompletionBody(body);
-      const message = { content: parsed.content };
-      const toolCalls = parsed.toolCalls;
-      if (toolCalls.length) {
-        messages.push({ role: 'assistant', content: message.content, tool_calls: toolCalls });
-        for (const call of toolCalls) {
-          if (!call?.id || call.type !== 'function' || typeof call.function?.name !== 'string') throw new Error('Gateway returned an invalid tool call.');
-          let args: Record<string, unknown> = {};
-          try {
-            const parsedArgs = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-            if (!parsedArgs || typeof parsedArgs !== 'object' || Array.isArray(parsedArgs)) throw new Error('Tool arguments must be an object.');
-            args = parsedArgs;
-          } catch { throw new Error(`Tool ${call.function.name} returned invalid JSON arguments.`); }
-          let result: unknown;
-          try { result = await handler(call.function.name, args); }
-          catch (error) { result = { error: error instanceof Error ? error.message : String(error) }; }
-          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    let body: string;
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error('The AI request timed out.');
+      const profile = wireProfiles[wireProfileIndex];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), remaining);
+      try {
+        const response = await fetch(completionUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+          // Match the wire shape used by Cline/AI-SDK OpenAI-compatible
+          // clients: tools are offered, tool calls are streamed when possible,
+          // and tool_choice is left at the provider default.
+          body: JSON.stringify({ model, messages, max_tokens: 12000, ...profile, tools }),
+          signal: controller.signal
+        });
+        body = await response.text();
+        if (!response.ok) {
+          const error = new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
+          if (response.status === 400 && wireProfileIndex < wireProfiles.length - 1) {
+            wireProfileIndex++;
+            continue;
+          }
+          throw error;
         }
-        continue;
+        break;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
+        throw error;
+      } finally { clearTimeout(timer); }
+    }
+    const parsed = parseChatCompletionBody(body);
+    const message = { content: parsed.content };
+    const toolCalls = parsed.toolCalls;
+    if (toolCalls.length) {
+      messages.push({ role: 'assistant', content: message.content, tool_calls: toolCalls });
+      for (const call of toolCalls) {
+        if (!call?.id || call.type !== 'function' || typeof call.function?.name !== 'string') throw new Error('Gateway returned an invalid tool call.');
+        let args: Record<string, unknown> = {};
+        try {
+          const parsedArgs = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+          if (!parsedArgs || typeof parsedArgs !== 'object' || Array.isArray(parsedArgs)) throw new Error('Tool arguments must be an object.');
+          args = parsedArgs;
+        } catch { throw new Error(`Tool ${call.function.name} returned invalid JSON arguments.`); }
+        let result: unknown;
+        try { result = await handler(call.function.name, args); }
+        catch (error) { result = { error: error instanceof Error ? error.message : String(error) }; }
+        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
       }
-      const content = responseText(message?.content);
-      if (content.trim()) return content;
-      throw new Error('Gateway response did not contain choices[0].message.content or tool_calls.');
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
-      throw error;
-    } finally { clearTimeout(timer); }
+      continue;
+    }
+    const content = responseText(message?.content);
+    if (content.trim()) return content;
+    throw new Error('Gateway response did not contain choices[0].message.content or tool_calls.');
   }
   throw new Error('The AI tool-call loop exceeded its maximum of 8 turns.');
 }
