@@ -249,7 +249,7 @@ test('withtools models receive pinned local tools and resume after a tool result
     calls++;
     if (calls === 1) return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '', tool_calls: [{ id: 'tool-1', type: 'function', function: { name: 'scap_ng_search_capabilities', arguments: JSON.stringify({ query: 'file presence', platform: 'rhel' }) } }] } }] }) };
     return response(payload);
-  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.tools.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
   }));
   assert.equal(requests.length, 2);

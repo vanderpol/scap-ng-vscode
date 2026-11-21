@@ -55,6 +55,8 @@ export async function testOpenAiCompatibleGateway(endpoint: string, apiKey: stri
   } finally { clearTimeout(timer); }
 }
 
+export const AI_MAX_OUTPUT_TOKENS = 8000;
+
 export interface OpenAiChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -139,7 +141,7 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), remaining);
     try {
-      const body = { model, messages, temperature: 0.1, max_tokens: 12000, stream: true, ...(requestJsonMode ? { response_format: { type: 'json_object' } } : {}) };
+      const body = { model, messages, temperature: 0.1, max_tokens: AI_MAX_OUTPUT_TOKENS, stream: true, ...(requestJsonMode ? { response_format: { type: 'json_object' } } : {}) };
       const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' }, body: JSON.stringify(body), signal: controller.signal });
       const responseBody = await response.text();
       if (!response.ok) {
@@ -215,7 +217,7 @@ export async function requestOpenAiCompatibleChatWithTools(
           // Match the wire shape used by Cline/AI-SDK OpenAI-compatible
           // clients: tools are offered, tool calls are streamed when possible,
           // and tool_choice is left at the provider default.
-          body: JSON.stringify({ model, messages, max_tokens: 12000, ...profile, tools }),
+          body: JSON.stringify({ model, messages, max_tokens: AI_MAX_OUTPUT_TOKENS, ...profile, tools }),
           signal: controller.signal
         });
         body = await response.text();

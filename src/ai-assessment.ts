@@ -4,6 +4,12 @@ import { parseDocument, stringify } from 'yaml';
 import type { MetadataPack } from './metadata.js';
 import { OpenAiCompatibleHttpError, requestOpenAiCompatibleChat, requestOpenAiCompatibleChatWithTools, type OpenAiChatMessage, type OpenAiToolDefinition, type OpenAiToolHandler } from './ai-remote.js';
 
+// Gateway tool capability is stable per endpoint/model during an extension-host
+// session. Remember a tools rejection so later authoring requests do not pay the
+// same failed negotiation round-trip again. This cache contains no credentials.
+const unsupportedToolProfiles = new Set<string>();
+function toolProfileKey(endpoint: string, model: string): string { return `${endpoint.replace(/\/$/, '')}\u0000${model.trim()}`; }
+
 export interface AiAssessmentInput {
   ruleId: string;
   title: string;
@@ -218,7 +224,10 @@ function selectedMappings(pack: MetadataPack, text: string, platform = ''): { ca
   const entries = mappingEntries(pack).map(value => ({ value, score: capabilityScore(String(value?.capability ?? ''), String(value?.source ?? ''), text, platform) }));
   entries.sort((a, b) => b.score - a.score || String(a.value?.capability).localeCompare(String(b.value?.capability)));
   const relevant = entries.filter(entry => entry.score > 0).slice(0, 14).map(entry => compactMapping(entry.value));
-  const catalog = entries.map(entry => ({ capability: entry.value?.capability, source: sourceSummary(entry.value?.source), score: entry.score }));
+  // The full source metadata is already retained in relevant_capability_mappings.
+  // Keep the all-capability index compact so every request does not spend model
+  // context and inference time repeating long source descriptors.
+  const catalog = entries.map(entry => ({ capability: entry.value?.capability, score: entry.score }));
   return { catalog, relevant };
 }
 
@@ -548,9 +557,11 @@ export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
 export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
   const startedAt = Date.now();
   const deadline = startedAt + AI_REQUEST_TOTAL_TIMEOUT_MS;
-  let useTools = modelUsesPinnedTools(model);
-  let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : 'not-requested';
-  let toolWarning: string | undefined;
+  const profileKey = toolProfileKey(endpoint, model);
+  const previouslyRejectedTools = unsupportedToolProfiles.has(profileKey);
+  let useTools = modelUsesPinnedTools(model) && !previouslyRejectedTools;
+  let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : previouslyRejectedTools ? 'fallback-no-tools' : 'not-requested';
+  let toolWarning: string | undefined = previouslyRejectedTools ? 'The gateway previously rejected tools for this endpoint/model during this VS Code session; skipped the failed tools negotiation.' : undefined;
   const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt);
   const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
@@ -558,7 +569,7 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   if (input.checkText.length > 60000) return finalize(draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.'));
   if ((input.ruleYaml?.length ?? 0) > 50000) return finalize(draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.'));
   if (input.title.length > 4000 || input.ruleId.length > 1000) return finalize(draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.'));
-  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
+  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText, maxDocumentChars: 4500 });
   const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. Apply the included AI-AUTHORING-PLAYBOOK.md procedure method; it contains generic authoring reasoning, not hard-coded content. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve the objective technical check and its real pass/fail result even when the procedure mentions an ISSO/ISSM/SA/AO exception; approved deviations are recorded after evaluation and must not be represented as not_evaluated. Return manual-only only when no objective collector/predicate can be expressed or the check itself cannot be performed. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.
 
 Do not copy any example's command, Test ID, selector, or predicate; examples are structural guidance only. Serialize reported_elements as scalar all/compared or an explicit field-name array, never [all]. In a fields map, use exactly one comparison operator (for example stdout_line: {matches_regex: regex}); values_matching belongs only to field_requirement. For confirmed absence, put values_found: none only in fields.<field>, while keeping the paired field_requirement above it. Derive every Test from the supplied procedure and current Rule context. The editor will reject invalid output; it will not synthesize a content-specific replacement after the provider responds.
@@ -599,6 +610,7 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
       // make the downgrade explicit in the preview/provenance.
       if (!(error instanceof OpenAiCompatibleHttpError) || error.status !== 400) throw error;
       const firstError = error.message;
+      unsupportedToolProfiles.add(profileKey);
       useTools = false;
       toolMode = 'fallback-no-tools';
       toolWarning = `${firstError}; retried once without tools because the gateway rejected the tool request.`;
