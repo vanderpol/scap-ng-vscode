@@ -203,6 +203,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /provider-format\/content failure, not a manual-only classification/);
   assert.match(extensionSource, /provider classified this procedure as manual-only/);
   assert.match(extensionSource, /No automated YAML was accepted because the provider response failed local validation/);
+  assert.match(extensionSource, /Disposition: '\+disposition/);
+  assert.match(extensionSource, /manual\/site-specific review was noted, but manual-only was not established/);
+  assert.match(extensionSource, /Manual-only by provider logic/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
   assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
