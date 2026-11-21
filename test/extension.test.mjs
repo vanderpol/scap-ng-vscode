@@ -196,6 +196,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /Query available models/);
   assert.match(aiConfigurationPanelSource, /id=\"model\"/);
   assert.match(aiConfigurationPanelSource, /Enter model ID manually/);
+  assert.match(aiConfigurationPanelSource, /withtools recommended/);
+  assert.match(aiConfigurationPanelSource, /provider-only.*may fail structured authoring/);
+  assert.match(aiConfigurationPanelSource, /pinned local SCAP-NG capability\/search\/validation tools/);
+  assert.match(extensionSource, /provider-only output may be less reliable/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
   assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
