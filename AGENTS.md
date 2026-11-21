@@ -1,3 +1,9 @@
+## MANDATORY ALL-TASK CODEX SELF-AUDIT — OWNER POLICY 2026-11-21
+
+Before claiming ANY SCAP-NG engineering task complete, perform an adversarial semantic self-review and correct defects: verify normative sources and actual inputs/outputs, challenge expectations independently of generators, use negative and mutation/metamorphic tests, reconcile source pins and current-head CI, and report explicit unqualified holds. A green test suite alone is not sufficient. Read and follow the shared [standing quality gates](https://github.com/vanderpol/scap-ng/blob/main/docs/engineering/CODEX-QUALITY-GATES.md). Human independent review still follows. This adds a mandatory step without superseding existing security, single-version, or prompt-mainline merge policies.
+
+---
+
 # P0 OWNER DIRECTIVE — EDITOR MUST USE CURRENT SINGLE SCAP-NG 0.4.1 (2026-11-19)
 
 **Active, mandatory authoring specification: canonical `vanderpol/scap-ng/main` flat `schema/`, version `0.4.1` only.** The editor's present `schema-profile.json` and `dependency-pins.json` both explicitly pin **0.4.0** at `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`; this is a **known migration defect**, not the proper target for continued feature development. Do **not** claim “0.4.0 is currently correct” because the installed VSIX and local content happen to agree. That only proves the current build is self-consistent **against an obsolete contract**.
