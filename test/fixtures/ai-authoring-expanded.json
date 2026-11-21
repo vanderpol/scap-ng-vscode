@@ -1,0 +1,3382 @@
+[
+  {
+    "id": "unix-file-presence-wrapped",
+    "title": "The passwd file must be present",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nVerify that the file /etc/passwd is present on the system.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "/etc/passwd"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "unix-file-presence"
+  },
+  {
+    "id": "unix-file-presence-shell-prompts",
+    "title": "The passwd file must be present",
+    "platform": "ubuntu",
+    "checkText": "Verify that the file /etc/passwd is present on the system.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "/etc/passwd"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "unix-file-presence"
+  },
+  {
+    "id": "unix-file-presence-code-block",
+    "title": "The passwd file must be present",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nVerify that the file /etc/passwd is present on the system.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "/etc/passwd"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "unix-file-presence"
+  },
+  {
+    "id": "unix-file-presence-compact",
+    "title": "The passwd file must be present",
+    "platform": "ubuntu",
+    "checkText": "Verify that the file /etc/passwd is present on the system.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "/etc/passwd"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "unix-file-presence"
+  },
+  {
+    "id": "rpm-package-absent-wrapped",
+    "title": "The telnet client must not be installed",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify the telnet package is not installed. Use rpm -q telnet; if it is installed, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "rpm-package-absent"
+  },
+  {
+    "id": "rpm-package-absent-shell-prompts",
+    "title": "The telnet client must not be installed",
+    "platform": "rhel",
+    "checkText": "Verify the telnet package is not installed. Use rpm -q telnet; if it is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "rpm-package-absent"
+  },
+  {
+    "id": "rpm-package-absent-code-block",
+    "title": "The telnet client must not be installed",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify the telnet package is not installed. Use rpm -q telnet; if it is installed, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "rpm-package-absent"
+  },
+  {
+    "id": "rpm-package-absent-compact",
+    "title": "The telnet client must not be installed",
+    "platform": "rhel",
+    "checkText": "Verify the telnet package is not installed. Use rpm -q telnet; if it is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "rpm-package-absent"
+  },
+  {
+    "id": "kernel-module-absent-wrapped",
+    "title": "The cramfs kernel module must not be loaded",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify the cramfs kernel module is not loaded. Use lsmod | grep cramfs; if it is loaded, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.kernelmodule"
+      ],
+      "required": [
+        "cramfs"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "kernel-module-absent"
+  },
+  {
+    "id": "kernel-module-absent-shell-prompts",
+    "title": "The cramfs kernel module must not be loaded",
+    "platform": "rhel",
+    "checkText": "Verify the cramfs kernel module is not loaded. Use lsmod | grep cramfs; if it is loaded, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.kernelmodule"
+      ],
+      "required": [
+        "cramfs"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "kernel-module-absent"
+  },
+  {
+    "id": "kernel-module-absent-code-block",
+    "title": "The cramfs kernel module must not be loaded",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify the cramfs kernel module is not loaded. Use lsmod | grep cramfs; if it is loaded, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.kernelmodule"
+      ],
+      "required": [
+        "cramfs"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "kernel-module-absent"
+  },
+  {
+    "id": "kernel-module-absent-compact",
+    "title": "The cramfs kernel module must not be loaded",
+    "platform": "rhel",
+    "checkText": "Verify the cramfs kernel module is not loaded. Use lsmod | grep cramfs; if it is loaded, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.kernelmodule"
+      ],
+      "required": [
+        "cramfs"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "kernel-module-absent"
+  },
+  {
+    "id": "selinux-boolean-wrapped",
+    "title": "SELinux must deny ptrace",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify the SELinux boolean deny_ptrace is set to on with getsebool deny_ptrace. If it is off, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.selinuxboolean"
+      ],
+      "required": [
+        "deny_ptrace"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "selinux-boolean"
+  },
+  {
+    "id": "selinux-boolean-shell-prompts",
+    "title": "SELinux must deny ptrace",
+    "platform": "rhel",
+    "checkText": "Verify the SELinux boolean deny_ptrace is set to on with getsebool deny_ptrace. If it is off, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.selinuxboolean"
+      ],
+      "required": [
+        "deny_ptrace"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "selinux-boolean"
+  },
+  {
+    "id": "selinux-boolean-code-block",
+    "title": "SELinux must deny ptrace",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify the SELinux boolean deny_ptrace is set to on with getsebool deny_ptrace. If it is off, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.selinuxboolean"
+      ],
+      "required": [
+        "deny_ptrace"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "selinux-boolean"
+  },
+  {
+    "id": "selinux-boolean-compact",
+    "title": "SELinux must deny ptrace",
+    "platform": "rhel",
+    "checkText": "Verify the SELinux boolean deny_ptrace is set to on with getsebool deny_ptrace. If it is off, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.selinuxboolean"
+      ],
+      "required": [
+        "deny_ptrace"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "selinux-boolean"
+  },
+  {
+    "id": "systemd-default-target-wrapped",
+    "title": "The default systemd target must be multi-user",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun systemctl get-default and verify the output is multi-user.target.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "systemctl get-default",
+        "multi-user.target"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "systemd-default-target"
+  },
+  {
+    "id": "systemd-default-target-shell-prompts",
+    "title": "The default systemd target must be multi-user",
+    "platform": "rhel",
+    "checkText": "Run systemctl get-default and verify the output is multi-user.target.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "systemctl get-default",
+        "multi-user.target"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "systemd-default-target"
+  },
+  {
+    "id": "systemd-default-target-code-block",
+    "title": "The default systemd target must be multi-user",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun systemctl get-default and verify the output is multi-user.target.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "systemctl get-default",
+        "multi-user.target"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "systemd-default-target"
+  },
+  {
+    "id": "systemd-default-target-compact",
+    "title": "The default systemd target must be multi-user",
+    "platform": "rhel",
+    "checkText": "Run systemctl get-default and verify the output is multi-user.target.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "systemctl get-default",
+        "multi-user.target"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "systemd-default-target"
+  },
+  {
+    "id": "wireless-nmcli-wrapped",
+    "title": "Wireless interfaces must not be configured",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify that there are no wireless interfaces configured. This is N/A for systems without wireless network adapters. Check with nmcli device. If a wireless interface is configured and its use is not documented with the ISSO, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "nmcli device",
+        "wifi"
+      ],
+      "minTests": 2
+    },
+    "variant": "wrapped",
+    "baseCase": "wireless-nmcli"
+  },
+  {
+    "id": "wireless-nmcli-shell-prompts",
+    "title": "Wireless interfaces must not be configured",
+    "platform": "rhel",
+    "checkText": "Verify that there are no wireless interfaces configured. This is N/A for systems without wireless network adapters. Check with nmcli device. If a wireless interface is configured and its use is not documented with the ISSO, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "nmcli device",
+        "wifi"
+      ],
+      "minTests": 2
+    },
+    "variant": "shell-prompts",
+    "baseCase": "wireless-nmcli"
+  },
+  {
+    "id": "wireless-nmcli-code-block",
+    "title": "Wireless interfaces must not be configured",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify that there are no wireless interfaces configured. This is N/A for systems without wireless network adapters. Check with nmcli device. If a wireless interface is configured and its use is not documented with the ISSO, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "nmcli device",
+        "wifi"
+      ],
+      "minTests": 2
+    },
+    "variant": "code-block",
+    "baseCase": "wireless-nmcli"
+  },
+  {
+    "id": "wireless-nmcli-compact",
+    "title": "Wireless interfaces must not be configured",
+    "platform": "rhel",
+    "checkText": "Verify that there are no wireless interfaces configured. This is N/A for systems without wireless network adapters. Check with nmcli device. If a wireless interface is configured and its use is not documented with the ISSO, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "nmcli device",
+        "wifi"
+      ],
+      "minTests": 2
+    },
+    "variant": "compact",
+    "baseCase": "wireless-nmcli"
+  },
+  {
+    "id": "ssh-x11-localhost-wrapped",
+    "title": "The SSH daemon must prevent remote proxy display connections",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nCheck the SSH X11UseLocalhost setting with grep -i x11uselocalhost /etc/ssh/sshd_config. X11UseLocalhost yes. If the keyword is set to no, missing, or commented out, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "X11UseLocalhost",
+        "/etc/ssh/sshd_config",
+        "yes"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "ssh-x11-localhost"
+  },
+  {
+    "id": "ssh-x11-localhost-shell-prompts",
+    "title": "The SSH daemon must prevent remote proxy display connections",
+    "platform": "ubuntu",
+    "checkText": "Check the SSH X11UseLocalhost setting with grep -i x11uselocalhost /etc/ssh/sshd_config. X11UseLocalhost yes. If the keyword is set to no, missing, or commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "X11UseLocalhost",
+        "/etc/ssh/sshd_config",
+        "yes"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ssh-x11-localhost"
+  },
+  {
+    "id": "ssh-x11-localhost-code-block",
+    "title": "The SSH daemon must prevent remote proxy display connections",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nCheck the SSH X11UseLocalhost setting with grep -i x11uselocalhost /etc/ssh/sshd_config. X11UseLocalhost yes. If the keyword is set to no, missing, or commented out, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "X11UseLocalhost",
+        "/etc/ssh/sshd_config",
+        "yes"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "ssh-x11-localhost"
+  },
+  {
+    "id": "ssh-x11-localhost-compact",
+    "title": "The SSH daemon must prevent remote proxy display connections",
+    "platform": "ubuntu",
+    "checkText": "Check the SSH X11UseLocalhost setting with grep -i x11uselocalhost /etc/ssh/sshd_config. X11UseLocalhost yes. If the keyword is set to no, missing, or commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "X11UseLocalhost",
+        "/etc/ssh/sshd_config",
+        "yes"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "ssh-x11-localhost"
+  },
+  {
+    "id": "ssh-banner-two-files-wrapped",
+    "title": "The SSH banner must display the approved notice",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nCheck Banner with grep -i banner /etc/ssh/sshd_config. Banner /etc/issue. If commented out, this is a finding. Then cat /etc/issue and verify it matches the Standard Mandatory DoD Notice and Consent Banner exactly: You are accessing a U.S. Government Information System. If the banner text does not match exactly, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/ssh/sshd_config",
+        "/etc/issue"
+      ],
+      "minTests": 2
+    },
+    "variant": "wrapped",
+    "baseCase": "ssh-banner-two-files"
+  },
+  {
+    "id": "ssh-banner-two-files-shell-prompts",
+    "title": "The SSH banner must display the approved notice",
+    "platform": "ubuntu",
+    "checkText": "Check Banner with grep -i banner /etc/ssh/sshd_config. Banner /etc/issue. If commented out, this is a finding. Then cat /etc/issue and verify it matches the Standard Mandatory DoD Notice and Consent Banner exactly: You are accessing a U.S. Government Information System. If the banner text does not match exactly, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/ssh/sshd_config",
+        "/etc/issue"
+      ],
+      "minTests": 2
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ssh-banner-two-files"
+  },
+  {
+    "id": "ssh-banner-two-files-code-block",
+    "title": "The SSH banner must display the approved notice",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nCheck Banner with grep -i banner /etc/ssh/sshd_config. Banner /etc/issue. If commented out, this is a finding. Then cat /etc/issue and verify it matches the Standard Mandatory DoD Notice and Consent Banner exactly: You are accessing a U.S. Government Information System. If the banner text does not match exactly, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/ssh/sshd_config",
+        "/etc/issue"
+      ],
+      "minTests": 2
+    },
+    "variant": "code-block",
+    "baseCase": "ssh-banner-two-files"
+  },
+  {
+    "id": "ssh-banner-two-files-compact",
+    "title": "The SSH banner must display the approved notice",
+    "platform": "ubuntu",
+    "checkText": "Check Banner with grep -i banner /etc/ssh/sshd_config. Banner /etc/issue. If commented out, this is a finding. Then cat /etc/issue and verify it matches the Standard Mandatory DoD Notice and Consent Banner exactly: You are accessing a U.S. Government Information System. If the banner text does not match exactly, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/ssh/sshd_config",
+        "/etc/issue"
+      ],
+      "minTests": 2
+    },
+    "variant": "compact",
+    "baseCase": "ssh-banner-two-files"
+  },
+  {
+    "id": "ssh-clientalive-wrapped",
+    "title": "SSH sessions must terminate after inactivity",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nCheck ClientAliveInterval with grep -i clientalive /etc/ssh/sshd_config. ClientAliveInterval 600. If it does not exist, is greater than 600, or is commented out, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "ClientAliveInterval",
+        "600"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "ssh-clientalive"
+  },
+  {
+    "id": "ssh-clientalive-shell-prompts",
+    "title": "SSH sessions must terminate after inactivity",
+    "platform": "ubuntu",
+    "checkText": "Check ClientAliveInterval with grep -i clientalive /etc/ssh/sshd_config. ClientAliveInterval 600. If it does not exist, is greater than 600, or is commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "ClientAliveInterval",
+        "600"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ssh-clientalive"
+  },
+  {
+    "id": "ssh-clientalive-code-block",
+    "title": "SSH sessions must terminate after inactivity",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nCheck ClientAliveInterval with grep -i clientalive /etc/ssh/sshd_config. ClientAliveInterval 600. If it does not exist, is greater than 600, or is commented out, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "ClientAliveInterval",
+        "600"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "ssh-clientalive"
+  },
+  {
+    "id": "ssh-clientalive-compact",
+    "title": "SSH sessions must terminate after inactivity",
+    "platform": "ubuntu",
+    "checkText": "Check ClientAliveInterval with grep -i clientalive /etc/ssh/sshd_config. ClientAliveInterval 600. If it does not exist, is greater than 600, or is commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "ClientAliveInterval",
+        "600"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "ssh-clientalive"
+  },
+  {
+    "id": "windows-registry-dword-wrapped",
+    "title": "Windows must disable the lock screen slideshow",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nSet the registry value NoLockScreenSlideshow under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.registry"
+      ],
+      "required": [
+        "NoLockScreenSlideshow",
+        "1"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-registry-dword"
+  },
+  {
+    "id": "windows-registry-dword-shell-prompts",
+    "title": "Windows must disable the lock screen slideshow",
+    "platform": "windows",
+    "checkText": "Set the registry value NoLockScreenSlideshow under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.registry"
+      ],
+      "required": [
+        "NoLockScreenSlideshow",
+        "1"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-registry-dword"
+  },
+  {
+    "id": "windows-registry-dword-code-block",
+    "title": "Windows must disable the lock screen slideshow",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nSet the registry value NoLockScreenSlideshow under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.registry"
+      ],
+      "required": [
+        "NoLockScreenSlideshow",
+        "1"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-registry-dword"
+  },
+  {
+    "id": "windows-registry-dword-compact",
+    "title": "Windows must disable the lock screen slideshow",
+    "platform": "windows",
+    "checkText": "Set the registry value NoLockScreenSlideshow under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.registry"
+      ],
+      "required": [
+        "NoLockScreenSlideshow",
+        "1"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-registry-dword"
+  },
+  {
+    "id": "windows-service-stopped-wrapped",
+    "title": "The Bluetooth service must be stopped",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nUse sc query bthserv. The Bluetooth Support Service must be stopped; if it is running, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.service"
+      ],
+      "required": [
+        "bthserv"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-service-stopped"
+  },
+  {
+    "id": "windows-service-stopped-shell-prompts",
+    "title": "The Bluetooth service must be stopped",
+    "platform": "windows",
+    "checkText": "Use sc query bthserv. The Bluetooth Support Service must be stopped; if it is running, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.service"
+      ],
+      "required": [
+        "bthserv"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-service-stopped"
+  },
+  {
+    "id": "windows-service-stopped-code-block",
+    "title": "The Bluetooth service must be stopped",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nUse sc query bthserv. The Bluetooth Support Service must be stopped; if it is running, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.service"
+      ],
+      "required": [
+        "bthserv"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-service-stopped"
+  },
+  {
+    "id": "windows-service-stopped-compact",
+    "title": "The Bluetooth service must be stopped",
+    "platform": "windows",
+    "checkText": "Use sc query bthserv. The Bluetooth Support Service must be stopped; if it is running, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.service"
+      ],
+      "required": [
+        "bthserv"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-service-stopped"
+  },
+  {
+    "id": "windows-password-policy-wrapped",
+    "title": "The minimum password length must be 14",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nThe Windows minimum password length must be 14 characters or greater. Verify the effective password policy.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.passwordpolicy"
+      ],
+      "required": [
+        "14"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-password-policy"
+  },
+  {
+    "id": "windows-password-policy-shell-prompts",
+    "title": "The minimum password length must be 14",
+    "platform": "windows",
+    "checkText": "The Windows minimum password length must be 14 characters or greater. Verify the effective password policy.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.passwordpolicy"
+      ],
+      "required": [
+        "14"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-password-policy"
+  },
+  {
+    "id": "windows-password-policy-code-block",
+    "title": "The minimum password length must be 14",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nThe Windows minimum password length must be 14 characters or greater. Verify the effective password policy.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.passwordpolicy"
+      ],
+      "required": [
+        "14"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-password-policy"
+  },
+  {
+    "id": "windows-password-policy-compact",
+    "title": "The minimum password length must be 14",
+    "platform": "windows",
+    "checkText": "The Windows minimum password length must be 14 characters or greater. Verify the effective password policy.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.passwordpolicy"
+      ],
+      "required": [
+        "14"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-password-policy"
+  },
+  {
+    "id": "auditpol-success-wrapped",
+    "title": "Authorization Policy Change success auditing is required",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nUse AuditPol /get /category:* and verify Policy Change - Authorization Policy Change is Success. If it is not audited, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.auditeventpolicysubcategories"
+      ],
+      "required": [
+        "AuditPol"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "auditpol-success"
+  },
+  {
+    "id": "auditpol-success-shell-prompts",
+    "title": "Authorization Policy Change success auditing is required",
+    "platform": "windows",
+    "checkText": "Use AuditPol /get /category:* and verify Policy Change - Authorization Policy Change is Success. If it is not audited, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.auditeventpolicysubcategories"
+      ],
+      "required": [
+        "AuditPol"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "auditpol-success"
+  },
+  {
+    "id": "auditpol-success-code-block",
+    "title": "Authorization Policy Change success auditing is required",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nUse AuditPol /get /category:* and verify Policy Change - Authorization Policy Change is Success. If it is not audited, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.auditeventpolicysubcategories"
+      ],
+      "required": [
+        "AuditPol"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "auditpol-success"
+  },
+  {
+    "id": "auditpol-success-compact",
+    "title": "Authorization Policy Change success auditing is required",
+    "platform": "windows",
+    "checkText": "Use AuditPol /get /category:* and verify Policy Change - Authorization Policy Change is Success. If it is not audited, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.auditeventpolicysubcategories"
+      ],
+      "required": [
+        "AuditPol"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "auditpol-success"
+  },
+  {
+    "id": "find-nogroup-wrapped",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun find / -xdev -nouser -print. If any files are returned without a resolvable owner, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "find / -xdev -nouser"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "find-nogroup"
+  },
+  {
+    "id": "find-nogroup-shell-prompts",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Run find / -xdev -nouser -print. If any files are returned without a resolvable owner, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "find / -xdev -nouser"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "find-nogroup"
+  },
+  {
+    "id": "find-nogroup-code-block",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun find / -xdev -nouser -print. If any files are returned without a resolvable owner, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "find / -xdev -nouser"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "find-nogroup"
+  },
+  {
+    "id": "find-nogroup-compact",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Run find / -xdev -nouser -print. If any files are returned without a resolvable owner, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "find / -xdev -nouser"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "find-nogroup"
+  },
+  {
+    "id": "postfix-allowed-list-wrapped",
+    "title": "Postfix restrictions must use the approved list",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun postconf -n smtpd_client_restrictions. The value may contain only reject_unknown_client_hostname and permit_mynetworks; anything else is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf -n smtpd_client_restrictions"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "postfix-allowed-list"
+  },
+  {
+    "id": "postfix-allowed-list-shell-prompts",
+    "title": "Postfix restrictions must use the approved list",
+    "platform": "rhel",
+    "checkText": "Run postconf -n smtpd_client_restrictions. The value may contain only reject_unknown_client_hostname and permit_mynetworks; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf -n smtpd_client_restrictions"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "postfix-allowed-list"
+  },
+  {
+    "id": "postfix-allowed-list-code-block",
+    "title": "Postfix restrictions must use the approved list",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun postconf -n smtpd_client_restrictions. The value may contain only reject_unknown_client_hostname and permit_mynetworks; anything else is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf -n smtpd_client_restrictions"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "postfix-allowed-list"
+  },
+  {
+    "id": "postfix-allowed-list-compact",
+    "title": "Postfix restrictions must use the approved list",
+    "platform": "rhel",
+    "checkText": "Run postconf -n smtpd_client_restrictions. The value may contain only reject_unknown_client_hostname and permit_mynetworks; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf -n smtpd_client_restrictions"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "postfix-allowed-list"
+  },
+  {
+    "id": "package-gated-config-wrapped",
+    "title": "TFTP must operate in secure mode when installed",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify whether tftp-server is installed with yum list installed tftp-server. If it is not installed, this is Not Applicable. If installed, grep server_args /etc/xinetd.d/tftp and verify server_args = -s /var/lib/tftpboot.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/xinetd.d/tftp"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "package-gated-config"
+  },
+  {
+    "id": "package-gated-config-shell-prompts",
+    "title": "TFTP must operate in secure mode when installed",
+    "platform": "rhel",
+    "checkText": "Verify whether tftp-server is installed with yum list installed tftp-server. If it is not installed, this is Not Applicable. If installed, grep server_args /etc/xinetd.d/tftp and verify server_args = -s /var/lib/tftpboot.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/xinetd.d/tftp"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "package-gated-config"
+  },
+  {
+    "id": "package-gated-config-code-block",
+    "title": "TFTP must operate in secure mode when installed",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify whether tftp-server is installed with yum list installed tftp-server. If it is not installed, this is Not Applicable. If installed, grep server_args /etc/xinetd.d/tftp and verify server_args = -s /var/lib/tftpboot.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/xinetd.d/tftp"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "package-gated-config"
+  },
+  {
+    "id": "package-gated-config-compact",
+    "title": "TFTP must operate in secure mode when installed",
+    "platform": "rhel",
+    "checkText": "Verify whether tftp-server is installed with yum list installed tftp-server. If it is not installed, this is Not Applicable. If installed, grep server_args /etc/xinetd.d/tftp and verify server_args = -s /var/lib/tftpboot.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/xinetd.d/tftp"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "package-gated-config"
+  },
+  {
+    "id": "manual-approval-only-wrapped",
+    "title": "The system owner must approve the configuration",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nReview the supplied evidence with the ISSO and obtain documented system-owner approval. There is no command or objective technical predicate.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "manual-approval-only"
+  },
+  {
+    "id": "manual-approval-only-shell-prompts",
+    "title": "The system owner must approve the configuration",
+    "platform": "linux",
+    "checkText": "Review the supplied evidence with the ISSO and obtain documented system-owner approval. There is no command or objective technical predicate.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "manual-approval-only"
+  },
+  {
+    "id": "manual-approval-only-code-block",
+    "title": "The system owner must approve the configuration",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nReview the supplied evidence with the ISSO and obtain documented system-owner approval. There is no command or objective technical predicate.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "manual-approval-only"
+  },
+  {
+    "id": "manual-approval-only-compact",
+    "title": "The system owner must approve the configuration",
+    "platform": "linux",
+    "checkText": "Review the supplied evidence with the ISSO and obtain documented system-owner approval. There is no command or objective technical predicate.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "manual-approval-only"
+  },
+  {
+    "id": "per-user-ownership-wrapped",
+    "title": "User initialization files must be owned correctly",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nFor each local interactive user, inspect the user's home-directory initialization files and verify each file is owned by that user or root. If not, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "per-user-ownership"
+  },
+  {
+    "id": "per-user-ownership-shell-prompts",
+    "title": "User initialization files must be owned correctly",
+    "platform": "rhel",
+    "checkText": "For each local interactive user, inspect the user's home-directory initialization files and verify each file is owned by that user or root. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "per-user-ownership"
+  },
+  {
+    "id": "per-user-ownership-code-block",
+    "title": "User initialization files must be owned correctly",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nFor each local interactive user, inspect the user's home-directory initialization files and verify each file is owned by that user or root. If not, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "per-user-ownership"
+  },
+  {
+    "id": "per-user-ownership-compact",
+    "title": "User initialization files must be owned correctly",
+    "platform": "rhel",
+    "checkText": "For each local interactive user, inspect the user's home-directory initialization files and verify each file is owned by that user or root. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "per-user-ownership"
+  },
+  {
+    "id": "wildcard-config-set-wrapped",
+    "title": "All SSSD configuration fragments must use the approved setting",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nCheck /etc/sssd/sssd.conf and every file in /etc/sssd/conf.d/*.conf. The ldap_id_use_start_tls setting must be true in every applicable file.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "wildcard-config-set"
+  },
+  {
+    "id": "wildcard-config-set-shell-prompts",
+    "title": "All SSSD configuration fragments must use the approved setting",
+    "platform": "rhel",
+    "checkText": "Check /etc/sssd/sssd.conf and every file in /etc/sssd/conf.d/*.conf. The ldap_id_use_start_tls setting must be true in every applicable file.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "wildcard-config-set"
+  },
+  {
+    "id": "wildcard-config-set-code-block",
+    "title": "All SSSD configuration fragments must use the approved setting",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nCheck /etc/sssd/sssd.conf and every file in /etc/sssd/conf.d/*.conf. The ldap_id_use_start_tls setting must be true in every applicable file.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "wildcard-config-set"
+  },
+  {
+    "id": "wildcard-config-set-compact",
+    "title": "All SSSD configuration fragments must use the approved setting",
+    "platform": "rhel",
+    "checkText": "Check /etc/sssd/sssd.conf and every file in /etc/sssd/conf.d/*.conf. The ldap_id_use_start_tls setting must be true in every applicable file.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "wildcard-config-set"
+  },
+  {
+    "id": "unsupported-procedure-wrapped",
+    "title": "The proprietary agent must be configured securely",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nVerify the proprietary security agent is configured securely according to the vendor's current guidance. If not, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "unsupported-procedure"
+  },
+  {
+    "id": "unsupported-procedure-shell-prompts",
+    "title": "The proprietary agent must be configured securely",
+    "platform": "linux",
+    "checkText": "Verify the proprietary security agent is configured securely according to the vendor's current guidance. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "unsupported-procedure"
+  },
+  {
+    "id": "unsupported-procedure-code-block",
+    "title": "The proprietary agent must be configured securely",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nVerify the proprietary security agent is configured securely according to the vendor's current guidance. If not, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "unsupported-procedure"
+  },
+  {
+    "id": "unsupported-procedure-compact",
+    "title": "The proprietary agent must be configured securely",
+    "platform": "linux",
+    "checkText": "Verify the proprietary security agent is configured securely according to the vendor's current guidance. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "unsupported-procedure"
+  },
+  {
+    "id": "unix-sysctl-wrapped",
+    "title": "IPv4 forwarding must be disabled",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nVerify net.ipv4.ip_forward is set to 0 using sysctl net.ipv4.ip_forward. If the value is not 0, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sysctl"
+      ],
+      "required": [
+        "net.ipv4.ip_forward"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "unix-sysctl"
+  },
+  {
+    "id": "unix-sysctl-shell-prompts",
+    "title": "IPv4 forwarding must be disabled",
+    "platform": "rhel",
+    "checkText": "Verify net.ipv4.ip_forward is set to 0 using sysctl net.ipv4.ip_forward. If the value is not 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sysctl"
+      ],
+      "required": [
+        "net.ipv4.ip_forward"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "unix-sysctl"
+  },
+  {
+    "id": "unix-sysctl-code-block",
+    "title": "IPv4 forwarding must be disabled",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nVerify net.ipv4.ip_forward is set to 0 using sysctl net.ipv4.ip_forward. If the value is not 0, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sysctl"
+      ],
+      "required": [
+        "net.ipv4.ip_forward"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "unix-sysctl"
+  },
+  {
+    "id": "unix-sysctl-compact",
+    "title": "IPv4 forwarding must be disabled",
+    "platform": "rhel",
+    "checkText": "Verify net.ipv4.ip_forward is set to 0 using sysctl net.ipv4.ip_forward. If the value is not 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sysctl"
+      ],
+      "required": [
+        "net.ipv4.ip_forward"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "unix-sysctl"
+  },
+  {
+    "id": "file-permissions-wrapped",
+    "title": "The SSH private host key must not be group writable",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nFind SSH private host key files with find /etc/ssh -name 'ssh_host_*_key' -perm /g+w. Any result is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "file-permissions"
+  },
+  {
+    "id": "file-permissions-shell-prompts",
+    "title": "The SSH private host key must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -name 'ssh_host_*_key' -perm /g+w. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "file-permissions"
+  },
+  {
+    "id": "file-permissions-code-block",
+    "title": "The SSH private host key must not be group writable",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nFind SSH private host key files with find /etc/ssh -name 'ssh_host_*_key' -perm /g+w. Any result is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "file-permissions"
+  },
+  {
+    "id": "file-permissions-compact",
+    "title": "The SSH private host key must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -name 'ssh_host_*_key' -perm /g+w. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "file-permissions"
+  },
+  {
+    "id": "macos-remote-login-wrapped",
+    "title": "Remote login must be disabled",
+    "platform": "macos",
+    "checkText": "Procedure:\n\nRun systemsetup -getremotelogin. The output must be Remote Login: Off; if it is On, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "macos-remote-login"
+  },
+  {
+    "id": "macos-remote-login-shell-prompts",
+    "title": "Remote login must be disabled",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output must be Remote Login: Off; if it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "macos-remote-login"
+  },
+  {
+    "id": "macos-remote-login-code-block",
+    "title": "Remote login must be disabled",
+    "platform": "macos",
+    "checkText": "Procedure and command output:\n```text\nRun systemsetup -getremotelogin. The output must be Remote Login: Off; if it is On, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "macos-remote-login"
+  },
+  {
+    "id": "macos-remote-login-compact",
+    "title": "Remote login must be disabled",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output must be Remote Login: Off; if it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "macos-remote-login"
+  },
+  {
+    "id": "logical-alternatives-wrapped",
+    "title": "The system must use one approved authentication source",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nVerify either the approved local authentication configuration or the approved centralized authentication configuration is present. If neither is configured, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "logical-alternatives"
+  },
+  {
+    "id": "logical-alternatives-shell-prompts",
+    "title": "The system must use one approved authentication source",
+    "platform": "linux",
+    "checkText": "Verify either the approved local authentication configuration or the approved centralized authentication configuration is present. If neither is configured, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "logical-alternatives"
+  },
+  {
+    "id": "logical-alternatives-code-block",
+    "title": "The system must use one approved authentication source",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nVerify either the approved local authentication configuration or the approved centralized authentication configuration is present. If neither is configured, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "logical-alternatives"
+  },
+  {
+    "id": "logical-alternatives-compact",
+    "title": "The system must use one approved authentication source",
+    "platform": "linux",
+    "checkText": "Verify either the approved local authentication configuration or the approved centralized authentication configuration is present. If neither is configured, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "logical-alternatives"
+  },
+  {
+    "id": "linux-text-config-wrapped",
+    "title": "Local package signatures must be checked",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nUse grep localpkg_gpgcheck /etc/dnf/dnf.conf. The output must be localpkg_gpgcheck=1; otherwise this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/dnf/dnf.conf",
+        "localpkg_gpgcheck"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "linux-text-config"
+  },
+  {
+    "id": "linux-text-config-shell-prompts",
+    "title": "Local package signatures must be checked",
+    "platform": "rhel",
+    "checkText": "Use grep localpkg_gpgcheck /etc/dnf/dnf.conf. The output must be localpkg_gpgcheck=1; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/dnf/dnf.conf",
+        "localpkg_gpgcheck"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "linux-text-config"
+  },
+  {
+    "id": "linux-text-config-code-block",
+    "title": "Local package signatures must be checked",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nUse grep localpkg_gpgcheck /etc/dnf/dnf.conf. The output must be localpkg_gpgcheck=1; otherwise this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/dnf/dnf.conf",
+        "localpkg_gpgcheck"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "linux-text-config"
+  },
+  {
+    "id": "linux-text-config-compact",
+    "title": "Local package signatures must be checked",
+    "platform": "rhel",
+    "checkText": "Use grep localpkg_gpgcheck /etc/dnf/dnf.conf. The output must be localpkg_gpgcheck=1; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/dnf/dnf.conf",
+        "localpkg_gpgcheck"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "linux-text-config"
+  },
+  {
+    "id": "linux-partition-nodev-wrapped",
+    "title": "The home filesystem must use nodev",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun mount | grep /home and verify the /home filesystem includes the nodev option. If nodev is absent, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.partition"
+      ],
+      "required": [
+        "/home",
+        "nodev"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "linux-partition-nodev"
+  },
+  {
+    "id": "linux-partition-nodev-shell-prompts",
+    "title": "The home filesystem must use nodev",
+    "platform": "rhel",
+    "checkText": "Run mount | grep /home and verify the /home filesystem includes the nodev option. If nodev is absent, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.partition"
+      ],
+      "required": [
+        "/home",
+        "nodev"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "linux-partition-nodev"
+  },
+  {
+    "id": "linux-partition-nodev-code-block",
+    "title": "The home filesystem must use nodev",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun mount | grep /home and verify the /home filesystem includes the nodev option. If nodev is absent, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.partition"
+      ],
+      "required": [
+        "/home",
+        "nodev"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "linux-partition-nodev"
+  },
+  {
+    "id": "linux-partition-nodev-compact",
+    "title": "The home filesystem must use nodev",
+    "platform": "rhel",
+    "checkText": "Run mount | grep /home and verify the /home filesystem includes the nodev option. If nodev is absent, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.partition"
+      ],
+      "required": [
+        "/home",
+        "nodev"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "linux-partition-nodev"
+  },
+  {
+    "id": "ssh-private-key-mode-wrapped",
+    "title": "SSH private host keys must not be group writable",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nFind SSH private host key files with find /etc/ssh -type f -name 'ssh_host_*_key' -perm 0640. Verify the files are mode 0640 or less permissive; otherwise this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "ssh-private-key-mode"
+  },
+  {
+    "id": "ssh-private-key-mode-shell-prompts",
+    "title": "SSH private host keys must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -type f -name 'ssh_host_*_key' -perm 0640. Verify the files are mode 0640 or less permissive; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ssh-private-key-mode"
+  },
+  {
+    "id": "ssh-private-key-mode-code-block",
+    "title": "SSH private host keys must not be group writable",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nFind SSH private host key files with find /etc/ssh -type f -name 'ssh_host_*_key' -perm 0640. Verify the files are mode 0640 or less permissive; otherwise this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "ssh-private-key-mode"
+  },
+  {
+    "id": "ssh-private-key-mode-compact",
+    "title": "SSH private host keys must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -type f -name 'ssh_host_*_key' -perm 0640. Verify the files are mode 0640 or less permissive; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "ssh-private-key-mode"
+  },
+  {
+    "id": "audit-failure-action-wrapped",
+    "title": "Audit failure must halt or log",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun auditctl -s | grep -i failure. The failure action must be 1 or 2; if it is 0, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "auditctl"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "audit-failure-action"
+  },
+  {
+    "id": "audit-failure-action-shell-prompts",
+    "title": "Audit failure must halt or log",
+    "platform": "rhel",
+    "checkText": "Run auditctl -s | grep -i failure. The failure action must be 1 or 2; if it is 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "auditctl"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "audit-failure-action"
+  },
+  {
+    "id": "audit-failure-action-code-block",
+    "title": "Audit failure must halt or log",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun auditctl -s | grep -i failure. The failure action must be 1 or 2; if it is 0, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "auditctl"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "audit-failure-action"
+  },
+  {
+    "id": "audit-failure-action-compact",
+    "title": "Audit failure must halt or log",
+    "platform": "rhel",
+    "checkText": "Run auditctl -s | grep -i failure. The failure action must be 1 or 2; if it is 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "auditctl"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "audit-failure-action"
+  },
+  {
+    "id": "promiscuous-interface-wrapped",
+    "title": "Network interfaces must not be promiscuous",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun ip link | grep -i promisc. If any interface is in promiscuous mode, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "promisc"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "promiscuous-interface"
+  },
+  {
+    "id": "promiscuous-interface-shell-prompts",
+    "title": "Network interfaces must not be promiscuous",
+    "platform": "rhel",
+    "checkText": "Run ip link | grep -i promisc. If any interface is in promiscuous mode, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "promisc"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "promiscuous-interface"
+  },
+  {
+    "id": "promiscuous-interface-code-block",
+    "title": "Network interfaces must not be promiscuous",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun ip link | grep -i promisc. If any interface is in promiscuous mode, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "promisc"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "promiscuous-interface"
+  },
+  {
+    "id": "promiscuous-interface-compact",
+    "title": "Network interfaces must not be promiscuous",
+    "platform": "rhel",
+    "checkText": "Run ip link | grep -i promisc. If any interface is in promiscuous mode, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "promisc"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "promiscuous-interface"
+  },
+  {
+    "id": "world-writable-directories-wrapped",
+    "title": "World-writable directories must be restricted",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nFind world-writable directories using find / -xdev -type d -perm -0002 -uid +999 -print. Any result is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-perm -0002"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "world-writable-directories"
+  },
+  {
+    "id": "world-writable-directories-shell-prompts",
+    "title": "World-writable directories must be restricted",
+    "platform": "rhel",
+    "checkText": "Find world-writable directories using find / -xdev -type d -perm -0002 -uid +999 -print. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-perm -0002"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "world-writable-directories"
+  },
+  {
+    "id": "world-writable-directories-code-block",
+    "title": "World-writable directories must be restricted",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nFind world-writable directories using find / -xdev -type d -perm -0002 -uid +999 -print. Any result is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-perm -0002"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "world-writable-directories"
+  },
+  {
+    "id": "world-writable-directories-compact",
+    "title": "World-writable directories must be restricted",
+    "platform": "rhel",
+    "checkText": "Find world-writable directories using find / -xdev -type d -perm -0002 -uid +999 -print. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-perm -0002"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "world-writable-directories"
+  },
+  {
+    "id": "rhel-release-wrapped",
+    "title": "The system must run a supported RHEL release",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun cat /etc/redhat-release. The result must identify Red Hat Enterprise Linux release 9; otherwise this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "/etc/redhat-release"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "rhel-release"
+  },
+  {
+    "id": "rhel-release-shell-prompts",
+    "title": "The system must run a supported RHEL release",
+    "platform": "rhel",
+    "checkText": "Run cat /etc/redhat-release. The result must identify Red Hat Enterprise Linux release 9; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "/etc/redhat-release"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "rhel-release"
+  },
+  {
+    "id": "rhel-release-code-block",
+    "title": "The system must run a supported RHEL release",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun cat /etc/redhat-release. The result must identify Red Hat Enterprise Linux release 9; otherwise this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "/etc/redhat-release"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "rhel-release"
+  },
+  {
+    "id": "rhel-release-compact",
+    "title": "The system must run a supported RHEL release",
+    "platform": "rhel",
+    "checkText": "Run cat /etc/redhat-release. The result must identify Red Hat Enterprise Linux release 9; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "/etc/redhat-release"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "rhel-release"
+  },
+  {
+    "id": "windows-wmi-feature-wrapped",
+    "title": "The FTP server feature must not be installed",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nUse Get-WindowsFeature Web-Ftp-Service. If the feature is installed, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.wmi.query"
+      ],
+      "required": [
+        "Web-Ftp-Service"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-wmi-feature"
+  },
+  {
+    "id": "windows-wmi-feature-shell-prompts",
+    "title": "The FTP server feature must not be installed",
+    "platform": "windows",
+    "checkText": "Use Get-WindowsFeature Web-Ftp-Service. If the feature is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.wmi.query"
+      ],
+      "required": [
+        "Web-Ftp-Service"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-wmi-feature"
+  },
+  {
+    "id": "windows-wmi-feature-code-block",
+    "title": "The FTP server feature must not be installed",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nUse Get-WindowsFeature Web-Ftp-Service. If the feature is installed, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.wmi.query"
+      ],
+      "required": [
+        "Web-Ftp-Service"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-wmi-feature"
+  },
+  {
+    "id": "windows-wmi-feature-compact",
+    "title": "The FTP server feature must not be installed",
+    "platform": "windows",
+    "checkText": "Use Get-WindowsFeature Web-Ftp-Service. If the feature is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.wmi.query"
+      ],
+      "required": [
+        "Web-Ftp-Service"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-wmi-feature"
+  },
+  {
+    "id": "windows-ad-user-filter-wrapped",
+    "title": "Unapproved AD users must not exist",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nUse Get-ADUser -Filter {Enabled -eq $true -and PasswordNeverExpires -eq $true}. Any returned account is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.cmdlet"
+      ],
+      "required": [
+        "Get-ADUser"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-ad-user-filter"
+  },
+  {
+    "id": "windows-ad-user-filter-shell-prompts",
+    "title": "Unapproved AD users must not exist",
+    "platform": "windows",
+    "checkText": "Use Get-ADUser -Filter {Enabled -eq $true -and PasswordNeverExpires -eq $true}. Any returned account is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.cmdlet"
+      ],
+      "required": [
+        "Get-ADUser"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-ad-user-filter"
+  },
+  {
+    "id": "windows-ad-user-filter-code-block",
+    "title": "Unapproved AD users must not exist",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nUse Get-ADUser -Filter {Enabled -eq $true -and PasswordNeverExpires -eq $true}. Any returned account is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.cmdlet"
+      ],
+      "required": [
+        "Get-ADUser"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-ad-user-filter"
+  },
+  {
+    "id": "windows-ad-user-filter-compact",
+    "title": "Unapproved AD users must not exist",
+    "platform": "windows",
+    "checkText": "Use Get-ADUser -Filter {Enabled -eq $true -and PasswordNeverExpires -eq $true}. Any returned account is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.cmdlet"
+      ],
+      "required": [
+        "Get-ADUser"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-ad-user-filter"
+  },
+  {
+    "id": "windows-file-presence-wrapped",
+    "title": "The security configuration file must be present",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nVerify the Windows file C:\\Windows\\System32\\security.cfg is present.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.file"
+      ],
+      "required": [
+        "security.cfg"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-file-presence"
+  },
+  {
+    "id": "windows-file-presence-shell-prompts",
+    "title": "The security configuration file must be present",
+    "platform": "windows",
+    "checkText": "Verify the Windows file C:\\Windows\\System32\\security.cfg is present.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.file"
+      ],
+      "required": [
+        "security.cfg"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-file-presence"
+  },
+  {
+    "id": "windows-file-presence-code-block",
+    "title": "The security configuration file must be present",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nVerify the Windows file C:\\Windows\\System32\\security.cfg is present.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.file"
+      ],
+      "required": [
+        "security.cfg"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-file-presence"
+  },
+  {
+    "id": "windows-file-presence-compact",
+    "title": "The security configuration file must be present",
+    "platform": "windows",
+    "checkText": "Verify the Windows file C:\\Windows\\System32\\security.cfg is present.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.file"
+      ],
+      "required": [
+        "security.cfg"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-file-presence"
+  },
+  {
+    "id": "windows-user-right-wrapped",
+    "title": "The debug privilege must be restricted",
+    "platform": "windows",
+    "checkText": "Procedure:\n\nThe Debug programs user right must not be assigned to ordinary users. Review the User Rights Assignment and remove unapproved trustees.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.userright"
+      ],
+      "required": [
+        "windows.userright"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "windows-user-right"
+  },
+  {
+    "id": "windows-user-right-shell-prompts",
+    "title": "The debug privilege must be restricted",
+    "platform": "windows",
+    "checkText": "The Debug programs user right must not be assigned to ordinary users. Review the User Rights Assignment and remove unapproved trustees.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.userright"
+      ],
+      "required": [
+        "windows.userright"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "windows-user-right"
+  },
+  {
+    "id": "windows-user-right-code-block",
+    "title": "The debug privilege must be restricted",
+    "platform": "windows",
+    "checkText": "Procedure and command output:\n```text\nThe Debug programs user right must not be assigned to ordinary users. Review the User Rights Assignment and remove unapproved trustees.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.userright"
+      ],
+      "required": [
+        "windows.userright"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "windows-user-right"
+  },
+  {
+    "id": "windows-user-right-compact",
+    "title": "The debug privilege must be restricted",
+    "platform": "windows",
+    "checkText": "The Debug programs user right must not be assigned to ordinary users. Review the User Rights Assignment and remove unapproved trustees.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.userright"
+      ],
+      "required": [
+        "windows.userright"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "windows-user-right"
+  },
+  {
+    "id": "macos-systemsetup-wrapped",
+    "title": "Remote login must be disabled on macOS",
+    "platform": "macos",
+    "checkText": "Procedure:\n\nRun systemsetup -getremotelogin. The output is Remote Login: Off. If it is On, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "macos-systemsetup"
+  },
+  {
+    "id": "macos-systemsetup-shell-prompts",
+    "title": "Remote login must be disabled on macOS",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output is Remote Login: Off. If it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "macos-systemsetup"
+  },
+  {
+    "id": "macos-systemsetup-code-block",
+    "title": "Remote login must be disabled on macOS",
+    "platform": "macos",
+    "checkText": "Procedure and command output:\n```text\nRun systemsetup -getremotelogin. The output is Remote Login: Off. If it is On, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "macos-systemsetup"
+  },
+  {
+    "id": "macos-systemsetup-compact",
+    "title": "Remote login must be disabled on macOS",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output is Remote Login: Off. If it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "macos-systemsetup"
+  },
+  {
+    "id": "macos-disabled-service-wrapped",
+    "title": "The sharing service must be disabled",
+    "platform": "macos",
+    "checkText": "Procedure:\n\nRun launchctl print-disabled system. The output shows \"com.apple.screensharing\" => disabled.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.disabledservice"
+      ],
+      "required": [
+        "com.apple.screensharing"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "macos-disabled-service"
+  },
+  {
+    "id": "macos-disabled-service-shell-prompts",
+    "title": "The sharing service must be disabled",
+    "platform": "macos",
+    "checkText": "Run launchctl print-disabled system. The output shows \"com.apple.screensharing\" => disabled.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.disabledservice"
+      ],
+      "required": [
+        "com.apple.screensharing"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "macos-disabled-service"
+  },
+  {
+    "id": "macos-disabled-service-code-block",
+    "title": "The sharing service must be disabled",
+    "platform": "macos",
+    "checkText": "Procedure and command output:\n```text\nRun launchctl print-disabled system. The output shows \"com.apple.screensharing\" => disabled.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.disabledservice"
+      ],
+      "required": [
+        "com.apple.screensharing"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "macos-disabled-service"
+  },
+  {
+    "id": "macos-disabled-service-compact",
+    "title": "The sharing service must be disabled",
+    "platform": "macos",
+    "checkText": "Run launchctl print-disabled system. The output shows \"com.apple.screensharing\" => disabled.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.disabledservice"
+      ],
+      "required": [
+        "com.apple.screensharing"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "macos-disabled-service"
+  },
+  {
+    "id": "macos-account-shell-wrapped",
+    "title": "The service account shell must be restricted",
+    "platform": "macos",
+    "checkText": "Procedure:\n\nRun dscl . -read /Users/daemon UserShell. The output is UserShell: /usr/bin/false.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.accountinfo"
+      ],
+      "required": [
+        "daemon"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "macos-account-shell"
+  },
+  {
+    "id": "macos-account-shell-shell-prompts",
+    "title": "The service account shell must be restricted",
+    "platform": "macos",
+    "checkText": "Run dscl . -read /Users/daemon UserShell. The output is UserShell: /usr/bin/false.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.accountinfo"
+      ],
+      "required": [
+        "daemon"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "macos-account-shell"
+  },
+  {
+    "id": "macos-account-shell-code-block",
+    "title": "The service account shell must be restricted",
+    "platform": "macos",
+    "checkText": "Procedure and command output:\n```text\nRun dscl . -read /Users/daemon UserShell. The output is UserShell: /usr/bin/false.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.accountinfo"
+      ],
+      "required": [
+        "daemon"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "macos-account-shell"
+  },
+  {
+    "id": "macos-account-shell-compact",
+    "title": "The service account shell must be restricted",
+    "platform": "macos",
+    "checkText": "Run dscl . -read /Users/daemon UserShell. The output is UserShell: /usr/bin/false.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.accountinfo"
+      ],
+      "required": [
+        "daemon"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "macos-account-shell"
+  },
+  {
+    "id": "solaris-service-wrapped",
+    "title": "The insecure service must be disabled",
+    "platform": "solaris",
+    "checkText": "Procedure:\n\nUse svcs -a and inspect the service state. The legacy network service must be disabled; if online, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "solaris-service"
+  },
+  {
+    "id": "solaris-service-shell-prompts",
+    "title": "The insecure service must be disabled",
+    "platform": "solaris",
+    "checkText": "Use svcs -a and inspect the service state. The legacy network service must be disabled; if online, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "solaris-service"
+  },
+  {
+    "id": "solaris-service-code-block",
+    "title": "The insecure service must be disabled",
+    "platform": "solaris",
+    "checkText": "Procedure and command output:\n```text\nUse svcs -a and inspect the service state. The legacy network service must be disabled; if online, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "solaris-service"
+  },
+  {
+    "id": "solaris-service-compact",
+    "title": "The insecure service must be disabled",
+    "platform": "solaris",
+    "checkText": "Use svcs -a and inspect the service state. The legacy network service must be disabled; if online, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "solaris-service"
+  },
+  {
+    "id": "sles-package-wrapped",
+    "title": "The insecure package must not be installed",
+    "platform": "sles",
+    "checkText": "Procedure:\n\nVerify the telnet package is not installed with zypper search --installed-only telnet. If present, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "sles-package"
+  },
+  {
+    "id": "sles-package-shell-prompts",
+    "title": "The insecure package must not be installed",
+    "platform": "sles",
+    "checkText": "Verify the telnet package is not installed with zypper search --installed-only telnet. If present, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "sles-package"
+  },
+  {
+    "id": "sles-package-code-block",
+    "title": "The insecure package must not be installed",
+    "platform": "sles",
+    "checkText": "Procedure and command output:\n```text\nVerify the telnet package is not installed with zypper search --installed-only telnet. If present, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "sles-package"
+  },
+  {
+    "id": "sles-package-compact",
+    "title": "The insecure package must not be installed",
+    "platform": "sles",
+    "checkText": "Verify the telnet package is not installed with zypper search --installed-only telnet. If present, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "sles-package"
+  },
+  {
+    "id": "ubuntu-package-wrapped",
+    "title": "The rsh client must not be installed",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nVerify the rsh-client package is not installed with dpkg -s rsh-client. If installed, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.dpkginfo"
+      ],
+      "required": [
+        "rsh-client"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "ubuntu-package"
+  },
+  {
+    "id": "ubuntu-package-shell-prompts",
+    "title": "The rsh client must not be installed",
+    "platform": "ubuntu",
+    "checkText": "Verify the rsh-client package is not installed with dpkg -s rsh-client. If installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.dpkginfo"
+      ],
+      "required": [
+        "rsh-client"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ubuntu-package"
+  },
+  {
+    "id": "ubuntu-package-code-block",
+    "title": "The rsh client must not be installed",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nVerify the rsh-client package is not installed with dpkg -s rsh-client. If installed, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.dpkginfo"
+      ],
+      "required": [
+        "rsh-client"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "ubuntu-package"
+  },
+  {
+    "id": "ubuntu-package-compact",
+    "title": "The rsh client must not be installed",
+    "platform": "ubuntu",
+    "checkText": "Verify the rsh-client package is not installed with dpkg -s rsh-client. If installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.dpkginfo"
+      ],
+      "required": [
+        "rsh-client"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "ubuntu-package"
+  },
+  {
+    "id": "ubuntu-root-login-wrapped",
+    "title": "Direct root login must be restricted",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nVerify direct remote login to the root account is disabled. Check the root account shell and SSH configuration; if root login is permitted, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "ubuntu-root-login"
+  },
+  {
+    "id": "ubuntu-root-login-shell-prompts",
+    "title": "Direct root login must be restricted",
+    "platform": "ubuntu",
+    "checkText": "Verify direct remote login to the root account is disabled. Check the root account shell and SSH configuration; if root login is permitted, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ubuntu-root-login"
+  },
+  {
+    "id": "ubuntu-root-login-code-block",
+    "title": "Direct root login must be restricted",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nVerify direct remote login to the root account is disabled. Check the root account shell and SSH configuration; if root login is permitted, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "ubuntu-root-login"
+  },
+  {
+    "id": "ubuntu-root-login-compact",
+    "title": "Direct root login must be restricted",
+    "platform": "ubuntu",
+    "checkText": "Verify direct remote login to the root account is disabled. Check the root account shell and SSH configuration; if root login is permitted, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "ubuntu-root-login"
+  },
+  {
+    "id": "manual-deviation-wrapped",
+    "title": "The organization must document an approved exception",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nIf the control is not implemented, obtain an approved ISSO deviation and document the operational justification. No objective command or selector is provided.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "manual-deviation"
+  },
+  {
+    "id": "manual-deviation-shell-prompts",
+    "title": "The organization must document an approved exception",
+    "platform": "linux",
+    "checkText": "If the control is not implemented, obtain an approved ISSO deviation and document the operational justification. No objective command or selector is provided.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "manual-deviation"
+  },
+  {
+    "id": "manual-deviation-code-block",
+    "title": "The organization must document an approved exception",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nIf the control is not implemented, obtain an approved ISSO deviation and document the operational justification. No objective command or selector is provided.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "manual-deviation"
+  },
+  {
+    "id": "manual-deviation-compact",
+    "title": "The organization must document an approved exception",
+    "platform": "linux",
+    "checkText": "If the control is not implemented, obtain an approved ISSO deviation and document the operational justification. No objective command or selector is provided.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "manual-deviation"
+  },
+  {
+    "id": "dynamic-banner-path-wrapped",
+    "title": "The configured SSH banner file must contain the approved text",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nRun grep -i banner /etc/ssh/sshd_config to identify the Banner file, then read that dynamically selected file and compare the complete rendered login banner exactly.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "dynamic-banner-path"
+  },
+  {
+    "id": "dynamic-banner-path-shell-prompts",
+    "title": "The configured SSH banner file must contain the approved text",
+    "platform": "linux",
+    "checkText": "Run grep -i banner /etc/ssh/sshd_config to identify the Banner file, then read that dynamically selected file and compare the complete rendered login banner exactly.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "dynamic-banner-path"
+  },
+  {
+    "id": "dynamic-banner-path-code-block",
+    "title": "The configured SSH banner file must contain the approved text",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nRun grep -i banner /etc/ssh/sshd_config to identify the Banner file, then read that dynamically selected file and compare the complete rendered login banner exactly.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "dynamic-banner-path"
+  },
+  {
+    "id": "dynamic-banner-path-compact",
+    "title": "The configured SSH banner file must contain the approved text",
+    "platform": "linux",
+    "checkText": "Run grep -i banner /etc/ssh/sshd_config to identify the Banner file, then read that dynamically selected file and compare the complete rendered login banner exactly.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "dynamic-banner-path"
+  },
+  {
+    "id": "wildcard-home-files-wrapped",
+    "title": "All user startup files must be owned correctly",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nFor each local user and every file matching /home/*/.[a-z]*, verify ownership and permissions. Any mismatch is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "wildcard-home-files"
+  },
+  {
+    "id": "wildcard-home-files-shell-prompts",
+    "title": "All user startup files must be owned correctly",
+    "platform": "linux",
+    "checkText": "For each local user and every file matching /home/*/.[a-z]*, verify ownership and permissions. Any mismatch is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "wildcard-home-files"
+  },
+  {
+    "id": "wildcard-home-files-code-block",
+    "title": "All user startup files must be owned correctly",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nFor each local user and every file matching /home/*/.[a-z]*, verify ownership and permissions. Any mismatch is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "wildcard-home-files"
+  },
+  {
+    "id": "wildcard-home-files-compact",
+    "title": "All user startup files must be owned correctly",
+    "platform": "linux",
+    "checkText": "For each local user and every file matching /home/*/.[a-z]*, verify ownership and permissions. Any mismatch is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "wildcard-home-files"
+  },
+  {
+    "id": "unsupported-cloud-agent-wrapped",
+    "title": "The cloud agent must use approved cryptography",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nVerify the cloud vendor agent uses the approved cryptographic configuration. Follow the vendor's current documentation; otherwise this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "unsupported-cloud-agent"
+  },
+  {
+    "id": "unsupported-cloud-agent-shell-prompts",
+    "title": "The cloud agent must use approved cryptography",
+    "platform": "linux",
+    "checkText": "Verify the cloud vendor agent uses the approved cryptographic configuration. Follow the vendor's current documentation; otherwise this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "unsupported-cloud-agent"
+  },
+  {
+    "id": "unsupported-cloud-agent-code-block",
+    "title": "The cloud agent must use approved cryptography",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nVerify the cloud vendor agent uses the approved cryptographic configuration. Follow the vendor's current documentation; otherwise this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "unsupported-cloud-agent"
+  },
+  {
+    "id": "unsupported-cloud-agent-compact",
+    "title": "The cloud agent must use approved cryptography",
+    "platform": "linux",
+    "checkText": "Verify the cloud vendor agent uses the approved cryptographic configuration. Follow the vendor's current documentation; otherwise this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "unsupported-cloud-agent"
+  },
+  {
+    "id": "duplicate-sshd-directive-wrapped",
+    "title": "Only one SSH banner directive must be effective",
+    "platform": "ubuntu",
+    "checkText": "Procedure:\n\nCheck /etc/ssh/sshd_config for Banner /etc/issue. If duplicate or conflicting Banner directives exist, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "duplicate-sshd-directive"
+  },
+  {
+    "id": "duplicate-sshd-directive-shell-prompts",
+    "title": "Only one SSH banner directive must be effective",
+    "platform": "ubuntu",
+    "checkText": "Check /etc/ssh/sshd_config for Banner /etc/issue. If duplicate or conflicting Banner directives exist, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "duplicate-sshd-directive"
+  },
+  {
+    "id": "duplicate-sshd-directive-code-block",
+    "title": "Only one SSH banner directive must be effective",
+    "platform": "ubuntu",
+    "checkText": "Procedure and command output:\n```text\nCheck /etc/ssh/sshd_config for Banner /etc/issue. If duplicate or conflicting Banner directives exist, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "duplicate-sshd-directive"
+  },
+  {
+    "id": "duplicate-sshd-directive-compact",
+    "title": "Only one SSH banner directive must be effective",
+    "platform": "ubuntu",
+    "checkText": "Check /etc/ssh/sshd_config for Banner /etc/issue. If duplicate or conflicting Banner directives exist, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "duplicate-sshd-directive"
+  },
+  {
+    "id": "ssh-effective-value-wrapped",
+    "title": "The effective SSH client alive interval must be limited",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun sshd -T | grep -i clientaliveinterval and verify clientaliveinterval 600 or less. If the effective value exceeds 600, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sshd"
+      ],
+      "required": [
+        "clientaliveinterval"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "ssh-effective-value"
+  },
+  {
+    "id": "ssh-effective-value-shell-prompts",
+    "title": "The effective SSH client alive interval must be limited",
+    "platform": "rhel",
+    "checkText": "Run sshd -T | grep -i clientaliveinterval and verify clientaliveinterval 600 or less. If the effective value exceeds 600, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sshd"
+      ],
+      "required": [
+        "clientaliveinterval"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "ssh-effective-value"
+  },
+  {
+    "id": "ssh-effective-value-code-block",
+    "title": "The effective SSH client alive interval must be limited",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun sshd -T | grep -i clientaliveinterval and verify clientaliveinterval 600 or less. If the effective value exceeds 600, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sshd"
+      ],
+      "required": [
+        "clientaliveinterval"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "ssh-effective-value"
+  },
+  {
+    "id": "ssh-effective-value-compact",
+    "title": "The effective SSH client alive interval must be limited",
+    "platform": "rhel",
+    "checkText": "Run sshd -T | grep -i clientaliveinterval and verify clientaliveinterval 600 or less. If the effective value exceeds 600, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sshd"
+      ],
+      "required": [
+        "clientaliveinterval"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "ssh-effective-value"
+  },
+  {
+    "id": "shell-output-absence-wrapped",
+    "title": "No unauthorized accounts may be returned",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nRun awk -F: '$3 == 0 && $1 != \"root\" {print $1}' /etc/passwd. Any output is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "awk"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "shell-output-absence"
+  },
+  {
+    "id": "shell-output-absence-shell-prompts",
+    "title": "No unauthorized accounts may be returned",
+    "platform": "rhel",
+    "checkText": "Run awk -F: '$3 == 0 && $1 != \"root\" {print $1}' /etc/passwd. Any output is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "awk"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "shell-output-absence"
+  },
+  {
+    "id": "shell-output-absence-code-block",
+    "title": "No unauthorized accounts may be returned",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nRun awk -F: '$3 == 0 && $1 != \"root\" {print $1}' /etc/passwd. Any output is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "awk"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "shell-output-absence"
+  },
+  {
+    "id": "shell-output-absence-compact",
+    "title": "No unauthorized accounts may be returned",
+    "platform": "rhel",
+    "checkText": "Run awk -F: '$3 == 0 && $1 != \"root\" {print $1}' /etc/passwd. Any output is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "awk"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "shell-output-absence"
+  },
+  {
+    "id": "file-no-group-wrapped",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\n# find / -xdev -nogroup -print\nIf any files are returned without a resolvable group, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-nogroup"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "file-no-group"
+  },
+  {
+    "id": "file-no-group-shell-prompts",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "# find / -xdev -nogroup -print\nIf any files are returned without a resolvable group, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-nogroup"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "file-no-group"
+  },
+  {
+    "id": "file-no-group-code-block",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\n# find / -xdev -nogroup -print\nIf any files are returned without a resolvable group, this is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-nogroup"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "file-no-group"
+  },
+  {
+    "id": "file-no-group-compact",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "# find / -xdev -nogroup -print If any files are returned without a resolvable group, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-nogroup"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "file-no-group"
+  },
+  {
+    "id": "postfix-restrictions-real-wrapped",
+    "title": "Postfix relay restrictions must be approved",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\n# postconf -n smtpd_client_restrictions\nsmtpd_client_restrictions = permit_mynetworks, reject_unknown_client_hostname\nOnly permit_mynetworks and reject_unknown_client_hostname are allowed; anything else is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "postfix-restrictions-real"
+  },
+  {
+    "id": "postfix-restrictions-real-shell-prompts",
+    "title": "Postfix relay restrictions must be approved",
+    "platform": "rhel",
+    "checkText": "# postconf -n smtpd_client_restrictions\nsmtpd_client_restrictions = permit_mynetworks, reject_unknown_client_hostname\nOnly permit_mynetworks and reject_unknown_client_hostname are allowed; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "postfix-restrictions-real"
+  },
+  {
+    "id": "postfix-restrictions-real-code-block",
+    "title": "Postfix relay restrictions must be approved",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\n# postconf -n smtpd_client_restrictions\nsmtpd_client_restrictions = permit_mynetworks, reject_unknown_client_hostname\nOnly permit_mynetworks and reject_unknown_client_hostname are allowed; anything else is a finding.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "postfix-restrictions-real"
+  },
+  {
+    "id": "postfix-restrictions-real-compact",
+    "title": "Postfix relay restrictions must be approved",
+    "platform": "rhel",
+    "checkText": "# postconf -n smtpd_client_restrictions smtpd_client_restrictions = permit_mynetworks, reject_unknown_client_hostname Only permit_mynetworks and reject_unknown_client_hostname are allowed; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "postfix-restrictions-real"
+  },
+  {
+    "id": "applicability-package-wrapped",
+    "title": "The service configuration applies only when the service is installed",
+    "platform": "rhel",
+    "checkText": "Procedure:\n\nDetermine whether postfix is installed with yum list installed postfix. If postfix is not installed, this is Not Applicable. If installed, run postconf -n smtpd_banner and verify the approved value.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postfix"
+      ]
+    },
+    "variant": "wrapped",
+    "baseCase": "applicability-package"
+  },
+  {
+    "id": "applicability-package-shell-prompts",
+    "title": "The service configuration applies only when the service is installed",
+    "platform": "rhel",
+    "checkText": "Determine whether postfix is installed with yum list installed postfix. If postfix is not installed, this is Not Applicable. If installed, run postconf -n smtpd_banner and verify the approved value.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postfix"
+      ]
+    },
+    "variant": "shell-prompts",
+    "baseCase": "applicability-package"
+  },
+  {
+    "id": "applicability-package-code-block",
+    "title": "The service configuration applies only when the service is installed",
+    "platform": "rhel",
+    "checkText": "Procedure and command output:\n```text\nDetermine whether postfix is installed with yum list installed postfix. If postfix is not installed, this is Not Applicable. If installed, run postconf -n smtpd_banner and verify the approved value.\n```",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postfix"
+      ]
+    },
+    "variant": "code-block",
+    "baseCase": "applicability-package"
+  },
+  {
+    "id": "applicability-package-compact",
+    "title": "The service configuration applies only when the service is installed",
+    "platform": "rhel",
+    "checkText": "Determine whether postfix is installed with yum list installed postfix. If postfix is not installed, this is Not Applicable. If installed, run postconf -n smtpd_banner and verify the approved value.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postfix"
+      ]
+    },
+    "variant": "compact",
+    "baseCase": "applicability-package"
+  },
+  {
+    "id": "manual-rendered-banner-wrapped",
+    "title": "The rendered login banner must be reviewed",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nLog in through SSH and visually verify that the complete approved banner is displayed before authentication. Record reviewer evidence.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "manual-rendered-banner"
+  },
+  {
+    "id": "manual-rendered-banner-shell-prompts",
+    "title": "The rendered login banner must be reviewed",
+    "platform": "linux",
+    "checkText": "Log in through SSH and visually verify that the complete approved banner is displayed before authentication. Record reviewer evidence.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "manual-rendered-banner"
+  },
+  {
+    "id": "manual-rendered-banner-code-block",
+    "title": "The rendered login banner must be reviewed",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nLog in through SSH and visually verify that the complete approved banner is displayed before authentication. Record reviewer evidence.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "manual-rendered-banner"
+  },
+  {
+    "id": "manual-rendered-banner-compact",
+    "title": "The rendered login banner must be reviewed",
+    "platform": "linux",
+    "checkText": "Log in through SSH and visually verify that the complete approved banner is displayed before authentication. Record reviewer evidence.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "manual-rendered-banner"
+  },
+  {
+    "id": "unknown-command-wrapped",
+    "title": "The custom control must meet policy",
+    "platform": "linux",
+    "checkText": "Procedure:\n\nRun /opt/vendor/bin/check-control --security and determine whether the proprietary result meets the policy. If not, this is a finding.\n\nIf the requirement is not satisfied, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "wrapped",
+    "baseCase": "unknown-command"
+  },
+  {
+    "id": "unknown-command-shell-prompts",
+    "title": "The custom control must meet policy",
+    "platform": "linux",
+    "checkText": "Run /opt/vendor/bin/check-control --security and determine whether the proprietary result meets the policy. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "shell-prompts",
+    "baseCase": "unknown-command"
+  },
+  {
+    "id": "unknown-command-code-block",
+    "title": "The custom control must meet policy",
+    "platform": "linux",
+    "checkText": "Procedure and command output:\n```text\nRun /opt/vendor/bin/check-control --security and determine whether the proprietary result meets the policy. If not, this is a finding.\n```",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "code-block",
+    "baseCase": "unknown-command"
+  },
+  {
+    "id": "unknown-command-compact",
+    "title": "The custom control must meet policy",
+    "platform": "linux",
+    "checkText": "Run /opt/vendor/bin/check-control --security and determine whether the proprietary result meets the policy. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    },
+    "variant": "compact",
+    "baseCase": "unknown-command"
+  }
+]

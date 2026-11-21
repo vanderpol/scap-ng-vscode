@@ -77,6 +77,78 @@ export class SourceBuffer {
       undo: () => new SourceBuffer(this.text), assessmentExecution: 'unavailable' as const };
   }
 
+  /**
+   * Link an automated Assessment from a Rule without reserializing unrelated
+   * YAML. This is deliberately a small, schema-qualified transaction: it
+   * creates missing assessment_choices/automated/default members, or replaces
+   * only their existing scalar values. The host still performs pinned-schema
+   * validation before applying the edit.
+   */
+  linkAutomatedAssessment(assessmentId: string, expectedHash: string) {
+    if (!assessmentId || !/^[A-Za-z0-9._/-]+$/.test(assessmentId)) throw new Error('Unsafe Assessment ID; use native YAML.');
+    if (sha256(this.text) !== expectedHash) throw new Error('Stale document revision');
+    const doc = parseDocument(this.text, { keepSourceTokens: true, uniqueKeys: true });
+    if (doc.errors.length) throw new Error('Malformed YAML stays editable in Source; no graphical rewrite');
+    const rule: any = doc.getIn(['rule'], true);
+    if (!isMap(rule) || !Array.isArray(rule.items)) throw new Error('Rule source does not contain an editable rule mapping');
+    const edits: SourceRangeEdit[] = [];
+    const pairFor = (map: any, key: string) => map?.items?.find((pair: any) => String(pair.key?.value) === key);
+    const replaceScalar = (node: any, value: string) => {
+      if (!node || !isScalar(node) || node.anchor || node.tag || !Array.isArray(node.range)) throw new Error('Assessment choice is not a safe scalar; use native YAML.');
+      edits.push({ start: node.range[0], end: node.range[1], replacement: referenceScalarReplacement(node, value) });
+    };
+    const insert = (path: (string | number)[], entries: readonly (readonly [string, Json])[]) => {
+      const edit = this.insertMapEntries(path, entries, expectedHash);
+      const range = edit.sourceRange as [number, number];
+      edits.push({ start: range[0], end: range[1], replacement: edit.replacement });
+    };
+
+    const choicesPair: any = pairFor(rule, 'assessment_choices');
+    const defaultPair: any = pairFor(rule, 'default_assessment_choice');
+    const choices: any = choicesPair?.value;
+    const automatedPair: any = isMap(choices) ? pairFor(choices, 'automated') : undefined;
+    const automated: any = automatedPair?.value;
+
+    if (!isMap(choices)) {
+      // Add both members together when possible. This keeps a Rule with no
+      // authored choices as one localized insertion and preserves sibling order.
+      const entries: Array<readonly [string, Json]> = [
+        ['assessment_choices', { automated: { assessment: assessmentId } }]
+      ];
+      if (!defaultPair) entries.push(['default_assessment_choice', 'automated']);
+      insert(['rule'], entries);
+    } else if (!isMap(automated)) {
+      insert(['rule', 'assessment_choices'], [['automated', { assessment: assessmentId }]]);
+    } else {
+      const assessmentPair: any = pairFor(automated, 'assessment');
+      if (assessmentPair?.value !== assessmentId) {
+        if (assessmentPair?.value === undefined) insert(['rule', 'assessment_choices', 'automated'], [['assessment', assessmentId]]);
+        else replaceScalar(assessmentPair.value, assessmentId);
+      }
+    }
+
+    if (defaultPair) {
+      if (defaultPair.value?.value !== 'automated') replaceScalar(defaultPair.value, 'automated');
+    } else if (isMap(choices)) {
+      insert(['rule'], [['default_assessment_choice', 'automated']]);
+    }
+    // YAML's AST may report an enclosing block map and its final nested map
+    // with the same insertion offset at EOF. Merge those append-only inserts
+    // into one replacement so the nested entry is terminated before the
+    // enclosing sibling (rather than gluing two keys onto one scalar line).
+    const merged = new Map<string, SourceRangeEdit>();
+    for (const edit of edits) {
+      const key = `${edit.start}:${edit.end}`;
+      const previous = merged.get(key);
+      if (previous && previous.start === edit.start && previous.end === edit.end) {
+        if (!previous.replacement.endsWith('\n') && !edit.replacement.startsWith('\n')) previous.replacement += sourceNewline(this.text);
+        previous.replacement += edit.replacement;
+      }
+      else merged.set(key, { ...edit });
+    }
+    return this.applyEdits([...merged.values()], expectedHash);
+  }
+
   /** Replace an authored selector variant mapping with a literal or Variable reference.
    * The surrounding YAML, including other fields and comments, is left untouched.
    * Caller must validate the result against the pinned assessment schema.

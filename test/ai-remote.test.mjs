@@ -1,0 +1,170 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { testOpenAiCompatibleGateway } from '../dist/ai-remote.js';
+
+test('GenAI gateway probe fails closed without a key and sends no request', async () => {
+  const original = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => { called = true; throw new Error('must not be called'); };
+  try {
+    const result = await testOpenAiCompatibleGateway('https://api.genai.mil/v1', '');
+    assert.equal(result.ok, false);
+    assert.match(result.message, /No stored remote API key/i);
+    assert.equal(called, false);
+  } finally { globalThis.fetch = original; }
+});
+
+test('GenAI gateway probe uses the OpenAI-compatible models endpoint', async () => {
+  const original = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url: String(url), options };
+    return { ok: true, status: 200, json: async () => ({ data: [{ id: 'gemini-test' }] }) };
+  };
+  try {
+    const result = await testOpenAiCompatibleGateway('https://api.genai.mil/v1', 'STARK_test_key');
+    assert.equal(result.ok, true);
+    assert.equal(result.models, 1);
+    assert.deepEqual(result.modelIds, ['gemini-test']);
+    assert.equal(request.url, 'https://api.genai.mil/v1/models');
+    assert.equal(request.options.headers.Authorization, 'Bearer STARK_test_key');
+    assert.equal(request.options.method, 'GET');
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible completion sends the structured request and extracts text', async () => {
+  const original = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url: String(url), options };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] }) };
+  };
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }]);
+    assert.equal(result, '{"generated_mode":"manual-only"}');
+    assert.equal(request.url, 'https://api.genai.mil/v1/chat/completions');
+    assert.equal(request.options.method, 'POST');
+    assert.equal(request.options.headers.Authorization, 'Bearer STARK_key');
+    assert.equal(JSON.parse(request.options.body).stream, true);
+    assert.deepEqual(JSON.parse(request.options.body).response_format, { type: 'json_object' });
+    assert.deepEqual(JSON.parse(request.options.body).messages, [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }]);
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible completion identifies quota and rate-limit responses', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 429, text: async () => JSON.stringify({ error: { code: 'insufficient_quota', message: 'Token quota exceeded.' } }) });
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    await assert.rejects(
+      () => requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'user', content: 'user' }]),
+      error => error?.status === 429 && error?.quotaOrRateLimit === true && /quota|rate limit/i.test(error.message)
+    );
+  } finally { globalThis.fetch = original; }
+});
+
+test('GenAI gateway probe identifies quota responses without exposing credentials', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 402, text: async () => JSON.stringify({ error: { code: 'billing_required', message: 'Credits exhausted.' } }) });
+  try {
+    const result = await testOpenAiCompatibleGateway('https://api.genai.mil/v1', 'STARK_key');
+    assert.equal(result.ok, false);
+    assert.match(result.message, /quota|rate limit/i);
+    assert.doesNotMatch(result.message, /STARK_key/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible completion exposes structured provider HTTP diagnostics', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'invalid_request_error', code: 'tools_unsupported', param: 'tools', message: 'Tools are not supported for this model.' } }) });
+  try {
+    const { requestOpenAiCompatibleChatWithTools } = await import('../dist/ai-remote.js');
+    await assert.rejects(
+      () => requestOpenAiCompatibleChatWithTools('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [], [], () => ({})),
+      error => error?.status === 400 && /tools_unsupported.*tools.*Tools are not supported/i.test(error.message)
+    );
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible JSON mode falls back when a gateway rejects response_format', async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'bad_request', param: 'response_format', message: 'Unsupported parameter' } }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] }) };
+  };
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'user', content: 'user' }]);
+    assert.equal(result, '{"generated_mode":"manual-only"}');
+    assert.deepEqual(JSON.parse(requests[0].options.body).response_format, { type: 'json_object' });
+    assert.equal(JSON.parse(requests[1].options.body).response_format, undefined);
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible completion rejects insecure endpoints before network use', async () => {
+  const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+  await assert.rejects(() => requestOpenAiCompatibleChat('http://example.test/v1', 'key', 'model', []), /HTTPS/i);
+});
+
+test('OpenAI-compatible tool-capable completion executes local tools and resumes the conversation', async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    calls++;
+    const body = calls === 1
+      ? { choices: [{ message: { content: '', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'scap_ng_search_capabilities', arguments: JSON.stringify({ query: 'ssh banner' }) } }] } }] }
+      : { choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] };
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  };
+  try {
+    const { requestOpenAiCompatibleChatWithTools } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChatWithTools(
+      'https://api.genai.mil/v1', 'STARK_key', 'gemini-test',
+      [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }],
+      [{ type: 'function', function: { name: 'scap_ng_search_capabilities', description: 'search', parameters: { type: 'object' } } }],
+      (name, args) => ({ name, args, source: 'offline-test' })
+    );
+    assert.equal(result, '{"generated_mode":"manual-only"}');
+    assert.equal(requests.length, 2);
+    const first = JSON.parse(requests[0].options.body);
+    const second = JSON.parse(requests[1].options.body);
+    assert.equal(first.tools[0].function.name, 'scap_ng_search_capabilities');
+    assert.equal(first.stream, true);
+    assert.equal(first.tool_choice, undefined);
+    assert.equal(second.messages.at(-1).role, 'tool');
+    assert.equal(second.messages.at(-1).tool_call_id, 'call-1');
+    assert.match(second.messages.at(-1).content, /offline-test/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible tool completion assembles streamed tool-call deltas', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    calls++;
+    if (calls === 1) {
+      const events = [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'stream-call', type: 'function', function: { name: 'lookup', arguments: '{\"q' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'uery\":\"ssh\"}' } }] } }] },
+        '[DONE]'
+      ].map(value => `data: ${typeof value === 'string' ? value : JSON.stringify(value)}\n\n`).join('');
+      return { ok: true, status: 200, text: async () => events };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] }) };
+  };
+  try {
+    const { requestOpenAiCompatibleChatWithTools } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChatWithTools(
+      'https://api.genai.mil/v1', 'STARK_key', 'gemini-test',
+      [{ role: 'user', content: 'use a tool' }],
+      [{ type: 'function', function: { name: 'lookup', description: 'lookup', parameters: { type: 'object' } } }],
+      (name, args) => ({ name, args })
+    );
+    assert.equal(result, '{"generated_mode":"manual-only"}');
+  } finally { globalThis.fetch = original; }
+});

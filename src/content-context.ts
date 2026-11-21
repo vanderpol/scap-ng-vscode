@@ -1,5 +1,13 @@
 import type { ApplicabilityOption, BenchmarkProfile, IndexedDocument, WorkspaceIndex } from './indexer.js';
 
+export type RuleAutomationStatus = 'automated' | 'manual-only' | 'needs-automation' | 'unresolved';
+export interface RuleAutomationSummary {
+  automated: number;
+  manualOnly: number;
+  needsAutomation: number;
+  unresolved: number;
+}
+
 export interface BenchmarkContextDocument {
   uri: string;
   path: string;
@@ -7,6 +15,9 @@ export interface BenchmarkContextDocument {
   title?: string;
   version?: string | number;
   mode?: string;
+  automationStatus?: RuleAutomationStatus;
+  automationAssessmentId?: string;
+  manualAssessmentId?: string;
 }
 
 export interface BenchmarkProfileSummary extends BenchmarkProfile {}
@@ -34,6 +45,7 @@ export interface BenchmarkContextSummary {
   assessments: readonly BenchmarkContextDocument[];
   applicability: readonly BenchmarkContextDocument[];
   conditions: readonly BenchmarkContextCondition[];
+  automation: RuleAutomationSummary;
 }
 
 /** Return the package root for the canonical direct-slice layout. */
@@ -44,8 +56,33 @@ export function packageRootForPath(value: string): string | undefined {
   return index >= 0 ? normalized.slice(0, index) : undefined;
 }
 
-function documentSummary(document: IndexedDocument): BenchmarkContextDocument {
-  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode };
+function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>): BenchmarkContextDocument {
+  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, ...ruleAutomation };
+}
+
+function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
+  const automated = document.assessmentChoices.find(choice => choice.choice === 'automated');
+  const manual = document.assessmentChoices.find(choice => choice.choice === 'manual');
+  if (document.automationDisposition === 'manual-only') return { automationStatus: 'manual-only', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
+  const resolve = (choice: { targetId: string } | undefined) => {
+    if (!choice) return undefined;
+    const targets = assessmentsById.get(choice.targetId)?.filter(candidate => candidate.kind === 'assessment') ?? [];
+    return targets.length === 1 ? targets[0] : undefined;
+  };
+  const automatedTarget = resolve(automated);
+  if (automated && (!automatedTarget || automatedTarget.mode !== 'automated')) {
+    return { automationStatus: 'unresolved', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
+  }
+  if (automatedTarget) {
+    return { automationStatus: 'automated', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
+  }
+  const manualTarget = resolve(manual);
+  if (manual && !manualTarget) return { automationStatus: 'unresolved', manualAssessmentId: manual.targetId };
+  // A linked manual Assessment is not proof that a Rule is intentionally
+  // manual-only. Until the author flags it in editor metadata, keep it in
+  // the automation work queue.
+  if (manualTarget || manual) return { automationStatus: 'needs-automation', manualAssessmentId: manual?.targetId };
+  return { automationStatus: 'needs-automation' };
 }
 
 function byTitle(left: BenchmarkContextDocument, right: BenchmarkContextDocument): number {
@@ -85,10 +122,18 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     const packagePath = packageForRecord(benchmark.path, importedRoots);
     if (!packagePath) return [];
     const packageRecords = byPackage.get(packagePath) ?? [];
-    const rules = packageRecords.filter(record => record.kind === 'rule').map(documentSummary).sort(byTitle);
-    const assessments = packageRecords.filter(record => record.kind === 'assessment').map(documentSummary).sort(byTitle);
+    const assessmentsById = new Map<string, IndexedDocument[]>();
+    for (const record of packageRecords.filter(candidate => candidate.kind === 'assessment')) if (record.id) assessmentsById.set(record.id, [...(assessmentsById.get(record.id) ?? []), record]);
+    const rules = packageRecords.filter(record => record.kind === 'rule').map(record => documentSummary(record, ruleAutomation(record, assessmentsById))).sort(byTitle);
+    const assessments = packageRecords.filter(record => record.kind === 'assessment').map(record => documentSummary(record)).sort(byTitle);
+    const automation: RuleAutomationSummary = {
+      automated: rules.filter(rule => rule.automationStatus === 'automated').length,
+      manualOnly: rules.filter(rule => rule.automationStatus === 'manual-only').length,
+      needsAutomation: rules.filter(rule => rule.automationStatus === 'needs-automation').length,
+      unresolved: rules.filter(rule => rule.automationStatus === 'unresolved').length
+    };
     const applicabilityRecords = packageRecords.filter(record => record.kind === 'applicability');
-    const applicability = applicabilityRecords.map(documentSummary).sort(byTitle);
+    const applicability = applicabilityRecords.map(record => documentSummary(record)).sort(byTitle);
     const conditions = applicabilityRecords.flatMap(record => record.applicabilityConditions.map(condition => ({
       name: condition.name,
       targetId: condition.targetId,
@@ -114,7 +159,8 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
       rules,
       assessments,
       applicability,
-      conditions
+      conditions,
+      automation
     }];
   }).sort((left, right) => (left.benchmark.title ?? left.packagePath).localeCompare(right.benchmark.title ?? right.packagePath));
 }
