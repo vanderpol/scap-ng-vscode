@@ -10,6 +10,12 @@ import { OpenAiCompatibleHttpError, requestOpenAiCompatibleChat, requestOpenAiCo
 const unsupportedToolProfiles = new Set<string>();
 function toolProfileKey(endpoint: string, model: string): string { return `${endpoint.replace(/\/$/, '')}\u0000${model.trim()}`; }
 
+export interface AiAssessmentOptions {
+  /** Persisted per-endpoint/model capability result from the extension host. */
+  skipTools?: boolean;
+  onToolsRejected?: () => void;
+}
+
 export interface AiAssessmentInput {
   ruleId: string;
   title: string;
@@ -554,11 +560,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
 
 export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
 
-export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
+export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput, options: AiAssessmentOptions = {}): Promise<AiAssessmentDraft> {
   const startedAt = Date.now();
   const deadline = startedAt + AI_REQUEST_TOTAL_TIMEOUT_MS;
   const profileKey = toolProfileKey(endpoint, model);
-  const previouslyRejectedTools = unsupportedToolProfiles.has(profileKey);
+  const previouslyRejectedTools = options?.skipTools === true || unsupportedToolProfiles.has(profileKey);
   let useTools = modelUsesPinnedTools(model) && !previouslyRejectedTools;
   let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : previouslyRejectedTools ? 'fallback-no-tools' : 'not-requested';
   let toolWarning: string | undefined = previouslyRejectedTools ? 'The gateway previously rejected tools for this endpoint/model during this VS Code session; skipped the failed tools negotiation.' : undefined;
@@ -611,6 +617,7 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
       if (!(error instanceof OpenAiCompatibleHttpError) || error.status !== 400) throw error;
       const firstError = error.message;
       unsupportedToolProfiles.add(profileKey);
+      options.onToolsRejected?.();
       useTools = false;
       toolMode = 'fallback-no-tools';
       toolWarning = `${firstError}; retried once without tools because the gateway rejected the tool request.`;

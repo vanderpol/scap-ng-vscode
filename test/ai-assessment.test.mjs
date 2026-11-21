@@ -264,3 +264,18 @@ test('withtools models receive pinned local tools and resume after a tool result
   assert.equal(second.messages.at(-1).role, 'tool');
   assert.match(second.messages.at(-1).content, /unix\.file|capability/);
 });
+
+test('persisted tool rejection skips the failed tools negotiation on later requests', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Cached capability',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.cached.example/v1', 'key', 'gemini-3.8-flash-withtools', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }, { skipTools: true }));
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(requests.length, 1);
+  assert.equal(JSON.parse(requests[0].options.body).tools, undefined);
+  assert.equal(result.toolMode, 'fallback-no-tools');
+});

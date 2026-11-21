@@ -3012,7 +3012,16 @@ export function activate(context: vscode.ExtensionContext) {
     const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
     const activePack = pack;
     if (!activePack) throw new Error('A verified offline SCAP-NG 0.4.1 metadata pack is required for AI authoring.');
-    return createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, input);
+    const toolProfile = `${target.endpoint.replace(/\/$/, '')}\u0000${target.model.trim()}`;
+    const globalState = (context as any).globalState;
+    const rejectedProfiles = typeof globalState?.get === 'function' ? (globalState.get('scapNg.ai.rejectedToolProfiles', []) as string[] ?? []) : [];
+    return createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, input, {
+      skipTools: rejectedProfiles.includes(toolProfile),
+      onToolsRejected: () => {
+        const next = [...new Set([...rejectedProfiles, toolProfile])].slice(-32);
+        if (typeof globalState?.update === 'function') void globalState.update('scapNg.ai.rejectedToolProfiles', next);
+      }
+    });
   };
   const configuredAiGenerator = () => readAiConfiguration().mode === 'remote' ? aiAssessmentGenerator : undefined;
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
