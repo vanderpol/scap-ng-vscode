@@ -223,6 +223,17 @@ function capabilityScore(capability: string, source: string, text: string, platf
     if (haystack.startsWith(family + '.') && hints.some(hint => context.includes(hint))) score += 10;
   }
   if (haystack.startsWith('independent.') && /command|shell|text|file|regex|output/i.test(context)) score += 4;
+  // Capability-specific vocabulary keeps native mappings in the bounded
+  // prompt for dynamic population checks. This is mapping selection only; it
+  // does not create content-specific Tests or fallbacks.
+  for (const [mappedCapability, hints] of [
+    ['unix.password', ['passwd', 'password file', 'uid', 'gid', 'login shell', 'interactive user', 'home directory']],
+    ['unix.file', ['file permission', 'file mode', 'directory', 'ownership', 'owner', 'group', 'chmod', 'stat', 'home directory', 'initialization files']],
+    ['unix.interface', ['network interface', 'promiscuous', 'ip link', 'interface']],
+    ['linux.rpminfo', ['rpm package', 'yum', 'dnf', 'rpm -', 'rpm database']]
+  ] as const) {
+    if (capability === mappedCapability && hints.some(hint => context.includes(hint))) score += 24;
+  }
   return score;
 }
 

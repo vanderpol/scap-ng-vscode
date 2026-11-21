@@ -43,6 +43,9 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.equal(knowledge.contract.runtime_execution_proof, false);
   assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  const populationKnowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), { platform: 'ubuntu', checkText: 'For each local interactive user home directory, verify file permissions and ownership from /etc/passwd.' }));
+  assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.password'));
+  assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.file'));
   assert.ok(knowledge.schemas['capability-common.schema.json'].defs.set_expression);
   assert.ok(knowledge.schemas['capability-common.schema.json'].defs.file_traversal);
   assert.ok(knowledge.schemas['variable-expression.schema.json'].defs.expression);
