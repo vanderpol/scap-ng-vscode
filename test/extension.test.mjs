@@ -208,6 +208,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Manual-only by provider logic/);
   assert.match(extensionSource, /Next step: Retry configured AI or generate the deterministic offline draft/);
   assert.match(extensionSource, /Retry configured AI/);
+  assert.match(extensionSource, /Automation was not created/);
+  assert.match(extensionSource, /Show technical\/provider details/);
+  assert.match(extensionSource, /This is not a manual-only decision/);
+  assert.match(extensionSource, /Rejected draft — no YAML accepted/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
   assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
