@@ -44,6 +44,10 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /(?:Do not|never) emit OVAL spellings such as at_least_one/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /pattern_match is not a SCAP-NG operator/i.test(item)));
   assert.match(knowledge.current_authoring_examples.applicability_gate_with_failure, /not_applicable/);
   assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
   assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /population gate|technical Test/i);
