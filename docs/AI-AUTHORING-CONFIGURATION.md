@@ -91,6 +91,9 @@ the Assessment and updates the Rule link/default; closing the page or rejecting 
 draft writes nothing.
 
 The configured provider is generic OpenAI-compatible HTTPS (`/chat/completions`
-and `/models`); GenAI.mil is an example, not a hard-coded dependency. API keys are
+and `/models`); GenAI.mil is an example, not a hard-coded dependency. Requests use the
+streaming Chat Completions shape used by common clients such as Cline: `stream: true`,
+OpenAI-compatible `tool_calls`, and no forced `tool_choice: auto`. The extension accepts
+both streamed SSE and ordinary JSON responses for compatibility. API keys are
 retrieved from VS Code SecretStorage and are never placed in settings, AI
 prompts, logs or YAML.

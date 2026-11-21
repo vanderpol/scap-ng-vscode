@@ -46,6 +46,7 @@ test('OpenAI-compatible completion sends the structured request and extracts tex
     assert.equal(request.url, 'https://api.genai.mil/v1/chat/completions');
     assert.equal(request.options.method, 'POST');
     assert.equal(request.options.headers.Authorization, 'Bearer STARK_key');
+    assert.equal(JSON.parse(request.options.body).stream, true);
     assert.deepEqual(JSON.parse(request.options.body).messages, [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }]);
   } finally { globalThis.fetch = original; }
 });
@@ -92,8 +93,37 @@ test('OpenAI-compatible tool-capable completion executes local tools and resumes
     const first = JSON.parse(requests[0].options.body);
     const second = JSON.parse(requests[1].options.body);
     assert.equal(first.tools[0].function.name, 'scap_ng_search_capabilities');
+    assert.equal(first.stream, true);
+    assert.equal(first.tool_choice, undefined);
     assert.equal(second.messages.at(-1).role, 'tool');
     assert.equal(second.messages.at(-1).tool_call_id, 'call-1');
     assert.match(second.messages.at(-1).content, /offline-test/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible tool completion assembles streamed tool-call deltas', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    calls++;
+    if (calls === 1) {
+      const events = [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'stream-call', type: 'function', function: { name: 'lookup', arguments: '{\"q' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'uery\":\"ssh\"}' } }] } }] },
+        '[DONE]'
+      ].map(value => `data: ${typeof value === 'string' ? value : JSON.stringify(value)}\n\n`).join('');
+      return { ok: true, status: 200, text: async () => events };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] }) };
+  };
+  try {
+    const { requestOpenAiCompatibleChatWithTools } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChatWithTools(
+      'https://api.genai.mil/v1', 'STARK_key', 'gemini-test',
+      [{ role: 'user', content: 'use a tool' }],
+      [{ type: 'function', function: { name: 'lookup', description: 'lookup', parameters: { type: 'object' } } }],
+      (name, args) => ({ name, args })
+    );
+    assert.equal(result, '{"generated_mode":"manual-only"}');
   } finally { globalThis.fetch = original; }
 });

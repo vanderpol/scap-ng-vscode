@@ -80,6 +80,47 @@ function responseText(content: unknown): string {
   return '';
 }
 
+type ParsedToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+
+function parseChatCompletionBody(body: string): { content: string; toolCalls: ParsedToolCall[] } {
+  const parseMessage = (message: any): { content: string; toolCalls: ParsedToolCall[] } => ({
+    content: responseText(message?.content),
+    toolCalls: Array.isArray(message?.tool_calls) ? message.tool_calls : []
+  });
+  try {
+    const parsed = JSON.parse(body);
+    const message = parsed?.choices?.[0]?.message;
+    if (message) return parseMessage(message);
+  } catch { /* Try an OpenAI-compatible SSE stream below. */ }
+
+  const content: string[] = [];
+  const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = [];
+  let sawEvent = false;
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    let chunk: any;
+    try { chunk = JSON.parse(data); } catch { continue; }
+    sawEvent = true;
+    const delta = chunk?.choices?.[0]?.delta;
+    const deltaText = responseText(delta?.content);
+    if (deltaText) content.push(deltaText);
+    for (const part of Array.isArray(delta?.tool_calls) ? delta.tool_calls : []) {
+      const index = Number.isInteger(part?.index) ? part.index : toolCalls.length;
+      const existing = toolCalls[index] ?? { id: '', type: 'function' as const, function: { name: '', arguments: '' } };
+      if (typeof part?.id === 'string') existing.id = part.id;
+      if (part?.type === 'function') existing.type = 'function';
+      if (typeof part?.function?.name === 'string') existing.function.name += part.function.name;
+      if (typeof part?.function?.arguments === 'string') existing.function.arguments += part.function.arguments;
+      toolCalls[index] = existing;
+    }
+  }
+  if (!sawEvent) throw new Error('Gateway returned neither a JSON completion nor an SSE stream.');
+  return { content: content.join(''), toolCalls: toolCalls.filter(call => call.id || call.function.name) };
+}
+
 /** Send an explicit, user-approved prompt to an OpenAI-compatible gateway. */
 export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: string, model: string, messages: OpenAiChatMessage[], timeoutMs = 120000): Promise<string> {
   if (!apiKey.trim()) throw new Error('No stored remote API key is available.');
@@ -93,17 +134,11 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000 }), signal: controller.signal });
+    const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' }, body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000, stream: true }), signal: controller.signal });
     const body = await response.text();
     if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
-    let parsed: any;
-    try { parsed = JSON.parse(body); } catch { throw new Error('Gateway returned a non-JSON response.'); }
-    const content = parsed?.choices?.[0]?.message?.content;
-    if (typeof content === 'string' && content.trim()) return content;
-    if (Array.isArray(content)) {
-      const text = content.map((part: any) => typeof part === 'string' ? part : part?.text).filter((part: unknown): part is string => typeof part === 'string').join('');
-      if (text.trim()) return text;
-    }
+    const parsed = parseChatCompletionBody(body);
+    if (parsed.content.trim()) return parsed.content;
     throw new Error('Gateway response did not contain choices[0].message.content.');
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
@@ -145,18 +180,21 @@ export async function requestOpenAiCompatibleChatWithTools(
     try {
       const response = await fetch(completionUrl, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000, tools, tool_choice: 'auto' }),
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+        // Match the wire shape used by Cline/AI-SDK OpenAI-compatible clients:
+        // tools are offered, the response is streamed, and tool_choice is left
+        // at the provider default instead of forcing an often-unsupported
+        // explicit `auto` value.
+        body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000, tools, stream: true }),
         signal: controller.signal
       });
       const body = await response.text();
       if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
-      let parsed: any;
-      try { parsed = JSON.parse(body); } catch { throw new Error('Gateway returned a non-JSON response.'); }
-      const message = parsed?.choices?.[0]?.message;
-      const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+      const parsed = parseChatCompletionBody(body);
+      const message = { content: parsed.content };
+      const toolCalls = parsed.toolCalls;
       if (toolCalls.length) {
-        messages.push({ role: 'assistant', content: responseText(message.content), tool_calls: toolCalls });
+        messages.push({ role: 'assistant', content: message.content, tool_calls: toolCalls });
         for (const call of toolCalls) {
           if (!call?.id || call.type !== 'function' || typeof call.function?.name !== 'string') throw new Error('Gateway returned an invalid tool call.');
           let args: Record<string, unknown> = {};
