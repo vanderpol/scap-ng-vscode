@@ -215,6 +215,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /not a token or quota failure/);
   assert.match(extensionSource, /AI provider request did not complete/);
   assert.match(extensionSource, /AI provider reported a quota or rate-limit error/);
+  assert.match(extensionSource, /AI quota or rate limit reached/);
+  assert.match(extensionSource, /Wait for the provider quota reset/);
   assert.match(extensionSource, /out of tokens\/credits/);
   assert.match(extensionSource, /Candidate generated — coverage confirmation missing/);
   assert.match(extensionSource, /returned candidate YAML, but omitted the required procedure-coverage confirmation/);
