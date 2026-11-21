@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseDocument, stringify } from 'yaml';
 import type { MetadataPack } from './metadata.js';
-import { requestOpenAiCompatibleChat, requestOpenAiCompatibleChatWithTools, type OpenAiChatMessage, type OpenAiToolDefinition, type OpenAiToolHandler } from './ai-remote.js';
+import { OpenAiCompatibleHttpError, requestOpenAiCompatibleChat, requestOpenAiCompatibleChatWithTools, type OpenAiChatMessage, type OpenAiToolDefinition, type OpenAiToolHandler } from './ai-remote.js';
 
 export interface AiAssessmentInput {
   ruleId: string;
@@ -36,7 +36,8 @@ export interface AiAssessmentDraft {
   model?: string;
   generatedAt?: string;
   /** Whether the model name opted into local pinned-pack tools for this request. */
-  toolMode?: 'local-pinned-pack' | 'not-requested';
+  toolMode?: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested';
+  toolWarning?: string;
 }
 
 function compactMapping(value: any) {
@@ -441,13 +442,14 @@ function providerLabel(endpoint: string): string {
   catch { return 'configured endpoint'; }
 }
 
-function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'not-requested'): string {
+function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested'): string {
   return [
     '# SCAP-NG editor provenance:',
     '#   generation_method: configured-ai',
     `#   provider_endpoint: ${providerLabel(endpoint)}`,
     `#   model: ${model.replace(/[\r\n]+/g, ' ')}`,
     `#   tool_mode: ${toolMode}`,
+    '#   tool_execution: provider-dependent; runtime qualification not established',
     `#   generated_at: ${generatedAt}`,
     `#   schema_version: ${pack.pin.schemaVersion}`,
     `#   canonical_source_commit: ${pack.pin.sourceCommit}`,
@@ -457,7 +459,7 @@ function provenanceComment(pack: MetadataPack, endpoint: string, model: string, 
   ].join('\n');
 }
 
-function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'not-requested'): AiAssessmentDraft {
+function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', toolWarning?: string): AiAssessmentDraft {
   const generatedAt = new Date().toISOString();
   return {
     ...draft,
@@ -465,6 +467,7 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
     model,
     generatedAt,
     toolMode,
+    toolWarning,
     yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode) + draft.yaml : draft.yaml
   };
 }
@@ -503,14 +506,16 @@ export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
 
 export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
   const deadline = Date.now() + AI_REQUEST_TOTAL_TIMEOUT_MS;
-  const useTools = modelUsesPinnedTools(model);
-  const toolMode = useTools ? 'local-pinned-pack' as const : 'not-requested' as const;
+  let useTools = modelUsesPinnedTools(model);
+  let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : 'not-requested';
+  let toolWarning: string | undefined;
+  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning);
   const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
   // protects the authoring host and makes the exact outbound scope predictable.
-  if (input.checkText.length > 60000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.'), toolMode);
-  if ((input.ruleYaml?.length ?? 0) > 50000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.'), toolMode);
-  if (input.title.length > 4000 || input.ruleId.length > 1000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.'), toolMode);
+  if (input.checkText.length > 60000) return finalize(draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.'));
+  if ((input.ruleYaml?.length ?? 0) > 50000) return finalize(draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.'));
+  if (input.title.length > 4000 || input.ruleId.length > 1000) return finalize(draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.'));
   const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
   const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. Apply the included AI-AUTHORING-PLAYBOOK.md procedure method; it contains generic authoring reasoning, not hard-coded content. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve the objective technical check and its real pass/fail result even when the procedure mentions an ISSO/ISSM/SA/AO exception; approved deviations are recorded after evaluation and must not be represented as not_evaluated. Return manual-only only when no objective collector/predicate can be expressed or the check itself cannot be performed. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.
 
@@ -541,18 +546,36 @@ ${input.ruleYaml || '(not supplied)'}
 Existing Benchmark applicability conditions (reference context only; do not invent IDs):
 ${JSON.stringify(input.availableConditions ?? [])}`;
   const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
-  const requestDraft = (requestMessages: OpenAiChatMessage[], timeout: number) => useTools
-    ? requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout)
-    : requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
+  const requestDraft = async (requestMessages: OpenAiChatMessage[], timeout: number): Promise<string> => {
+    if (!useTools) return requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
+    try {
+      return await requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout);
+    } catch (error) {
+      // Some OpenAI-compatible gateways expose a model whose name contains
+      // `withtools` but reject the standard tools fields at the gateway. Keep
+      // authoring usable: retry this bounded request once without tools and
+      // make the downgrade explicit in the preview/provenance.
+      if (!(error instanceof OpenAiCompatibleHttpError) || error.status !== 400) throw error;
+      const firstError = error.message;
+      useTools = false;
+      toolMode = 'fallback-no-tools';
+      toolWarning = `${firstError}; retried once without tools because the gateway rejected the tool request.`;
+      try {
+        return await requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
+      } catch (fallbackError) {
+        throw new Error(`${firstError}; retry without tools also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+      }
+    }
+  };
   let raw: string;
   try {
     const timeout = remainingTimeout();
-    if (!timeout) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The AI request exceeded the total authoring deadline before a response was received.'), toolMode);
+    if (!timeout) return finalize(draftFromFailure('The AI request exceeded the total authoring deadline before a response was received.'));
     raw = await requestDraft(messages, timeout);
   }
-  catch (error) { return withProviderProvenance(pack, endpoint, model, draftFromFailure(error instanceof Error ? error.message : String(error)), toolMode); }
+  catch (error) { return finalize(draftFromFailure(error instanceof Error ? error.message : String(error))); }
   const draft = parseAiAssessmentResponse(pack, input, raw);
-  if (!draft.diagnostics.length) return withProviderProvenance(pack, endpoint, model, draft, toolMode);
+  if (!draft.diagnostics.length) return finalize(draft);
 
   // One bounded repair pass gives a capable provider a chance to correct schema
   // and applicability mistakes using the local validator's exact diagnostics.
@@ -560,16 +583,16 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
   const repairTimeout = remainingTimeout();
   if (!repairTimeout) {
     draft.diagnostics.push('Automatic correction pass skipped because the total AI authoring deadline was reached.');
-    return withProviderProvenance(pack, endpoint, model, draft, toolMode);
+    return finalize(draft);
   }
   const repairUser = `${user}\n\nThe previous candidate was rejected by the local 0.4.1 validator. Diagnostics:\n${draft.diagnostics.slice(0, 30).join('\\n')}\n\nPrevious candidate (for correction only):\n${raw.slice(0, 30000)}`;
   try {
     const repairedRaw = await requestDraft([{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }], repairTimeout);
     const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
     if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
-    return withProviderProvenance(pack, endpoint, model, repaired, toolMode);
+    return finalize(repaired);
   } catch (error) {
     draft.diagnostics.push(`Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`);
-    return withProviderProvenance(pack, endpoint, model, draft, toolMode);
+    return finalize(draft);
   }
 }

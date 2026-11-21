@@ -50,6 +50,18 @@ test('OpenAI-compatible completion sends the structured request and extracts tex
   } finally { globalThis.fetch = original; }
 });
 
+test('OpenAI-compatible completion exposes structured provider HTTP diagnostics', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'invalid_request_error', code: 'tools_unsupported', param: 'tools', message: 'Tools are not supported for this model.' } }) });
+  try {
+    const { requestOpenAiCompatibleChatWithTools } = await import('../dist/ai-remote.js');
+    await assert.rejects(
+      () => requestOpenAiCompatibleChatWithTools('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [], [], () => ({})),
+      error => error?.status === 400 && /tools_unsupported.*tools.*Tools are not supported/i.test(error.message)
+    );
+  } finally { globalThis.fetch = original; }
+});
+
 test('OpenAI-compatible completion rejects insecure endpoints before network use', async () => {
   const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
   await assert.rejects(() => requestOpenAiCompatibleChat('http://example.test/v1', 'key', 'model', []), /HTTPS/i);

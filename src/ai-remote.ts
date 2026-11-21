@@ -1,3 +1,24 @@
+export class OpenAiCompatibleHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, detail?: string) {
+    super(`Gateway responded with HTTP ${status}${detail ? `: ${detail}` : '.'}`);
+    this.name = 'OpenAiCompatibleHttpError';
+    this.status = status;
+  }
+}
+
+function providerErrorDetail(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body);
+    const error = parsed?.error ?? parsed;
+    const parts = [error?.type, error?.code, error?.param, error?.message]
+      .filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map(value => value.trim());
+    if (parts.length) return [...new Set(parts)].join(' · ').slice(0, 600);
+  } catch { /* Fall through without echoing arbitrary response bodies. */ }
+  return undefined;
+}
+
 export interface RemoteConnectionResult {
   ok: boolean;
   message: string;
@@ -74,7 +95,7 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
   try {
     const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000 }), signal: controller.signal });
     const body = await response.text();
-    if (!response.ok) throw new Error(`Gateway responded with HTTP ${response.status}.`);
+    if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
     let parsed: any;
     try { parsed = JSON.parse(body); } catch { throw new Error('Gateway returned a non-JSON response.'); }
     const content = parsed?.choices?.[0]?.message?.content;
@@ -129,7 +150,7 @@ export async function requestOpenAiCompatibleChatWithTools(
         signal: controller.signal
       });
       const body = await response.text();
-      if (!response.ok) throw new Error(`Gateway responded with HTTP ${response.status}.`);
+      if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
       let parsed: any;
       try { parsed = JSON.parse(body); } catch { throw new Error('Gateway returned a non-JSON response.'); }
       const message = parsed?.choices?.[0]?.message;
