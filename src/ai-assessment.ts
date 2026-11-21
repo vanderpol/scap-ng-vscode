@@ -666,7 +666,10 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
 
   // One bounded repair pass gives a capable provider a chance to correct schema
   // and applicability mistakes using the local validator's exact diagnostics.
-  const repairSystem = `${system}\n\nThis is a single correction pass. Correct every local validation error below. Do not defend or describe the prior draft. Return a complete replacement JSON object, not a patch. If the procedure cannot be represented completely, return generated_mode: manual-only.`;
+  // Do not resend the full schema/catalog prompt here: the first request already
+  // supplied it, and repeating ~100 KB of context makes a failed response almost
+  // twice as slow. The original procedure/rule remains in repairUser.
+  const repairSystem = `You are repairing one SCAP-NG 0.4.1 Assessment-authoring response. Return ONLY one complete JSON object with generated_mode, confidence, assessment_yaml, assumptions, unresolved_questions, citations, rationale, and coverage. Do not return prose, Markdown, or a patch. Use the supplied local diagnostics as authoritative. The YAML must include specification id scap-ng.pre-alpha.assessment/version 0.4.1, scalar reported_elements all/compared (or explicit field names), and schema-valid Test-local require. Comparison require uses item_requirement items_found/items_satisfying, field_requirement values_found/values_matching, then fields. A field map contains exactly one operator; values_matching belongs only to field_requirement. For shellcommand, Items always exist; use fields.stdout_line/stderr_line values_found: none only for absence. Keep known technical failures as pass/fail; use not_applicable only for a real applicability branch and not_evaluated only when the technical check/evidence is unavailable. Correct every diagnostic and return the complete replacement. If complete representation is impossible, return generated_mode: manual-only.`;
   const repairTimeout = remainingTimeout();
   if (!repairTimeout) {
     draft.diagnostics.push('Automatic correction pass skipped because the total AI authoring deadline was reached.');
