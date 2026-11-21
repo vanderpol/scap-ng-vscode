@@ -47,6 +47,7 @@ test('OpenAI-compatible completion sends the structured request and extracts tex
     assert.equal(request.options.method, 'POST');
     assert.equal(request.options.headers.Authorization, 'Bearer STARK_key');
     assert.equal(JSON.parse(request.options.body).stream, true);
+    assert.deepEqual(JSON.parse(request.options.body).response_format, { type: 'json_object' });
     assert.deepEqual(JSON.parse(request.options.body).messages, [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }]);
   } finally { globalThis.fetch = original; }
 });
@@ -60,6 +61,23 @@ test('OpenAI-compatible completion exposes structured provider HTTP diagnostics'
       () => requestOpenAiCompatibleChatWithTools('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [], [], () => ({})),
       error => error?.status === 400 && /tools_unsupported.*tools.*Tools are not supported/i.test(error.message)
     );
+  } finally { globalThis.fetch = original; }
+});
+
+test('OpenAI-compatible JSON mode falls back when a gateway rejects response_format', async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'bad_request', param: 'response_format', message: 'Unsupported parameter' } }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"generated_mode":"manual-only"}' } }] }) };
+  };
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'user', content: 'user' }]);
+    assert.equal(result, '{"generated_mode":"manual-only"}');
+    assert.deepEqual(JSON.parse(requests[0].options.body).response_format, { type: 'json_object' });
+    assert.equal(JSON.parse(requests[1].options.body).response_format, undefined);
   } finally { globalThis.fetch = original; }
 });
 

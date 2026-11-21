@@ -131,20 +131,39 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
   if (base.protocol !== 'https:') throw new Error('Configured remote AI endpoints must use HTTPS.');
   if (base.username || base.password) throw new Error('Configured AI endpoints must not embed credentials in the URL.');
   const completionUrl = new URL('chat/completions', `${base.toString().replace(/\/$/, '')}/`).toString();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' }, body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 12000, stream: true }), signal: controller.signal });
-    const body = await response.text();
-    if (!response.ok) throw new OpenAiCompatibleHttpError(response.status, providerErrorDetail(body));
-    const parsed = parseChatCompletionBody(body);
-    if (parsed.content.trim()) return parsed.content;
-    throw new Error('Gateway response did not contain choices[0].message.content.');
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
-    throw error;
-  } finally { clearTimeout(timer); }
+  const deadline = Date.now() + timeoutMs;
+  let requestJsonMode = true;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('The AI request timed out.');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+    try {
+      const body = { model, messages, temperature: 0.1, max_tokens: 12000, stream: true, ...(requestJsonMode ? { response_format: { type: 'json_object' } } : {}) };
+      const response = await fetch(completionUrl, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' }, body: JSON.stringify(body), signal: controller.signal });
+      const responseBody = await response.text();
+      if (!response.ok) {
+        const error = new OpenAiCompatibleHttpError(response.status, providerErrorDetail(responseBody));
+        // Some OpenAI-compatible gateways do not implement JSON mode even
+        // though their models support it. Retry once without that optional
+        // parameter, within the same total deadline.
+        if (requestJsonMode && response.status === 400 && attempt === 0) {
+          requestJsonMode = false;
+          continue;
+        }
+        throw error;
+      }
+      const parsed = parseChatCompletionBody(responseBody);
+      if (parsed.content.trim()) return parsed.content;
+      throw new Error('Gateway response did not contain choices[0].message.content.');
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+  throw new Error('The AI request did not produce a response.');
 }
+
 
 
 /**
