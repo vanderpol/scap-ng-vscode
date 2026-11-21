@@ -72,6 +72,21 @@ ${payload}
   assert.ok(result.assumptions.includes('Wrapped response'));
 });
 
+test('AI response can recover an omitted generated_mode from an explicit automated Assessment', async () => {
+  const payload = JSON.stringify({
+    confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'The provider omitted the protocol mode field.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-a', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.assumptions.some(message => /omitted generated_mode.*assessment\.mode: automated/i.test(message)));
+});
+
 test('AI response is parsed, pinned-schema validated, and remains review-only', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated',

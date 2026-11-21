@@ -548,6 +548,38 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
   };
 }
 
+function providerAssessmentYaml(payload: any): string {
+  if (typeof payload?.assessment_yaml === 'string') return stripCodeFence(payload.assessment_yaml);
+  if (typeof payload?.assessment === 'string') return stripCodeFence(payload.assessment);
+  if (!payload?.assessment || typeof payload.assessment !== 'object' || Array.isArray(payload.assessment)) return '';
+  // A few providers return the Assessment object itself instead of the
+  // requested assessment_yaml string. Preserve the native root shape when it
+  // is already present; wrap an inner Assessment object before validation.
+  if (Object.hasOwn(payload.assessment, 'assessment')) return stringify(payload.assessment);
+  if (Object.hasOwn(payload.assessment, 'mode') || Object.hasOwn(payload.assessment, 'id')) return stringify({ assessment: payload.assessment });
+  return stringify(payload.assessment);
+}
+
+function inferProviderGeneratedMode(payload: any): { mode?: 'automated' | 'manual-only'; inferred?: string } {
+  // The JSON contract asks for generated_mode, but some otherwise capable
+  // OpenAI-compatible models omit that protocol field while returning a
+  // complete Assessment. Recover only when the Assessment itself explicitly
+  // declares mode: automated; never infer manual-only from an incomplete
+  // response and never accept a YAML draft whose mode is ambiguous.
+  if (payload?.generated_mode === 'automated' || payload?.generated_mode === 'manual-only') return { mode: payload.generated_mode };
+  if (payload?.generatedMode === 'automated' || payload?.generatedMode === 'manual-only') return { mode: payload.generatedMode, inferred: 'The provider used generatedMode instead of generated_mode; the equivalent protocol field was accepted.' };
+  let candidate: any;
+  try {
+    const yamlText = providerAssessmentYaml(payload);
+    if (yamlText) {
+      const document = parseDocument(yamlText, { uniqueKeys: true });
+      if (!document.errors.length) candidate = document.toJS({ maxAliasCount: 50 });
+    }
+  } catch { /* The normal YAML/schema diagnostics provide the useful failure. */ }
+  if (candidate?.assessment?.mode === 'automated') return { mode: 'automated', inferred: 'The provider omitted generated_mode; automated mode was inferred from assessment.mode: automated and still passed the local protocol/schema checks.' };
+  return {};
+}
+
 function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
   try { payload = parseProviderJson(raw); }
@@ -558,10 +590,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   const rationale = typeof payload?.rationale === 'string' ? payload.rationale.trim() : undefined;
   const coverage = normalizeCoverage(payload?.coverage);
   const confidence = payload?.confidence === 'high' || payload?.confidence === 'medium' ? payload.confidence : 'low';
-  if (payload?.generated_mode === 'manual-only') return { generatedMode: 'manual-only', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
-  if (payload?.generated_mode !== 'automated') return draftFromFailure('The AI response did not declare generated_mode as automated or manual-only.', assumptions);
-  let yamlText = typeof payload.assessment_yaml === 'string' ? stripCodeFence(payload.assessment_yaml) : '';
-  if (!yamlText && payload.assessment && typeof payload.assessment === 'object') yamlText = stringify(payload.assessment);
+  const generated = inferProviderGeneratedMode(payload);
+  if (generated.inferred) assumptions.push(generated.inferred);
+  if (generated.mode === 'manual-only') return { generatedMode: 'manual-only', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+  if (generated.mode !== 'automated') return draftFromFailure('The AI response did not declare generated_mode as automated or manual-only.', assumptions);
+  let yamlText = providerAssessmentYaml(payload);
   if (!yamlText) return draftFromFailure('The AI response did not contain assessment_yaml.', assumptions);
   const document = parseDocument(yamlText, { uniqueKeys: true });
   if (document.errors.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
