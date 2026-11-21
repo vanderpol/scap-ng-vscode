@@ -1,12 +1,21 @@
-export class OpenAiCompatibleHttpError extends Error {
-  readonly status: number;
-  constructor(status: number, detail?: string) {
-    super(`Gateway responded with HTTP ${status}${detail ? `: ${detail}` : '.'}`);
-    this.name = 'OpenAiCompatibleHttpError';
-    this.status = status;
-  }
+function isQuotaOrRateLimit(status: number, detail?: string): boolean {
+  return status === 402 || status === 429 || /insufficient[_ -]?quota|quota|rate[_ -]?limit|too many requests|token budget|billing|credits?/i.test(detail ?? '');
 }
 
+function providerFailureMessage(status: number, detail?: string): string {
+  return `${isQuotaOrRateLimit(status, detail) ? 'Provider quota or rate limit response' : 'Gateway responded'} with HTTP ${status}${detail ? ` · ${detail}` : '.'}`;
+}
+
+export class OpenAiCompatibleHttpError extends Error {
+  readonly status: number;
+  readonly quotaOrRateLimit: boolean;
+  constructor(status: number, detail?: string) {
+    super(providerFailureMessage(status, detail));
+    this.name = 'OpenAiCompatibleHttpError';
+    this.status = status;
+    this.quotaOrRateLimit = isQuotaOrRateLimit(status, detail);
+  }
+}
 function providerErrorDetail(body: string): string | undefined {
   try {
     const parsed = JSON.parse(body);
@@ -42,7 +51,11 @@ export async function testOpenAiCompatibleGateway(endpoint: string, apiKey: stri
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(modelsUrl, { method: 'GET', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: controller.signal });
-    if (!response.ok) return { ok: false, message: `Gateway responded with HTTP ${response.status}.` };
+    if (!response.ok) {
+      let detail: string | undefined;
+      try { detail = providerErrorDetail(await response.text()); } catch { /* Keep the status-only diagnostic. */ }
+      return { ok: false, message: providerFailureMessage(response.status, detail) };
+    }
     let modelIds: string[] = [];
     try {
       const body = await response.json() as any;

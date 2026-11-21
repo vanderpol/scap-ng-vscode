@@ -214,6 +214,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /AI provider responded, but its draft failed the pinned SCAP-NG 0\.4\.1 validation contract/);
   assert.match(extensionSource, /not a token or quota failure/);
   assert.match(extensionSource, /AI provider request did not complete/);
+  assert.match(extensionSource, /AI provider reported a quota or rate-limit error/);
+  assert.match(extensionSource, /out of tokens\/credits/);
   assert.match(extensionSource, /Candidate generated — coverage confirmation missing/);
   assert.match(extensionSource, /returned candidate YAML, but omitted the required procedure-coverage confirmation/);
   assert.match(extensionSource, /Candidate YAML — review only/);

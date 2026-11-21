@@ -52,6 +52,29 @@ test('OpenAI-compatible completion sends the structured request and extracts tex
   } finally { globalThis.fetch = original; }
 });
 
+test('OpenAI-compatible completion identifies quota and rate-limit responses', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 429, text: async () => JSON.stringify({ error: { code: 'insufficient_quota', message: 'Token quota exceeded.' } }) });
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    await assert.rejects(
+      () => requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'user', content: 'user' }]),
+      error => error?.status === 429 && error?.quotaOrRateLimit === true && /quota|rate limit/i.test(error.message)
+    );
+  } finally { globalThis.fetch = original; }
+});
+
+test('GenAI gateway probe identifies quota responses without exposing credentials', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 402, text: async () => JSON.stringify({ error: { code: 'billing_required', message: 'Credits exhausted.' } }) });
+  try {
+    const result = await testOpenAiCompatibleGateway('https://api.genai.mil/v1', 'STARK_key');
+    assert.equal(result.ok, false);
+    assert.match(result.message, /quota|rate limit/i);
+    assert.doesNotMatch(result.message, /STARK_key/);
+  } finally { globalThis.fetch = original; }
+});
+
 test('OpenAI-compatible completion exposes structured provider HTTP diagnostics', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'invalid_request_error', code: 'tools_unsupported', param: 'tools', message: 'Tools are not supported for this model.' } }) });
