@@ -477,7 +477,7 @@ function sshdCandidate(text: string): Candidate | undefined {
   const line = text.match(/(?:^|[\n;])\s*([A-Za-z][A-Za-z0-9]+)\s+([^\n;]+?)(?=\s+(?:If|and|must|is|should|$))/im);
   const commandLine = text.match(/(?:grep\s+(?:-[A-Za-z]+\s+)?["']?\^?([A-Za-z][A-Za-z0-9]+)["']?\s+[^\n]*sshd_config|sshd\s+-T[^\n]*\|[^\n]*grep[^\n]*([A-Za-z][A-Za-z0-9]+))/i);
   const name = (line?.[1] ?? commandLine?.[1] ?? commandLine?.[2])?.toLowerCase();
-  if (!name || /^(verify|if|the|this|configuration)$/.test(name)) return undefined;
+  if (!name || /^(check|confirm|if|review|run|the|this|use|verify|configuration)$/.test(name)) return undefined;
   const rawValue = line?.[2]?.trim().replace(/[.,;]+$/, '')
     ?? text.match(new RegExp(`\\b${escapeRegex(name)}\\s+(?:must\\s+be\\s+|is\\s+|set\\s+to\\s+)?["']?([A-Za-z0-9_./:-]+)`, 'i'))?.[1];
   const fields = rawValue && !/^(?:not|configured|set|present|enabled|disabled)$/i.test(rawValue) ? { value: { case_insensitive_equals: unquote(rawValue) } } : undefined;
@@ -926,6 +926,75 @@ function policyCandidate(text: string, platform?: string): Candidate | undefined
   const capability = isPassword ? 'windows.passwordpolicy' : 'windows.lockoutpolicy';
   return { capability, object: {}, fields: { [metric]: { [operation]: value } }, confidence: 'medium', assumptions: [`Inferred ${capability} and ${metric} from the policy language and numeric threshold.`] };
 }
+function sshBannerCandidate(text: string): Candidate | undefined {
+  if (!/(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?banner\b[^\n]*\/etc\/ssh\/sshd_config/i.test(text)) return undefined;
+  if (!/\/etc\/issue\b/i.test(text) || !/(?:banner|notice and consent|exactly)/i.test(text)) return undefined;
+  const issueCommand = /\b(?:cat|head|tail)\s+\/etc\/issue\b/i.exec(text);
+  if (!issueCommand || issueCommand.index === undefined) return undefined;
+  const afterCommand = text.slice(issueCommand.index + issueCommand[0].length);
+  const end = /\n\s*If\s+the\s+banner\s+text\b/i.exec(afterCommand)?.index;
+  let banner = (end === undefined ? afterCommand : afterCommand.slice(0, end)).trim();
+  banner = banner.replace(/^[“"']/, '').replace(/[”"']$/, '').trim();
+  if (banner.length < 40 || !/notice and consent|you are accessing/i.test(banner)) return undefined;
+  const linePattern = String.raw`^\s*Banner\s+(\/etc\/issue)\s*(?:#.*)?$`;
+  const exactPattern = String.raw`^\s*${banner.split(/\r?\n/).map(line => escapeRegex(line.trim())).join(String.raw`\r?\n`)}\s*$`;
+  const commonObject = {
+    ignore_case: false,
+    multiline: true,
+    singleline: false,
+    item_creation: 'all_object_elements_fullfilled',
+    filesystem: 'all'
+  } as Record<string, Json>;
+  return {
+    capability: 'independent.textfilecontent',
+    objectComplete: true,
+    object: {
+      full_path: { equals: '/etc/ssh/sshd_config' },
+      pattern: { matches_regex: linePattern },
+      instance: { greater_than_or_equal: 1 },
+      ...commonObject,
+      ignore_case: true
+    },
+    testCandidates: [
+      {
+        title: 'SSHD Banner points to /etc/issue',
+        object: {
+          full_path: { equals: '/etc/ssh/sshd_config' },
+          pattern: { matches_regex: linePattern },
+          instance: { greater_than_or_equal: 1 },
+          ...commonObject,
+          ignore_case: true
+        },
+        fields: { subexpression: { equals: '/etc/issue' } },
+        presenceOnly: false,
+        itemFound: 'one_or_more'
+      },
+      {
+        title: 'The /etc/issue banner text matches the supplied standard',
+        object: {
+          full_path: { equals: '/etc/issue' },
+          pattern: { matches_regex: exactPattern },
+          instance: { equals: 1 },
+          ...commonObject
+        },
+        presenceOnly: true,
+        itemFound: 'one_or_more'
+      }
+    ],
+    evaluate: 'and',
+    confidence: 'medium',
+    assumptions: [
+      'Detected two distinct checks: the SSHD Banner directive and the contents of /etc/issue.',
+      'Used independent.textfilecontent for both literal-file checks because the procedure supplies grep/cat evidence.',
+      'Normalized only the quotation marks surrounding the displayed banner sample; review line endings, whitespace, and the target file population.'
+    ],
+    review: [
+      'The generated regex preserves the supplied banner text but does not prove that the running SSHD uses this file through includes or an alternate -f configuration.',
+      'Confirm the banner standard, exact line endings, and whether the file may contain a final newline or approved whitespace variation.'
+    ]
+  };
+}
+
 function textFileContentCandidate(text: string): Candidate | undefined {
   const command = text.match(/\b(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?([A-Za-z][A-Za-z0-9_.-]*)\s+(\/[^\s,;:)]+)/i);
   const line = text.match(/\b([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*([A-Za-z0-9_.+-]+)/);
@@ -939,7 +1008,10 @@ function textFileContentCandidate(text: string): Candidate | undefined {
   const lineValue = line?.[1] === key ? line[2] : lineWithoutEquals?.[1];
   const alternatives = new Set<string>(); if (lineValue) alternatives.add(lineValue);
   const valuePhrase = text.match(new RegExp(escapeRegex(key) + String.raw`[^.\n]{0,120}?(?:set to|value of|equals?)\s+["']?([A-Za-z0-9_.+-]+)`, 'i'))?.[1];
-  if (valuePhrase) alternatives.add(valuePhrase);
+  // A positive output line is authoritative. Do not treat a value mentioned
+  // in a later finding clause (for example, "if set to no") as an accepted
+  // value; that silently turns a negative requirement into an OR predicate.
+  if (valuePhrase && !lineValue) alternatives.add(valuePhrase);
   if (!alternatives.size) return undefined;
   const escaped = [...alternatives].map(escapeRegex);
   const pattern = String.raw`^\s*${escapeRegex(key)}\s*(?:=|\s+)\s*(.+?)\s*$`;
@@ -1325,10 +1397,14 @@ function unixFileCandidate(text: string): Candidate | undefined {
   return { capability: 'unix.file', object, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !Object.keys(fields).length, itemFound: shosts ? 'none' : undefined, confidence: Object.keys(fields).length || shosts ? 'high' : 'medium', manualOnlyReason: needsStatePredicate ? 'The procedure identifies a file path but the required ownership, group, mode, or permission predicate was not safely inferred.' : undefined, assumptions: [shosts ? 'Inferred a Unix file search for .shosts files.' : `Inferred a Unix file Object from the absolute path '${path}'.`, ...(Object.keys(fields).length ? ['Inferred ownership or permission predicates from the requirement text.'] : ['The expected file state still needs author review; this draft checks Item presence only.'])] };
 }
 
-function annotation(input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
+function annotation(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
   const lines = [
     '# Assisted Assessment draft — best guess only; review before use.',
-    '# Generated by the offline heuristic workflow; no AI or scanner was used.',
+    '# Generation method: offline-heuristic.',
+    '# No AI or scanner was used.',
+    `# SCAP-NG schema: ${pack.pin.schemaVersion}.`,
+    `# Canonical source commit: ${pack.pin.sourceCommit}.`,
+    `# Editor-pack manifest SHA-256: ${pack.pin.manifestSha256}.`,
     `# Confidence: ${confidence}.`,
     ...assumptions.map(value => `# Assumption: ${value}`),
     ...unresolved.map(value => `# Review needed: ${value}`),
@@ -1344,7 +1420,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? sshBannerCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1359,7 +1435,7 @@ function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: 
       { value: 'no', label: 'Does not meet requirement', outcome: 'false' }
     ], allow_comment: true, allow_evidence: true }
   });
-  const notes = annotation({ title, checkText }, confidence, assumptions, unresolved);
+  const notes = annotation(pack, { title, checkText }, confidence, assumptions, unresolved);
   return { ...result, yaml: `${notes}\n${result.yaml}`, confidence, assumptions, unresolved, generatedMode: 'manual' };
 }
 
@@ -1449,6 +1525,6 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   }
   const unresolved = candidate.conditionalBranches ? [candidate.conditionalElseReason ?? `Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
-  const notes = annotation({ title, checkText }, candidate.confidence, assumptions, unresolved);
+  const notes = annotation(pack, { title, checkText }, candidate.confidence, assumptions, unresolved);
   return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated' };
 }

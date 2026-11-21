@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseDocument, stringify } from 'yaml';
 import type { MetadataPack } from './metadata.js';
-import { requestOpenAiCompatibleChat, type OpenAiChatMessage } from './ai-remote.js';
+import { requestOpenAiCompatibleChat, requestOpenAiCompatibleChatWithTools, type OpenAiChatMessage, type OpenAiToolDefinition, type OpenAiToolHandler } from './ai-remote.js';
 
 export interface AiAssessmentInput {
   ruleId: string;
@@ -31,6 +31,12 @@ export interface AiAssessmentDraft {
   rationale?: string;
   coverage?: AiAssessmentCoverage;
   method: 'configured-ai';
+  /** Provider provenance is display-only; credentials and full endpoints are never retained. */
+  provider?: string;
+  model?: string;
+  generatedAt?: string;
+  /** Whether the model name opted into local pinned-pack tools for this request. */
+  toolMode?: 'local-pinned-pack' | 'not-requested';
 }
 
 function compactMapping(value: any) {
@@ -100,6 +106,87 @@ function mappingEntries(pack: MetadataPack): any[] {
   return pack.manifest.resources.filter((item: any) => item.kind === 'mapping').flatMap((item: any) => {
     try { return [pack.resource(item.uri)]; } catch { return []; }
   });
+}
+
+function aiToolDefinitions(): OpenAiToolDefinition[] {
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'scap_ng_search_capabilities',
+        description: 'Search the pinned SCAP-NG 0.4.1 capability mappings for a procedure or platform signal. This is local pack data, not a network lookup.',
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: { query: { type: 'string' }, platform: { type: 'string' } }, required: ['query']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'scap_ng_get_capability',
+        description: 'Retrieve the pinned mapping and compact Object/State schema for one exact SCAP-NG capability.',
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: { capability: { type: 'string' } }, required: ['capability']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'scap_ng_validate_assessment',
+        description: 'Validate a proposed native SCAP-NG 0.4.1 Assessment locally and return concise schema diagnostics. Do not claim runtime proof.',
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: { yaml: { type: 'string' } }, required: ['yaml']
+        }
+      }
+    }
+  ];
+}
+
+function aiToolHandler(pack: MetadataPack): OpenAiToolHandler {
+  return (name, args) => {
+    if (name === 'scap_ng_search_capabilities') {
+      const query = String(args.query ?? '');
+      const platform = String(args.platform ?? '');
+      const selected = selectedMappings(pack, `${query} ${platform}`, platform);
+      const entries = selected.catalog.filter(entry => Number(entry.score) > 0).slice(0, 20);
+      return { schema_version: pack.pin.schemaVersion, source_commit: pack.pin.sourceCommit, results: entries.length ? entries : selected.catalog.slice(0, 20) };
+    }
+    if (name === 'scap_ng_get_capability') {
+      const capability = String(args.capability ?? '');
+      const mapping = mappingEntries(pack).find(value => value?.capability === capability);
+      const pin = pack.manifest.capabilities?.[capability];
+      if (!mapping || !pin?.schema_uri) return { error: `Unknown pinned capability: ${capability}` };
+      const schema: any = pack.resource(pin.schema_uri);
+      return {
+        schema_version: pack.pin.schemaVersion,
+        source_commit: pack.pin.sourceCommit,
+        capability,
+        mapping: compactMapping(mapping),
+        schema: {
+          id: schema.$id,
+          object: schemaSummary(schema.$defs?.object),
+          state_predicate: schemaSummary(schema.$defs?.state_predicate),
+          test: schemaSummary(schema.$defs?.test)
+        }
+      };
+    }
+    if (name === 'scap_ng_validate_assessment') {
+      const yaml = String(args.yaml ?? '');
+      const document = parseDocument(yaml, { uniqueKeys: true });
+      if (document.errors.length) return { valid: false, diagnostics: document.errors.map(error => error.message).slice(0, 18) };
+      let value: any;
+      try { value = document.toJS({ maxAliasCount: 50 }); }
+      catch (error) { return { valid: false, diagnostics: [error instanceof Error ? error.message : String(error)] }; }
+      const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
+      const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
+      return { valid: diagnostics.length === 0, diagnostics: diagnostics.slice(0, 18) };
+    }
+    return { error: `Unknown local tool: ${name}` };
+  };
 }
 
 function normalizedWords(value: string): string[] {
@@ -342,10 +429,50 @@ function draftFromFailure(message: string, assumptions: string[] = []): AiAssess
   return { generatedMode: 'manual-only', confidence: 'low', yaml: '', diagnostics: [message], document: undefined, assumptions, unresolved: [message], citations: [], method: 'configured-ai' };
 }
 
+export function modelUsesPinnedTools(model: string): boolean {
+  // GenAI model IDs use a `withtools` token. Treat separators as token
+  // boundaries so versioned IDs such as `...-withtools-v2` work, while a
+  // similarly named model such as `withouttools` does not opt in by accident.
+  return /(?:^|[-_.])withtools(?:$|[-_.])/i.test(model.trim());
+}
+
+function providerLabel(endpoint: string): string {
+  try { return new URL(endpoint).hostname || 'configured endpoint'; }
+  catch { return 'configured endpoint'; }
+}
+
+function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'not-requested'): string {
+  return [
+    '# SCAP-NG editor provenance:',
+    '#   generation_method: configured-ai',
+    `#   provider_endpoint: ${providerLabel(endpoint)}`,
+    `#   model: ${model.replace(/[\r\n]+/g, ' ')}`,
+    `#   tool_mode: ${toolMode}`,
+    `#   generated_at: ${generatedAt}`,
+    `#   schema_version: ${pack.pin.schemaVersion}`,
+    `#   canonical_source_commit: ${pack.pin.sourceCommit}`,
+    `#   editor_pack_manifest_sha256: ${pack.pin.manifestSha256}`,
+    '#   runtime_qualification: not-established',
+    ''
+  ].join('\n');
+}
+
+function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'not-requested'): AiAssessmentDraft {
+  const generatedAt = new Date().toISOString();
+  return {
+    ...draft,
+    provider: providerLabel(endpoint),
+    model,
+    generatedAt,
+    toolMode,
+    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode) + draft.yaml : draft.yaml
+  };
+}
+
 function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
   try { payload = JSON.parse(stripCodeFence(raw)); }
-  catch { return draftFromFailure('The AI response was not valid JSON; no draft was accepted.'); }
+  catch { return draftFromFailure(`The AI response was not valid JSON (received ${raw.length} characters); no draft was accepted.`); }
   const assumptions = list(payload?.assumptions);
   const unresolved = list(payload?.unresolved_questions);
   const citations = list(payload?.citations);
@@ -372,18 +499,24 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   return { generatedMode: 'automated', confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
 }
 
+export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
+
 export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
+  const deadline = Date.now() + AI_REQUEST_TOTAL_TIMEOUT_MS;
+  const useTools = modelUsesPinnedTools(model);
+  const toolMode = useTools ? 'local-pinned-pack' as const : 'not-requested' as const;
+  const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
   // protects the authoring host and makes the exact outbound scope predictable.
-  if (input.checkText.length > 60000) return draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.');
-  if ((input.ruleYaml?.length ?? 0) > 50000) return draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.');
-  if (input.title.length > 4000 || input.ruleId.length > 1000) return draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.');
+  if (input.checkText.length > 60000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.'), toolMode);
+  if ((input.ruleYaml?.length ?? 0) > 50000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.'), toolMode);
+  if (input.title.length > 4000 || input.ruleId.length > 1000) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.'), toolMode);
   const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText });
   const system = `You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. Apply the included AI-AUTHORING-PLAYBOOK.md procedure method; it contains generic authoring reasoning, not hard-coded content. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Prefer an existing mapped capability over a new one. Preserve the objective technical check and its real pass/fail result even when the procedure mentions an ISSO/ISSM/SA/AO exception; approved deviations are recorded after evaluation and must not be represented as not_evaluated. Return manual-only only when no objective collector/predicate can be expressed or the check itself cannot be performed. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.
 
 Do not copy any example's command, Test ID, selector, or predicate; examples are structural guidance only. Serialize reported_elements as scalar all/compared or an explicit field-name array, never [all]. In a fields map, use exactly one comparison operator (for example stdout_line: {matches_regex: regex}); values_matching belongs only to field_requirement. For confirmed absence, put values_found: none only in fields.<field>, while keeping the paired field_requirement above it. Derive every Test from the supplied procedure and current Rule context. The editor will reject invalid output; it will not synthesize a content-specific replacement after the provider responds.
 
-Apply the authoring invariants and examples in the knowledge pack, especially the distinction between a population/applicability gate and the technical Test. For an explicit Not Applicable population branch, use separate internal Tests and Evaluate if/then/else when the supplied procedure supports that distinction. For an ISSO/ISSM/SA/AO exception, keep the technical Test's real pass/fail semantics; do not use not_evaluated merely because a human may approve a deviation after failure.
+If local SCAP-NG tools are available, use them to search mappings, inspect capability schemas, and validate a proposed Assessment before finalizing. Tool results are authoritative for the pinned pack and do not prove RI execution. Apply the authoring invariants and examples in the knowledge pack, especially the distinction between a population/applicability gate and the technical Test. For an explicit Not Applicable population branch, use separate internal Tests and Evaluate if/then/else when the supplied procedure supports that distinction. For an ISSO/ISSM/SA/AO exception, keep the technical Test's real pass/fail semantics; do not use not_evaluated merely because a human may approve a deviation after failure.
 
 Your task is to propose one Assessment for the supplied Rule and check procedure. Return ONLY a JSON object with these keys: generated_mode (automated or manual-only), confidence (high, medium, low), assessment_yaml (a YAML string when automated, empty when manual-only), assumptions (array of strings), unresolved_questions (array of strings), citations (array of short knowledge-pack pointers), rationale (short string), and coverage ({applicability: implemented|not-needed|not-representable, procedure_steps: [{summary, represented, tests}], path_patterns: [{pattern, represented, strategy}]}). Do not return Markdown or code fences, compliance PASS/FAIL, or a claim of runtime/scanner proof. The assessment_yaml must be a complete native SCAP-NG 0.4.1 Assessment and must validate against the supplied assessment schema: include specification, evaluate, test_title, reported_elements, and Test IDs ending in -test. Use explicit serialized values; never rely on presentation defaults. Decompose every command/check into an appropriate Test and connect them with explicit evaluate if/then/else logic. A Not Applicable branch must be represented with not_applicable or an existing applicability Assessment dependency; do not merely mention it in unresolved_questions while returning automated. Preserve every file path and wildcard population using schema-authorized directory/filename/set/for_each constructs; never collapse a wildcard to one file. Return manual-only if any required branch, path population, or objective predicate cannot be represented completely. A human approval exception alone does not require manual-only: represent the objective technical Test and let a known violation fail. Do not add not_evaluated merely because an ISSO/owner exception is mentioned; record an approved deviation after evaluation. Use not_evaluated only when the technical check itself cannot be performed or required evidence is unavailable. Automated plus a partial coverage manifest is invalid. Every Test must include a schema-valid test_title, capability, reported_elements, object and require. Object selectors must use operator maps such as full_path: {equals: /etc/example} and pattern: {matches_regex: regex}, never raw selector strings. For comparison requirements, use item_requirement.items_satisfying and field_requirement.values_matching only with schema cardinalities such as every; one_or_more belongs to items_found/values_found. For independent.shellcommand, an Item is always created even when stdout/stderr is empty; use field existence values_found: none on stdout_line/stderr_line for absence checks. Object.pattern filters stdout lines before field requirements. Do not infer Not Applicable from an absence test unless the procedure independently establishes the hardware/population branch; preserve unresolved ISSO exceptions as review notes while keeping the objective Test's pass/fail semantics; do not turn a known failure into not_evaluated.
 
@@ -408,23 +541,35 @@ ${input.ruleYaml || '(not supplied)'}
 Existing Benchmark applicability conditions (reference context only; do not invent IDs):
 ${JSON.stringify(input.availableConditions ?? [])}`;
   const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const requestDraft = (requestMessages: OpenAiChatMessage[], timeout: number) => useTools
+    ? requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout)
+    : requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
   let raw: string;
-  try { raw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, messages); }
-  catch (error) { return draftFromFailure(error instanceof Error ? error.message : String(error)); }
+  try {
+    const timeout = remainingTimeout();
+    if (!timeout) return withProviderProvenance(pack, endpoint, model, draftFromFailure('The AI request exceeded the total authoring deadline before a response was received.'), toolMode);
+    raw = await requestDraft(messages, timeout);
+  }
+  catch (error) { return withProviderProvenance(pack, endpoint, model, draftFromFailure(error instanceof Error ? error.message : String(error)), toolMode); }
   const draft = parseAiAssessmentResponse(pack, input, raw);
-  if (!draft.diagnostics.length) return draft;
+  if (!draft.diagnostics.length) return withProviderProvenance(pack, endpoint, model, draft, toolMode);
 
   // One bounded repair pass gives a capable provider a chance to correct schema
   // and applicability mistakes using the local validator's exact diagnostics.
   const repairSystem = `${system}\n\nThis is a single correction pass. Correct every local validation error below. Do not defend or describe the prior draft. Return a complete replacement JSON object, not a patch. If the procedure cannot be represented completely, return generated_mode: manual-only.`;
+  const repairTimeout = remainingTimeout();
+  if (!repairTimeout) {
+    draft.diagnostics.push('Automatic correction pass skipped because the total AI authoring deadline was reached.');
+    return withProviderProvenance(pack, endpoint, model, draft, toolMode);
+  }
   const repairUser = `${user}\n\nThe previous candidate was rejected by the local 0.4.1 validator. Diagnostics:\n${draft.diagnostics.slice(0, 30).join('\\n')}\n\nPrevious candidate (for correction only):\n${raw.slice(0, 30000)}`;
   try {
-    const repairedRaw = await requestOpenAiCompatibleChat(endpoint, apiKey, model, [{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }]);
+    const repairedRaw = await requestDraft([{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }], repairTimeout);
     const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
     if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
-    return repaired;
+    return withProviderProvenance(pack, endpoint, model, repaired, toolMode);
   } catch (error) {
     draft.diagnostics.push(`Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`);
-    return draft;
+    return withProviderProvenance(pack, endpoint, model, draft, toolMode);
   }
 }

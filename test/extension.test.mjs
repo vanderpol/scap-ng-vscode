@@ -235,6 +235,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /ruleAutomationSeed/);
   assert.match(extensionSource, /linkAutomatedAssessment/);
   assert.match(extensionSource, /Create and link automated Assessment/);
+  assert.match(extensionSource, /id=\"aiProgress\"/);
+  assert.match(extensionSource, /function stopAiProgress/);
+  assert.match(extensionSource, /function render\(result\)\{stopAiProgress\(\);/);
   assert.match(extensionSource, /manual Assessment procedure/);
   assert.match(extensionSource, /createAutomation/);
   assert.match(extensionSource, /\$\('applicabilitySection'\)\.hidden=assisted/);

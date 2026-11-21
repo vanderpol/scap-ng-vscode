@@ -3,13 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { MetadataPack } from '../dist/metadata.js';
 import { createAssistedAssessment } from '../dist/assisted-draft.js';
-import { buildScapNgKnowledge, createAiAssessmentDraft } from '../dist/ai-assessment.js';
+import { buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
 
 const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
 const validYaml = createAssistedAssessment(pack, {
   title: 'Check the passwd file',
   checkText: 'Verify that the file /etc/passwd is present on the system.'
 }).yaml;
+
+test('withtools model token detection is explicit and does not match similarly named models', () => {
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools-v2'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools_beta'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash'), false);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withouttools'), false);
+});
 
 function response(content) {
   return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) };
@@ -69,6 +77,12 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.document.assessment.mode, 'automated');
   assert.equal(result.method, 'configured-ai');
+  assert.equal(result.provider, 'api.example.test');
+  assert.equal(result.model, 'model-a');
+  assert.match(result.yaml, /generation_method: configured-ai/);
+  assert.match(result.yaml, /model: model-a/);
+  assert.match(result.yaml, /tool_mode: not-requested/);
+  assert.equal(result.toolMode, 'not-requested');
   assert.match(result.yaml, /assessment:/);
   assert.ok(result.assumptions.includes('The file presence wording is unambiguous.'));
   const body = JSON.parse(requests[0].options.body);
@@ -178,4 +192,30 @@ test('AI manual-only output remains provider-authored review state without offli
   assert.equal(result.document, undefined);
   assert.equal(result.diagnostics.length, 0);
   assert.ok(result.unresolved.includes('ISSO review is required.'));
+});
+
+test('withtools models receive pinned local tools and resume after a tool result', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Tool-assisted draft',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  let calls = 0;
+  const { result, requests } = await withFetch(() => {
+    calls++;
+    if (calls === 1) return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '', tool_calls: [{ id: 'tool-1', type: 'function', function: { name: 'scap_ng_search_capabilities', arguments: JSON.stringify({ query: 'file presence', platform: 'rhel' }) } }] } }] }) };
+    return response(payload);
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.toolMode, 'local-pinned-pack');
+  assert.match(result.yaml, /tool_mode: local-pinned-pack/);
+  const first = JSON.parse(requests[0].options.body);
+  const second = JSON.parse(requests[1].options.body);
+  assert.ok(first.tools.some(tool => tool.function.name === 'scap_ng_search_capabilities'));
+  assert.equal(second.messages.at(-1).role, 'tool');
+  assert.match(second.messages.at(-1).content, /unix\.file|capability/);
 });

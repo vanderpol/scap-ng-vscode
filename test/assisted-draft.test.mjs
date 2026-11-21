@@ -15,6 +15,7 @@ test('assisted registry draft is deterministic, annotated, and pinned-schema val
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.diagnostics.length, 0);
   assert.match(result.yaml, /best guess only/);
+  assert.match(result.yaml, /Generation method: offline-heuristic/);
   assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].capability, 'windows.registry');
   assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].require.fields.value.equals, 1);
   assert.deepEqual(parseDocument(result.yaml).errors, []);
@@ -623,4 +624,51 @@ test('assisted text configuration parsing preserves case-insensitive keys and mu
   assert.equal(test.object.ignore_case, true);
   assert.match(test.object.pattern.matches_regex, /\(\.\+\?\)/);
   assert.match(test.require.fields.subexpression.matches_regex, /hmac-sha2-512/);
+});
+
+test('assisted SSH banner checks preserve both configuration and banner-content steps', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'ubuntu',
+    title: 'The Ubuntu operating system must display the Standard Mandatory DoD Notice and Consent Banner.',
+    checkText: `Check the SSH Banner with the following command:
+
+# grep -i banner /etc/ssh/sshd_config
+Banner /etc/issue
+
+Check the specified banner file to verify that it matches the Standard Mandatory DoD Notice and Consent Banner exactly:
+
+# cat /etc/issue
+
+“You are accessing a U.S. Government (USG) Information System (IS) provided for USG-authorized use only.”
+
+If the banner text does not match exactly, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const tests = Object.values(result.document.assessment.tests);
+  assert.equal(tests.length, 2);
+  assert.ok(tests.every(test => test.capability === 'independent.textfilecontent'));
+  assert.equal(tests[0].object.full_path.equals, '/etc/ssh/sshd_config');
+  assert.equal(tests[0].require.fields.subexpression.equals, '/etc/issue');
+  assert.equal(tests[1].object.full_path.equals, '/etc/issue');
+  assert.equal(tests[0].object.filesystem, 'all');
+  assert.ok(result.unresolved.some(reason => /running SSHD|includes/i.test(reason)));
+});
+
+test('assisted SSH directive checks do not accept the explicitly noncompliant value', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'ubuntu',
+    title: 'The Ubuntu SSH daemon must prevent remote hosts from connecting to the proxy display.',
+    checkText: `Check the SSH X11UseLocalhost setting with the following command:
+
+# sudo grep -i x11uselocalhost /etc/ssh/sshd_config
+X11UseLocalhost yes
+
+If the "X11UseLocalhost" keyword is set to "no", is missing, or is commented out, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.deepEqual(test.require.fields.subexpression, { matches_regex: '^(yes)$' });
 });
