@@ -258,7 +258,7 @@ export interface AiKnowledgeOptions {
  * the exact pin, vocabulary, selectors, operators and authoring guidance.
  */
 export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, options: AiKnowledgeOptions = {}): string {
-  const schemaNames = ['assessment.schema.json', 'rule.schema.json', 'benchmark.schema.json', 'applicability.schema.json', 'assessment-language.schema.json', 'native-selector.schema.json', 'expression.schema.json', 'variable-expression.schema.json'];
+  const schemaNames = ['assessment.schema.json', 'rule.schema.json', 'benchmark.schema.json', 'applicability.schema.json', 'assessment-language.schema.json', 'native-selector.schema.json', 'expression.schema.json', 'variable-expression.schema.json', 'capability-common.schema.json'];
   const schemaResources: Record<string, any> = Object.fromEntries(schemaNames.map(name => [name, resource(pack, name)]).filter(([, value]) => value));
   const schemas: Record<string, any> = {};
   for (const [name, value] of Object.entries(schemaResources)) {
@@ -270,6 +270,11 @@ export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, 
       const relevantNames = new Set(relevant.map(mapping => String(mapping.capability ?? '').replaceAll('.', '_')));
       const defs = Object.fromEntries(Object.entries(value.$defs).filter(([name]) => [...relevantNames].some(capability => name.includes(capability))).map(([name, schema]) => [name, schemaSummary(schema)]));
       schemas[name] = { $id: value.$id, 'x-scap-ng-version': value['x-scap-ng-version'], defs };
+    } else if (name === 'variable-expression.schema.json' && value?.$defs) {
+      schemas[name] = { $id: value.$id, 'x-scap-ng-version': value['x-scap-ng-version'], defs: Object.fromEntries(['declaration', 'expression'].filter(key => value.$defs[key]).map(key => [key, schemaSummary(value.$defs[key])])) };
+    } else if (name === 'capability-common.schema.json' && value?.$defs) {
+      const names = ['object_use', 'inline_object', 'object_entity_base', 'file_selection', 'file_traversal', 'foreach_binding', 'foreach_selector_binding', 'set_expression', 'set_operand', 'set_object_operand', 'set_nested_operand', 'variable_reference', 'state_filter', 'record_predicate'];
+      schemas[name] = { $id: value.$id, 'x-scap-ng-version': value['x-scap-ng-version'], defs: Object.fromEntries(names.filter(key => value.$defs[key]).map(key => [key, schemaSummary(value.$defs[key])])) };
     } else {
       schemas[name] = schemaSummary(value);
     }
@@ -319,7 +324,7 @@ export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, 
       'If a procedure says Not Applicable when a population is absent, create a population gate Test and a separate technical Test when needed: if population then technical else not_applicable. Do not collapse the gate and technical failure into one not_evaluated branch.',
       'An ISSO/ISSM/SA/AO approval or deviation does not make a known technical violation unknown. Preserve the pass/fail Test and record an approved deviation after evaluation. Use not_evaluated only when the technical check cannot run or required evidence is unavailable.',
       'Never emit an empty Object, placeholder predicate, invented capability, scanner PASS/FAIL, or runtime-proof claim. Return manual-only when the objective predicate or complete population cannot be represented.',
-      'Preserve every path, wildcard, conf.d directory, set, and per-user relationship; do not silently reduce a population to one example file.',
+      'Preserve every path, wildcard, conf.d directory, set, and per-user relationship; do not silently reduce a population to one example file. For dynamic populations, use only the supplied capability-common and variable-expression schemas for file_traversal, set_expression, foreach, and Variable references; do not claim manual-only merely because a population is dynamic when the pinned schemas represent it.',
       'Treat generated output as review-only until the author verifies selectors, predicates, applicability, exceptions, and target-platform behavior.'
     ],
     current_authoring_examples: {

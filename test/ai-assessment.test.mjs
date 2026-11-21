@@ -43,6 +43,9 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.equal(knowledge.contract.runtime_execution_proof, false);
   assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  assert.ok(knowledge.schemas['capability-common.schema.json'].defs.set_expression);
+  assert.ok(knowledge.schemas['capability-common.schema.json'].defs.file_traversal);
+  assert.ok(knowledge.schemas['variable-expression.schema.json'].defs.expression);
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
