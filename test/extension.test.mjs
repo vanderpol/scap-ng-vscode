@@ -211,6 +211,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Automation was not created/);
   assert.match(extensionSource, /Show technical\/provider details/);
   assert.match(extensionSource, /This is not a manual-only decision/);
+  assert.match(extensionSource, /AI provider responded, but its draft failed the pinned SCAP-NG 0\.4\.1 validation contract/);
+  assert.match(extensionSource, /not a token or quota failure/);
+  assert.match(extensionSource, /AI provider request did not complete/);
   assert.match(extensionSource, /Rejected draft — no YAML accepted/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
