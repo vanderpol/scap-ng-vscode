@@ -319,6 +319,43 @@ function stripCodeFence(value: string): string {
   return fenced ? fenced[1].trim() : trimmed;
 }
 
+/**
+ * Providers sometimes wrap an otherwise valid JSON contract in a sentence or
+ * a Markdown code fence. Extract only a complete JSON object and still send
+ * it through the normal schema/coverage gates. This is tolerant parsing, not
+ * acceptance of arbitrary prose or YAML.
+ */
+function parseProviderJson(raw: string): any {
+  const candidates = [stripCodeFence(raw)];
+  for (let start = raw.indexOf('{'); start >= 0; start = raw.indexOf('{', start + 1)) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < raw.length; index++) {
+      const character = raw[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') { quoted = true; continue; }
+      if (character === '{') depth++;
+      else if (character === '}' && --depth === 0) {
+        candidates.push(raw.slice(start, index + 1));
+        break;
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch { /* Try the next bounded object candidate. */ }
+  }
+  throw new Error('No complete JSON object was found in the provider response.');
+}
+
 function list(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
 }
@@ -474,8 +511,8 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
 
 function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
-  try { payload = JSON.parse(stripCodeFence(raw)); }
-  catch { return draftFromFailure(`The AI response was not valid JSON (received ${raw.length} characters); no draft was accepted.`); }
+  try { payload = parseProviderJson(raw); }
+  catch { return draftFromFailure(`The AI response was not valid JSON (received ${raw.length} characters); no complete JSON object was found; no draft was accepted.`); }
   const assumptions = list(payload?.assumptions);
   const unresolved = list(payload?.unresolved_questions);
   const citations = list(payload?.citations);

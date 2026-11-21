@@ -54,6 +54,24 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(JSON.stringify(knowledge).length < 250_000);
 });
 
+test('AI response parser accepts prose-wrapped JSON without accepting prose as content', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
+    assumptions: ['Wrapped response'], unresolved_questions: [], citations: []
+  });
+  const wrapped = `Here is the requested contract:
+\`\`\`json
+${payload}
+\`\`\`
+`;
+  const { result } = await withFetch(() => response(wrapped), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'wrapped-rule', title: 'Wrapped', checkText: 'Review manually.'
+  }));
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.assumptions.includes('Wrapped response'));
+});
+
 test('AI response is parsed, pinned-schema validated, and remains review-only', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated',
