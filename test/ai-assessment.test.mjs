@@ -279,3 +279,20 @@ test('persisted tool rejection skips the failed tools negotiation on later reque
   assert.equal(JSON.parse(requests[0].options.body).tools, undefined);
   assert.equal(result.toolMode, 'fallback-no-tools');
 });
+
+test('provider Assessment IDs are normalized generically before correction when they exceed schema limits', async () => {
+  const longId = 'ubuntu-operating-system-inactivity-client-alive-interval-configuration-assessment-generated-by-provider';
+  const longYaml = validYaml.replace(/id: [^\n]+/, `id: ${longId}`);
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: longYaml,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.id.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.document.assessment.id, 'check-file-assessment');
+  assert.ok(result.assumptions.some(item => /normalized.*identity limit/i.test(item)));
+});

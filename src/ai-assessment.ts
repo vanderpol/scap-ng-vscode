@@ -438,6 +438,26 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   return diagnostics;
 }
 
+function normalizedAssessmentId(ruleId: string): string {
+  const raw = ruleId.replace(/-rule$/, '-assessment').toLowerCase();
+  const normalized = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-') || 'assisted-assessment';
+  const suffix = '-assessment';
+  if (normalized.endsWith(suffix) && normalized.length > 64) return normalized.slice(0, 64 - suffix.length).replace(/-+$/, '') + suffix;
+  return normalized.slice(0, 64).replace(/-+$/, '');
+}
+
+function normalizeProviderAssessmentIdentity(value: any, input: AiAssessmentInput): { value: any; yamlChanged: boolean; note?: string } {
+  const assessment = value?.assessment;
+  if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return { value, yamlChanged: false };
+  const id = typeof assessment.id === 'string' ? assessment.id : '';
+  const valid = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) && id.length >= 1 && id.length <= 64;
+  if (valid) return { value, yamlChanged: false };
+  const replacement = normalizedAssessmentId(input.ruleId);
+  if (id === replacement) return { value, yamlChanged: false };
+  const next = { ...value, assessment: { ...assessment, id: replacement } };
+  return { value: next, yamlChanged: true, note: `The provider Assessment ID '${id || '(missing)'}' was normalized to '${replacement}' to satisfy the pinned 0.4.1 identity limit.` };
+}
+
 function schemaValidationDiagnostics(pack: MetadataPack, schemaUri: string, value: any): string[] {
   const errors = pack.validateDetailed(schemaUri, value) as Array<{ instancePath?: string; keyword?: string; params?: Record<string, any>; message?: string }>;
   const diagnostics: string[] = [];
@@ -547,11 +567,17 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   if (document.errors.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   let value: any;
   try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
+  const identity = normalizeProviderAssessmentIdentity(value, input);
+  if (identity.yamlChanged) {
+    value = identity.value;
+    yamlText = stringify(value);
+  }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
   if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [...diagnostics, ...semanticDiagnostics], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');
+  if (identity.note) assumptions.push(identity.note);
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
   diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
