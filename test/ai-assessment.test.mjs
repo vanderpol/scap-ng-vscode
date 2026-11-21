@@ -101,6 +101,8 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   assert.match(result.yaml, /model: model-a/);
   assert.match(result.yaml, /tool_mode: not-requested/);
   assert.equal(result.toolMode, 'not-requested');
+  assert.equal(typeof result.durationMs, 'number');
+  assert.match(result.yaml, /duration_ms:/);
   assert.match(result.yaml, /assessment:/);
   assert.ok(result.assumptions.includes('The file presence wording is unambiguous.'));
   const body = JSON.parse(requests[0].options.body);
@@ -254,6 +256,7 @@ test('withtools models receive pinned local tools and resume after a tool result
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.toolMode, 'local-pinned-pack');
+  assert.equal(typeof result.durationMs, 'number');
   assert.match(result.yaml, /tool_mode: local-pinned-pack/);
   const first = JSON.parse(requests[0].options.body);
   const second = JSON.parse(requests[1].options.body);

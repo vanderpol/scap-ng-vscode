@@ -84,7 +84,9 @@ itself cannot be performed or the required evidence is unavailable. The review
 gate rejects an automated draft that merely mentions a Not Applicable branch
 without representing it.
 
-The result is never scanner/runtime proof and never asserts compliance. The author
+The generated provenance also records end-to-end `duration_ms`, including tool turns,
+JSON-mode fallback, and the bounded correction pass. This measures the editor/provider
+operation, not model inference time alone. The result is never scanner/runtime proof and never asserts compliance. The author
 must review the assumptions, unresolved questions, citations and generated YAML.
 Only the existing explicit **Create and link automated Assessment** action writes
 the Assessment and updates the Rule link/default; closing the page or rejecting the

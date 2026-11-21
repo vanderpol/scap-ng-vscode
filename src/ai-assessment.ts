@@ -38,6 +38,8 @@ export interface AiAssessmentDraft {
   /** Whether the model name opted into local pinned-pack tools for this request. */
   toolMode?: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested';
   toolWarning?: string;
+  /** End-to-end elapsed time for this provider attempt, including bounded repair/fallback. */
+  durationMs?: number;
 }
 
 function compactMapping(value: any) {
@@ -479,7 +481,7 @@ function providerLabel(endpoint: string): string {
   catch { return 'configured endpoint'; }
 }
 
-function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested'): string {
+function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', durationMs: number): string {
   return [
     '# SCAP-NG editor provenance:',
     '#   generation_method: configured-ai',
@@ -488,6 +490,7 @@ function provenanceComment(pack: MetadataPack, endpoint: string, model: string, 
     `#   tool_mode: ${toolMode}`,
     '#   tool_execution: provider-dependent; runtime qualification not established',
     `#   generated_at: ${generatedAt}`,
+    `#   duration_ms: ${durationMs}`,
     `#   schema_version: ${pack.pin.schemaVersion}`,
     `#   canonical_source_commit: ${pack.pin.sourceCommit}`,
     `#   editor_pack_manifest_sha256: ${pack.pin.manifestSha256}`,
@@ -496,7 +499,7 @@ function provenanceComment(pack: MetadataPack, endpoint: string, model: string, 
   ].join('\n');
 }
 
-function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', toolWarning?: string): AiAssessmentDraft {
+function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', toolWarning?: string, durationMs = 0): AiAssessmentDraft {
   const generatedAt = new Date().toISOString();
   return {
     ...draft,
@@ -505,7 +508,8 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
     generatedAt,
     toolMode,
     toolWarning,
-    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode) + draft.yaml : draft.yaml
+    durationMs,
+    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs) + draft.yaml : draft.yaml
   };
 }
 
@@ -542,11 +546,12 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
 export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
 
 export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput): Promise<AiAssessmentDraft> {
-  const deadline = Date.now() + AI_REQUEST_TOTAL_TIMEOUT_MS;
+  const startedAt = Date.now();
+  const deadline = startedAt + AI_REQUEST_TOTAL_TIMEOUT_MS;
   let useTools = modelUsesPinnedTools(model);
   let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : 'not-requested';
   let toolWarning: string | undefined;
-  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning);
+  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt);
   const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
   // protects the authoring host and makes the exact outbound scope predictable.
