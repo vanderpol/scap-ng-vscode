@@ -3019,7 +3019,9 @@ export function activate(context: vscode.ExtensionContext) {
       skipTools: rejectedProfiles.includes(toolProfile),
       onToolsRejected: () => {
         const next = [...new Set([...rejectedProfiles, toolProfile])].slice(-32);
-        if (typeof globalState?.update === 'function') void globalState.update('scapNg.ai.rejectedToolProfiles', next);
+        // Await the cache write before the fallback request completes so an
+        // immediate VS Code reload does not repeat the known-bad negotiation.
+        return typeof globalState?.update === 'function' ? globalState.update('scapNg.ai.rejectedToolProfiles', next) : undefined;
       }
     });
   };

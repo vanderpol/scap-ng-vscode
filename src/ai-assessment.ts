@@ -13,7 +13,7 @@ function toolProfileKey(endpoint: string, model: string): string { return `${end
 export interface AiAssessmentOptions {
   /** Persisted per-endpoint/model capability result from the extension host. */
   skipTools?: boolean;
-  onToolsRejected?: () => void;
+  onToolsRejected?: () => void | Promise<void>;
 }
 
 export interface AiAssessmentInput {
@@ -676,7 +676,7 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
       if (!(error instanceof OpenAiCompatibleHttpError) || error.status !== 400) throw error;
       const firstError = error.message;
       unsupportedToolProfiles.add(profileKey);
-      options.onToolsRejected?.();
+      await options.onToolsRejected?.();
       useTools = false;
       toolMode = 'fallback-no-tools';
       toolWarning = `${firstError}; retried once without tools because the gateway rejected the tool request.`;

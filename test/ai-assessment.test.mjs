@@ -236,16 +236,18 @@ test('withtools models fall back once when the gateway rejects tools', async () 
     coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
   });
   let calls = 0;
+  let persisted = false;
   const { result, requests } = await withFetch(() => {
     calls++;
     if (calls <= 3) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'invalid_request_error', code: 'tools_unsupported', param: 'tools', message: 'Tools are not supported for this model.' } }) };
     return response(payload);
   }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel'
-  }));
+  }, { onToolsRejected: async () => { await new Promise(resolve => setTimeout(resolve, 1)); persisted = true; } }));
   assert.equal(requests.length, 4);
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.diagnostics.length, 0);
+  assert.equal(persisted, true);
   assert.equal(result.toolMode, 'fallback-no-tools');
   assert.match(result.toolWarning, /tools_unsupported|retried once without tools/i);
   assert.match(result.yaml, /tool_mode: fallback-no-tools/);
