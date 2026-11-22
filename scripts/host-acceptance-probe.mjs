@@ -46,7 +46,9 @@ const variableSource = (() => {
   tests: {}`;
   }
 })();
-const variableIncomplete = variableSource.replace(/\n        concat:\n[\s\S]*?\n  tests:/, '\n        concat:\n        - \n  tests:');
+const variableIncomplete = /\n        concat:/.test(variableSource)
+  ? variableSource.replace(/\n        concat:\n[\s\S]*?\n  tests:/, '\n        concat:\n        - \n  tests:')
+  : variableSource.replace(/\n  tests:/, '\n  variables:\n    example-variable:\n      kind: local\n      expression:\n        concat:\n        - \n  tests:');
 const fixtureRoot = resolve(process.env.SCAP_NG_P0_FIXTURE_ROOT ?? 'test/fixtures');
 const canonicalInputs = {
   windowsRegistry: sample,
