@@ -29,6 +29,7 @@ import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
+import { resolveStudioSearch } from './studio-search.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
 const schemaBase = SCHEMA_BASE;
@@ -168,6 +169,12 @@ async function openGeneratedAssessment(api: any, document: any) {
   await api.window.showTextDocument(document, { viewColumn: api.ViewColumn?.Active ?? 1, preserveFocus: false, preview: false });
 }
 
+async function searchStudioIndex(api: any, index: WorkspaceIndex) {
+  return resolveStudioSearch(api, index, workspaceRelativePath, async (record, mode) => {
+    if (!api.Uri?.file) throw new Error('VS Code URI support is unavailable; cannot open the indexed document.');
+    return openAssessmentInMode(api, api.Uri.file(record.path), mode);
+  });
+}
 function pathWithinRoot(root: string, candidate: string): boolean {
   const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
   const normalizedRoot = normalize(root); const normalizedCandidate = normalize(candidate);
@@ -3072,7 +3079,10 @@ export function activate(context: vscode.ExtensionContext) {
       await api.window.showErrorMessage(`Benchmark data refresh failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => tree.setQuery(await api.window.showInputBox({ prompt: 'Search Assessment Studio index' }) ?? '')));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.searchIndex', async () => {
+    try { return await searchStudioIndex(api, index); }
+    catch (error) { await api.window.showErrorMessage(`Assessment Studio search failed: ${error instanceof Error ? error.message : String(error)}`); return undefined; }
+  }));
   context.subscriptions.push(api.commands.registerCommand('scapNg.configureYamlSchemas', async () => {
     if (!pack) { await api.window.showWarningMessage('Configure a verified offline SCAP-NG metadata pack before associating native YAML schemas.'); return; }
     const configured = await configureNativeYamlWorkspace(pack, api);
