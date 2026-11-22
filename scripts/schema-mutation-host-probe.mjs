@@ -13,7 +13,7 @@ cpSync(resolve(process.env.SCAP_NG_METADATA_PACK ?? '.external/editor-pack'), pa
 mkdirSync(extension, { recursive: true });
 for (const file of ['package.json', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'schema-profile.json']) cpSync(join(root, file), join(extension, file));
 cpSync(join(root, 'dist'), join(extension, 'dist'), { recursive: true });
-for (const dependency of ['yaml', 'ajv', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string']) cpSync(join(root, 'node_modules', dependency), join(extension, 'node_modules', dependency), { recursive: true });
+for (const dependency of ['yaml', 'ajv', 'pcre2-wasm', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string']) cpSync(join(root, 'node_modules', dependency), join(extension, 'node_modules', dependency), { recursive: true });
 
 const manifestPath = join(pack, 'manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
