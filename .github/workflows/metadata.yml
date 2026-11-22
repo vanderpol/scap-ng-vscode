@@ -1,5 +1,8 @@
 name: Offline metadata and source preservation
-on: [push, pull_request, workflow_dispatch]
+# Full offline metadata, package and integration qualification runs on the
+# Codex VM. Keep an explicit hosted replay for funded verification.
+on:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
