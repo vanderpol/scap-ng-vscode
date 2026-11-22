@@ -135,6 +135,8 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   assert.match(body.messages[0].content, /canonical_source_commit/);
   assert.match(body.messages[0].content, /0\.4\.1/);
   assert.doesNotMatch(body.messages[0].content, /secret-not-logged/);
+  assert.match(body.messages[1].content, /FINAL RESPONSE PROTOCOL/);
+  assert.match(body.messages[1].content, /tests:.*test_title/s);
 });
 
 test('malformed AI JSON and schema-invalid YAML are rejected without a usable draft', async () => {

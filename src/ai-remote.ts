@@ -170,6 +170,13 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
       }
       const parsed = parseChatCompletionBody(responseBody);
       if (parsed.content.trim()) return parsed.content;
+      // A few gateways acknowledge streamed JSON mode but emit no content
+      // delta. Retry once without the optional JSON-mode hint; the caller still
+      // applies its strict JSON/schema gates to the returned text.
+      if (requestJsonMode && attempt === 0) {
+        requestJsonMode = false;
+        continue;
+      }
       throw new Error('Gateway response did not contain choices[0].message.content.');
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
