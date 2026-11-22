@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceIndex } from '../dist/indexer.js';
-import { applicabilityForBenchmark, benchmarkApplicabilityAssessments, benchmarkApplicabilityUsage, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, benchmarkRuleAssessments } from '../dist/content-context.js';
+import { applicabilityForBenchmark, benchmarkApplicabilityAssessments, benchmarkApplicabilitySummary, benchmarkApplicabilityUsage, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, benchmarkRuleAssessments } from '../dist/content-context.js';
 
 const root = '/workspace/content/documents/01-product/authoring/direct-slice';
 
 test('benchmark contexts group related documents by package path and preserve array metadata', () => {
   const index = new WorkspaceIndex();
-  index.update(`${root}/benchmark.yaml`, `benchmark:\n  id: direct-slice\n  version:\n    value: 001.002.003\n  title:\n    - text: Product Benchmark\n      language: en\n  profiles:\n    - id: product-profile\n      title: Product profile\n      disabled_rules: [product-rule]\n  rules: [product-rule]\n`);
+  index.update(`${root}/benchmark.yaml`, `benchmark:\n  id: direct-slice\n  version:\n    value: 001.002.003\n  title:\n    - text: Product Benchmark\n      language: en\n  platform:\n    id: product-platform\n    applicability:\n      operator: AND\n      conditions: [product-condition]\n  profiles:\n    - id: product-profile\n      title: Product profile\n      disabled_rules: [product-rule]\n  rules: [product-rule]\n`);
   index.update(`${root}/applicability.yaml`, `applicability:\n  id: fixture-applicability\n  conditions:\n    product-condition:\n      assessment: product-applicability-assessment\n`);
   index.update(`${root}/rules/product-rule-rule.yaml`, `rule:\n  id: product-rule\n  title: Product rule\n  applicability: [product-condition]\n  assessment_choices:\n    automated:\n      assessment: product-assessment\n`);
   index.update(`${root}/assessments/product-assessment-assessment.yaml`, `assessment:\n  id: product-assessment\n  version: 1\n  assessment_title: Product assessment\n  mode: automated\n`);
@@ -27,7 +27,18 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].assessmentCount, 1);
   assert.deepEqual(benchmarkApplicabilityAssessments(contexts[0]).map(item => item.id), ['product-applicability-assessment']);
   assert.deepEqual(benchmarkRuleAssessments(contexts[0]).map(item => item.id), ['product-assessment']);
+  assert.deepEqual(benchmarkApplicabilityUsage(contexts[0], 'product-applicability-assessment').benchmarkConditions.map(item => item.name), ['product-condition']);
+  assert.deepEqual(benchmarkApplicabilityUsage(contexts[0], 'product-applicability-assessment').ruleConditions.map(item => item.name), ['product-condition']);
   assert.deepEqual(benchmarkApplicabilityUsage(contexts[0], 'product-applicability-assessment').rules.map(item => item.id), ['product-rule']);
+  // Negative guard: a Rule-linked Assessment must not leak into applicability usage or counters.
+  assert.deepEqual(benchmarkApplicabilityUsage(contexts[0], 'product-assessment'), { benchmarkConditions: [], ruleConditions: [], rules: [] });
+  assert.deepEqual(benchmarkApplicabilitySummary(contexts[0]), {
+    assessmentCount: 1,
+    benchmarkConditionCount: 1,
+    ruleConditionCount: 1,
+    referencedRuleCount: 1,
+    catalogCount: 1
+  });
   assert.equal(contexts[0].assessments.find(item => item.id === 'manual-assessment')?.mode, 'manual');
   assert.equal(benchmarkContextLabels(contexts).get(contexts[0].key), 'Product Benchmark — direct-slice · v001.002.003');
   assert.equal(contexts[0].conditionCount, 1);
@@ -93,4 +104,61 @@ test('manual Assessment links stay in the automation queue until explicitly flag
   assert.equal(context.rules[0].automationStatus, 'manual-only');
   assert.equal(context.automation.manualOnly, 1);
   assert.equal(context.automation.needsAutomation, 0);
+});
+
+test('Benchmark applicability is limited to the platform OS/application gate, not Rule conditions', () => {
+  const index = new WorkspaceIndex();
+  const root = '/workspace/content/benchmark-scope/authoring/direct-slice';
+  index.update(`${root}/benchmark.yaml`, `benchmark:
+  id: scoped-benchmark
+  title: Scoped Benchmark
+  platform:
+    id: ubuntu-platform
+    title: Ubuntu
+    applicability:
+      any_of:
+        - condition: os-ubuntu
+  rules: [rule-only]
+`);
+  index.update(`${root}/applicability.yaml`, `applicability:
+  id: scoped-catalog
+  conditions:
+    os-ubuntu:
+      assessment: os-ubuntu-assessment
+    server-role:
+      assessment: server-role-assessment
+`);
+  index.update(`${root}/rules/rule-only-rule.yaml`, `rule:
+  id: rule-only
+  title: Rule-only applicability
+  applicability:
+    condition: server-role
+  assessment_choices:
+    automated:
+      assessment: rule-assessment
+`);
+  for (const [id, title] of [['os-ubuntu-assessment', 'Ubuntu OS'], ['server-role-assessment', 'Server role'], ['rule-assessment', 'Rule compliance']]) {
+    index.update(`${root}/assessments/${id}-assessment.yaml`, `assessment:
+  id: ${id}
+  version: 1
+  assessment_title: ${title}
+  mode: automated
+`);
+  }
+  const context = benchmarkContexts(index)[0];
+  assert.deepEqual(context.benchmark.benchmarkApplicability, ['os-ubuntu']);
+  assert.deepEqual(benchmarkApplicabilityAssessments(context).map(item => item.id), ['os-ubuntu-assessment']);
+  assert.equal(context.applicabilityCount, 1);
+  assert.deepEqual(benchmarkRuleAssessments(context).map(item => item.id), ['rule-assessment']);
+  assert.deepEqual(benchmarkApplicabilityUsage(context, 'server-role-assessment'), {
+    benchmarkConditions: [],
+    ruleConditions: [{
+      name: 'server-role',
+      targetId: 'server-role-assessment',
+      path: '/applicability/conditions/server-role/assessment',
+      sourceUri: `${root}/applicability.yaml`,
+      sourcePath: `${root}/applicability.yaml`
+    }],
+    rules: [context.rules[0]]
+  });
 });
