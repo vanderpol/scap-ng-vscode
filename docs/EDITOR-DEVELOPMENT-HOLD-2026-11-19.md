@@ -6,8 +6,8 @@ The editor is now a single-version SCAP-NG 0.4.1 consumer and must not return to
 
 ## Current verified baseline
 
-- Canonical schema: `vanderpol/scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`
-- Tools exporter: `vanderpol/scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731`
+- Canonical schema: `vanderpol/scap-ng@f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2`
+- Tools exporter: `vanderpol/scap-ng-tools@f44d71463d12948372747bded6834a10814fd3e7`
 - Sample data: `vanderpol/scap-ng-editor-sample-data@990a1bff999f4f82c603bca1de36353c1cb08f01`
 - OVAL input: `2f140ee5c5dd1ed9606fcd5afc301f6baeb48706`
 - Offline pack: 236 resources; manifest SHA-256

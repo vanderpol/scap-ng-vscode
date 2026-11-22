@@ -306,3 +306,16 @@ test('Issue #44 desktop graphical surface is a real host webview contract', asyn
   assert.doesNotMatch(html, /Properties on this node/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /panel\.webview\.html = graphicalHtml\(\)/);
 });
+
+
+test('Variable authoring exposes canonical to_integer template', () => {
+  const source = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
+  assert.match(source, /case 'to_integer': return \{ to_integer: \{ literal: '' \} \};/);
+});
+
+test('Variable authoring has a serializable template for every active schema operation', () => {
+  const source = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
+  for (const operation of ['literal', 'variable', 'input', 'values', 'to_integer', 'time_difference', 'concat', 'regex_capture', 'unique', 'count', 'split', 'substring', 'arithmetic', 'begin', 'end', 'merge']) {
+    assert.match(source, new RegExp(`case '${operation}':`), operation);
+  }
+});

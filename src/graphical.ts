@@ -250,6 +250,7 @@ function expressionBrief(expr){
   if('literal' in expr){const v=expr.literal&&typeof expr.literal==='object'&&!Array.isArray(expr.literal)?expr.literal.value:expr.literal;const display=Array.isArray(v)?v.join(', '):String(v??'');return 'Literal '+JSON.stringify(display.length>56?display.slice(0,53)+'…':display)}
   if('values' in expr)return 'Collected '+String(expr.values?.field||'field')+' values';
   if('regex_capture' in expr)return 'Regex capture result';
+  if('to_integer' in expr)return 'Integer conversion result';
   if('variable' in expr)return 'Variable '+String(expr.variable);
   if('concat' in expr)return 'Concatenation result';
   if('unique' in expr)return 'Unique values';
@@ -271,6 +272,22 @@ function variablePlan(expr,path,depth=0){
     return [...variablePlan(source.value,path.concat('regex_capture','value'),depth+1),
       {title:'Extract with regular expression',note:'Return the first capture group from each input value. No actual capture has been evaluated.',path:path.concat('regex_capture'),operation:'regex_capture',operationPath:path,controls:[path.concat('regex_capture','pattern')]}]
   }
+  if('to_integer' in expr){
+    return [...variablePlan(expr.to_integer,path.concat('to_integer'),depth+1),
+      {title:'Convert decimal text to integer',note:'Parse each signed decimal string explicitly; invalid values remain evaluator errors.',path:path.concat('to_integer'),operation:'to_integer',operationPath:path,controls:[]}];
+  }
+  if('input' in expr)return [{title:'Use Assessment Input',note:'Read a policy-bound Input; the editor never invents a binding or default.',path:path.concat('input'),operation:'input',operationPath:path,controls:[]}];
+  if('time_difference' in expr){
+    const source=expr.time_difference||{}; const operands=Array.isArray(source.values)?source.values:[];
+    return [...operands.flatMap((operand,index)=>variablePlan(operand,path.concat('time_difference','values',index),depth+1)),
+      {title:'Compute time difference',note:'Return integer seconds using the authored OVAL-compatible format and operand arity.',path:path.concat('time_difference'),operation:'time_difference',operationPath:path,controls:[path.concat('time_difference','format_1'),path.concat('time_difference','format_2')]}];
+  }
+  if('count' in expr)return [...variablePlan(expr.count,path.concat('count'),depth+1),{title:'Count values',note:'Count the produced population, including duplicates; non-success statuses remain explicit.',path:path.concat('count'),operation:'count',operationPath:path,controls:[]}];
+  if('split' in expr){const source=expr.split||{};return [...variablePlan(source.value,path.concat('split','value'),depth+1),{title:'Split values',note:'Split each string using the explicit literal delimiter.',path:path.concat('split'),operation:'split',operationPath:path,controls:[path.concat('split','delimiter')]}];}
+  if('substring' in expr){const source=expr.substring||{};return [...variablePlan(source.value,path.concat('substring','value'),depth+1),{title:'Extract substring',note:'Apply the authored signed start and length boundaries.',path:path.concat('substring'),operation:'substring',operationPath:path,controls:[path.concat('substring','substring_start'),path.concat('substring','substring_length')]}];}
+  if('arithmetic' in expr){const source=expr.arithmetic||{};const operands=Array.isArray(source.values)?source.values:[];return [...operands.flatMap((operand,index)=>variablePlan(operand,path.concat('arithmetic','values',index),depth+1)),{title:'Calculate numeric values',note:'Apply the explicit add or multiply operation over ordered populations.',path:path.concat('arithmetic'),operation:'arithmetic',operationPath:path,controls:[path.concat('arithmetic','arithmetic_operation')]}];}
+  if('begin' in expr){const source=expr.begin||{};return [...variablePlan(source.value,path.concat('begin','value'),depth+1),{title:'Apply begin boundary',note:'Ensure each value has the authored leading character.',path:path.concat('begin'),operation:'begin',operationPath:path,controls:[path.concat('begin','character')]}];}
+  if('end' in expr){const source=expr.end||{};return [...variablePlan(source.value,path.concat('end','value'),depth+1),{title:'Apply end boundary',note:'Ensure each value has the authored trailing character.',path:path.concat('end'),operation:'end',operationPath:path,controls:[path.concat('end','character')]}];}
   if('concat' in expr){
     const operands=Array.isArray(expr.concat)?expr.concat:[];
     const before=operands.flatMap((operand,index)=>(operand&&typeof operand==='object'&&'literal' in operand)?[]:variablePlan(operand,path.concat('concat',index),depth+1));

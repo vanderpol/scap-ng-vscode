@@ -18,7 +18,7 @@
 - 1920×1080 revised host screenshot: `docs/evidence/issue-44-revised-host-1920x1080.png`
 - Previous host screenshot: `docs/evidence/issue-44-graphical-host-1920x1080.png`
 - The Issue #27 corpus was used as an external read-only shape/performance inventory. The VM-local Stage A pin reports 65 streams, 4,524 current automated YAML Assessments, 268 documents with Variables, 598 with Filters and 379 with Sets. The editor model opened all 4,524 without parse/model failures in 60.4s (136,322 scalar properties; maximum 410 in one document).
-- Issue #27 corpus schema pin (`7354a24cdbfe18321153ccaef5d772801a10cd71`) differs from this checkout's editor profile pin (`cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`); it is not promoted to the editor's qualified sample library.
+- Issue #27 corpus schema pin (`7354a24cdbfe18321153ccaef5d772801a10cd71`) differs from this checkout's editor profile pin (`f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2`); it is not promoted to the editor's qualified sample library.
 
 ## Automated results
 

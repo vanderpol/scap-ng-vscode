@@ -547,6 +547,18 @@ function variableExpressionTemplate(operation: string, assessment: any, variable
     case 'literal': return { literal: '' };
     case 'variable': return { variable: otherVariable };
     case 'values': return { values: { object: objectRef, field: 'value' } };
+    case 'input': {
+      const inputId = Object.keys(assessment?.inputs ?? {})[0] || 'example-input';
+      return { input: inputId };
+    }
+    case 'to_integer': return { to_integer: { literal: '' } };
+    case 'time_difference': return { time_difference: { values: [{ literal: '' }] } };
+    case 'count': return { count: { literal: [] } };
+    case 'split': return { split: { delimiter: ',', value: { literal: '' } } };
+    case 'substring': return { substring: { substring_start: 1, substring_length: 1, value: { literal: '' } } };
+    case 'arithmetic': return { arithmetic: { arithmetic_operation: 'add', values: [{ literal: 0 }, { literal: 0 }] } };
+    case 'begin': return { begin: { character: '/', value: { literal: '' } } };
+    case 'end': return { end: { character: '/', value: { literal: '' } } };
     case 'concat': return { concat: [{ literal: '' }, { literal: '' }] };
     case 'regex_capture': return { regex_capture: { pattern: '(.*)', value: { literal: '' } } };
     case 'unique': return { unique: { literal: [] } };

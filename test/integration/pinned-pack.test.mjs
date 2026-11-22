@@ -42,7 +42,7 @@ test('adopted optional Input guard shape preserves source without inventing bind
 });
 
 test('all 100 mappings and every annotated location resolve offline with valid suggestions',()=>{
- assert.equal(Object.keys(pack.manifest.capabilities).length,100);
+ assert.equal(Object.keys(pack.manifest.capabilities).length,101);
  const ids=new Set();let count=0;
  for(const resource of pack.manifest.resources.filter(r=>r.kind==='schema')){
   const walk=(node,path='')=>{
@@ -202,7 +202,7 @@ test('schema-driven model exposes canonical Registry enum help and revision',()=
 });
 test('Variable graphical operations come only from the active native expression schema',()=>{
  const operations=variableExpressionOperations(pack).map(option=>option.value);
- assert.deepEqual(operations, ['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge']);
+ assert.deepEqual(operations, ['literal','variable','input','values','to_integer','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge']);
  assert.ok(operations.includes('count'));
  const assessment=pack.resource(base+'assessment.schema.json');
  assert.equal(assessment.properties.assessment.properties.variables.additionalProperties.$ref,'variable-expression.schema.json');
@@ -588,7 +588,7 @@ test('recursive Variable expression completion follows schema oneOf and array it
     example-variable:
       expression:
         `;
- const alternatives=['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge'];
+ const alternatives=['literal','variable','input','values','to_integer','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge'];
  assert.deepEqual(completionChoices(pack,prefix,prefix.length).map(choice=>choice.value),alternatives);
  const concat=`assessment:
   variables:

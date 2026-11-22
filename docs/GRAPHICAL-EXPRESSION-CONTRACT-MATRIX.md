@@ -1,7 +1,7 @@
 # Graphical expression contract matrix
 
 Source: pinned SCAP-NG 0.4.1 pack (`schema-profile.json`, canonical schema
-source `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`). The graphical editor uses
+source `f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2`). The graphical editor uses
 `selectorOperatorChoices`, `selectorValueChoices`, and the schema-derived
 `selectorValueSourceChoices` from the same completion layer as native YAML.
 
