@@ -104,6 +104,23 @@ test('OpenAI-compatible JSON mode falls back when a gateway rejects response_for
   } finally { globalThis.fetch = original; }
 });
 
+test('OpenAI-compatible JSON mode retries an acknowledged empty stream without the optional hint', async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) return { ok: true, status: 200, text: async () => 'data: {\"choices\":[{\"delta\":{}}]}\n\ndata: [DONE]\n' };
+    return { ok: true, status: 200, text: async () => 'data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"generated_mode\\\":\\\"manual-only\\\"}\"}}]}\n\ndata: [DONE]\n' };
+  };
+  try {
+    const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
+    const result = await requestOpenAiCompatibleChat('https://api.genai.mil/v1', 'STARK_key', 'gemini-test', [{ role: 'user', content: 'user' }]);
+    assert.equal(result, '{\"generated_mode\":\"manual-only\"}');
+    assert.deepEqual(JSON.parse(requests[0].options.body).response_format, { type: 'json_object' });
+    assert.equal(JSON.parse(requests[1].options.body).response_format, undefined);
+  } finally { globalThis.fetch = original; }
+});
+
 test('OpenAI-compatible completion rejects insecure endpoints before network use', async () => {
   const { requestOpenAiCompatibleChat } = await import('../dist/ai-remote.js');
   await assert.rejects(() => requestOpenAiCompatibleChat('http://example.test/v1', 'key', 'model', []), /HTTPS/i);
