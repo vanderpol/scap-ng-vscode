@@ -9,6 +9,7 @@ test('Variable result type is inferred from native operation, never declaration 
     'typed-version-variable': {kind:'constant', expression:{literal:{datatype:'version', value:'1.02'}}},
     'count-variable': {kind:'local', expression:{count:{literal:['one','one','two']}}},
     'split-variable': {kind:'local', expression:{split:{delimiter:',',value:{literal:'a,b'}}}},
+    'to-integer-variable': {kind:'local', expression:{to_integer:{literal:{datatype:'string',value:'007'}}}},
     'numeric-variable': {kind:'constant',expression:{literal:12}},
     'unique-variable': {kind:'local',expression:{unique:{literal:[1,1,2]}}},
     'alias-variable': {kind:'local',expression:{variable:'count-variable'}},
@@ -25,6 +26,7 @@ test('Variable result type is inferred from native operation, never declaration 
   assert.equal(infer('typed-version-variable'),'version');
   assert.equal(infer('count-variable'),'integer');
   assert.equal(infer('split-variable'),'string');
+  assert.equal(infer('to-integer-variable'),'integer');
   assert.equal(infer('numeric-variable'),'integer');
   assert.equal(infer('unique-variable'),'integer');
   assert.equal(infer('alias-variable'),'integer');
@@ -45,4 +47,5 @@ test('Variable GUI selects skeleton shape from exact schema and preserves legacy
   assert.match(graphical,/\['kind','title'\]\.includes/);
   assert.match(graphical,/Explicit migration is required; this editor will not silently delete it/);
   assert.match(graphical,/inference\?\.inferredDatatype/);
+  assert.match(graphical,/to_integer/);
 });

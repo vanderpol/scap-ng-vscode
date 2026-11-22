@@ -250,6 +250,7 @@ function expressionBrief(expr){
   if('literal' in expr){const v=expr.literal&&typeof expr.literal==='object'&&!Array.isArray(expr.literal)?expr.literal.value:expr.literal;const display=Array.isArray(v)?v.join(', '):String(v??'');return 'Literal '+JSON.stringify(display.length>56?display.slice(0,53)+'…':display)}
   if('values' in expr)return 'Collected '+String(expr.values?.field||'field')+' values';
   if('regex_capture' in expr)return 'Regex capture result';
+  if('to_integer' in expr)return 'Integer conversion result';
   if('variable' in expr)return 'Variable '+String(expr.variable);
   if('concat' in expr)return 'Concatenation result';
   if('unique' in expr)return 'Unique values';
@@ -270,6 +271,10 @@ function variablePlan(expr,path,depth=0){
     const source=expr.regex_capture||{};
     return [...variablePlan(source.value,path.concat('regex_capture','value'),depth+1),
       {title:'Extract with regular expression',note:'Return the first capture group from each input value. No actual capture has been evaluated.',path:path.concat('regex_capture'),operation:'regex_capture',operationPath:path,controls:[path.concat('regex_capture','pattern')]}]
+  }
+  if('to_integer' in expr){
+    return [...variablePlan(expr.to_integer,path.concat('to_integer'),depth+1),
+      {title:'Convert decimal text to integer',note:'Parse each signed decimal string explicitly; invalid values remain evaluator errors.',path:path.concat('to_integer'),operation:'to_integer',operationPath:path,controls:[]}];
   }
   if('concat' in expr){
     const operands=Array.isArray(expr.concat)?expr.concat:[];

@@ -126,6 +126,7 @@ function expressionCardinality(expression: any, seen = new Set<any>()): Variable
   }
   if (Object.hasOwn(expression, 'variable')) return 'unknown';
   if (Object.hasOwn(expression, 'values')) return 'many';
+  if (Object.hasOwn(expression, 'to_integer')) return expressionCardinality(expression.to_integer, seen);
   if (Object.hasOwn(expression, 'concat') || Object.hasOwn(expression, 'merge')) return 'many';
   if (Object.hasOwn(expression, 'count')) return 'one';
   if (Object.hasOwn(expression, 'unique')) return expressionCardinality(expression.unique, seen);
@@ -167,7 +168,10 @@ function expressionOutputDatatype(expression: any, variables: Record<string, any
     const recursive = new Set(seen); recursive.add(payload);
     return expressionOutputDatatype(next.expression, variables, recursive);
   }
-  if (key === 'count') return 'integer';
+  if (key === 'count' || key === 'to_integer') {
+    if (key === 'count') return 'integer';
+    return expressionOutputDatatype(payload, variables, seen) === 'string' ? 'integer' : undefined;
+  }
   if (['split', 'substring', 'concat', 'regex_capture', 'begin', 'end', 'merge'].includes(key)) return 'string';
   if (key === 'unique') {
     const parts = Array.isArray(payload) ? payload : [payload];

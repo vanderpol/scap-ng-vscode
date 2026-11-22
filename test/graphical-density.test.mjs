@@ -273,6 +273,20 @@ test('Only long or semantically wide properties get full rows and multiline edit
 });
 
 
+test('Variable stages expose explicit to_integer conversion and preserve cardinality', () => {
+  const html = graphicalHtml();
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+  const start = script.indexOf('function expressionBrief(expr)');
+  const end = script.indexOf('function stepControls(step)', start);
+  const planner = new Function(script.slice(start, end) + ';return {variablePlan,expressionBrief}')();
+  const path = ['assessment','variables','decimal-variable','expression'];
+  const expression = {to_integer:{literal:{datatype:'string',value:['077','027']}}};
+  const stages = planner.variablePlan(expression, path);
+  assert.equal(planner.expressionBrief(expression), 'Integer conversion result');
+  assert.equal(stages.at(-1).operation, 'to_integer');
+  assert.deepEqual(stages.at(-1).operationPath, path);
+});
+
 test('Variable stages show collection, capture and concatenation in dependency order', () => {
   const html = graphicalHtml();
   const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];

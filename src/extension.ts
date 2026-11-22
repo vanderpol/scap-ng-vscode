@@ -547,6 +547,7 @@ function variableExpressionTemplate(operation: string, assessment: any, variable
     case 'literal': return { literal: '' };
     case 'variable': return { variable: otherVariable };
     case 'values': return { values: { object: objectRef, field: 'value' } };
+    case 'to_integer': return { to_integer: { literal: '' } };
     case 'concat': return { concat: [{ literal: '' }, { literal: '' }] };
     case 'regex_capture': return { regex_capture: { pattern: '(.*)', value: { literal: '' } } };
     case 'unique': return { unique: { literal: [] } };
