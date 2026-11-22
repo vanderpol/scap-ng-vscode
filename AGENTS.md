@@ -1,3 +1,15 @@
+## REQUIRED CLAIM-CHALLENGE REVIEW — OWNER POLICY 2026-11-22
+
+Before declaring any task **DONE**, or labeling a construct a `canonical gap`, `unsupported`, `deprecated`, or `source-invalid`, follow [canonical engineering gate #118](https://github.com/vanderpol/scap-ng/issues/118) and [the shared contract-reconciliation policy](https://github.com/vanderpol/scap-ng/blob/main/docs/engineering/CODEX-QUALITY-GATES.md):
+
+1. **Do not infer missing canonical support from a converter, RI or editor error.** Inspect exact pinned canonical JSON Schema/JSON Pointer and prose, then compare all applicable parser→lowerer→semantic-type validator→serializer→runtime/editor stages. If canonical admits it but a consumer rejects it, classify a **consumer defect**, not a language gap. Supply the source witness, schema pointer, and minimal counterexample.
+2. **Before saying complete, challenge your own claim independently** using contract-derived positive/negative/boundary witnesses, mutation that proves the test can fail, source-identity/CI pin checks and a separate read-only adversarial reviewer context when available. Test actual production entry points, not only helpers/mocks. Record defects found and fixed, exact proof levels and unqualified holds.
+3. **Build automated contract→consumer parity gates** under #118. Until executable CI exists, mark the corresponding checks **manual/advisory**, never "CI-enforced". A blocked PR blocks qualification for that PR, not continued unblocked tasks. Do not bypass mandatory checks.
+
+This is a review rule for each material PR, not permission to change the current 0.4.1 contract or weaken security/CI requirements.
+
+---
+
 ## MANDATORY ALL-TASK CODEX SELF-AUDIT — OWNER POLICY 2026-11-21
 
 Before claiming ANY SCAP-NG engineering task complete, perform an adversarial semantic self-review and correct defects: verify normative sources and actual inputs/outputs, challenge expectations independently of generators, use negative and mutation/metamorphic tests, reconcile source pins and current-head CI, and report explicit unqualified holds. A green test suite alone is not sufficient. Read and follow the shared [standing quality gates](https://github.com/vanderpol/scap-ng/blob/main/docs/engineering/CODEX-QUALITY-GATES.md). Human independent review still follows. This adds a mandatory step without superseding existing security, single-version, or prompt-mainline merge policies.
