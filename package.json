@@ -25,7 +25,8 @@
     "audit:editability": "npm run build && node scripts/audit-editability.mjs",
     "test:ai:offline": "npm run build && node scripts/ai-authoring-benchmark.mjs --offline",
     "test:ai:offline:strict": "npm run build && node scripts/ai-authoring-benchmark.mjs --offline --strict",
-    "test:ai:live": "npm run build && node scripts/ai-authoring-benchmark.mjs --live"
+    "test:ai:live": "npm run build && node scripts/ai-authoring-benchmark.mjs --live",
+    "audit:capabilities": "npm run build && node scripts/audit-capability-reconciliation.mjs"
   },
   "files": [
     "dist",

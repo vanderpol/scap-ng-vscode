@@ -2,12 +2,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MetadataPack } from '../dist/metadata.js';
 import { assessmentEditorModel } from '../dist/structured-model.js';
+import { parseDocument } from 'yaml';
 import { compareCorpusPin } from './corpus-pin.mjs';
 
 const packPath = process.env.SCAP_NG_METADATA_PACK;
 const corpusRoot = process.env.SCAP_NG_CORPUS_ROOT;
 if (!packPath || !corpusRoot) throw new Error('Set SCAP_NG_METADATA_PACK and SCAP_NG_CORPUS_ROOT explicitly.');
-const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import.meta.url)));
+const profile = JSON.parse(readFileSync(process.env.SCAP_NG_PROFILE_PATH ?? new URL('../schema-profile.json', import.meta.url)));
 const pack = new MetadataPack(resolve(packPath), profile);
 const corpusPin = compareCorpusPin(corpusRoot, pack.pin);
 const files = [];
@@ -19,7 +20,7 @@ function walk(directory) {
   }
 }
 walk(resolve(corpusRoot));
-const started = Date.now(); let ok = 0; let failed = 0; let scalarProperties = 0; let maximumProperties = 0; let variableDocuments = 0; let filterDocuments = 0; let setDocuments = 0;
+const started = Date.now(); let ok = 0; let failed = 0; let scalarProperties = 0; let maximumProperties = 0; let variableDocuments = 0; let filterDocuments = 0; let setDocuments = 0; const unsupportedFiles = []; const unsupportedCapabilities = new Set();
 for (const file of files) {
   const text = readFileSync(file, 'utf8');
   try {
@@ -29,8 +30,16 @@ for (const file of files) {
     if (/^  variables:/m.test(text)) variableDocuments++;
     if (/\bfilters\s*:/m.test(text)) filterDocuments++;
     if (/^\s+set:/m.test(text)) setDocuments++;
+    try {
+      const document = parseDocument(text).toJS();
+      const capabilities = [...new Set(Object.values(document?.assessment?.tests ?? {}).map(test => test?.capability).filter(Boolean))];
+      const unsupported = capabilities.filter(capability => !Object.hasOwn(pack.manifest.capabilities, capability));
+      unsupported.forEach(capability => unsupportedCapabilities.add(capability));
+      if (unsupported.length) unsupportedFiles.push({ file, capabilities: unsupported });
+    } catch { /* model validation already accounts for malformed YAML */ }
   } catch { failed++; }
 }
-const result = { corpusRoot: resolve(corpusRoot), files: files.length, ok, failed, scalarProperties, maximumProperties, variableDocuments, filterDocuments, setDocuments, elapsedMs: Date.now() - started, schemaProfileSourceCommit: profile.sourceCommit, corpusPin, qualification: corpusPin.verified ? 'external stress inventory; schema-pin matched; not promoted as editor sample data' : 'external stress inventory; schema pin unverified; not editor-qualified' };
+const editorQualifiedFiles = files.length - unsupportedFiles.length;
+const result = { corpusRoot: resolve(corpusRoot), files: files.length, ok, failed, scalarProperties, maximumProperties, variableDocuments, filterDocuments, setDocuments, editorQualifiedFiles, excludedExperimentalFiles: unsupportedFiles.length, unsupportedCapabilities: [...unsupportedCapabilities].sort(), unsupportedFiles, elapsedMs: Date.now() - started, schemaProfileSourceCommit: profile.sourceCommit, corpusPin, qualification: corpusPin.verified && !unsupportedFiles.length ? 'active-editor-qualified' : corpusPin.verified ? 'active-editor-qualified-subset; experimental capabilities explicitly excluded' : 'external stress inventory; schema pin unverified; not editor-qualified' };
 console.log(JSON.stringify(result, null, 2));
-if (failed || (process.env.SCAP_NG_REQUIRE_CORPUS_PIN === '1' && !corpusPin.verified)) process.exitCode = 1;
+if (failed || (process.env.SCAP_NG_REQUIRE_CORPUS_PIN === '1' && !corpusPin.verified) || (process.env.SCAP_NG_REQUIRE_ACTIVE_CORPUS === '1' && unsupportedFiles.length)) process.exitCode = 1;
