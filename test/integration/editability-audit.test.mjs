@@ -31,7 +31,7 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.schemaCoverage.allOfBranches > 0);
   assert.ok(summary.schemaCoverage.conditionalLocations > 0);
   assert.equal(summary.schemaCoverage.qualifiedOperations, 123);
-  assert.equal(summary.schemaCoverage.conditionalOperations, 2081);
+  assert.equal(summary.schemaCoverage.conditionalOperations, 2089);
   assert.equal(summary.schemaCoverage.unsupportedOperations, 0);
   assert.equal(summary.schemaCoverage.notEvidencedOperations, 4772);
   assert.equal(summary.schemaCoverage.schemaCompositionLocations, 245);

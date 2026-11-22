@@ -588,7 +588,7 @@ test('recursive Variable expression completion follows schema oneOf and array it
     example-variable:
       expression:
         `;
- const alternatives=['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge'];
+ const alternatives=['literal','variable','input','values','to_integer','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge'];
  assert.deepEqual(completionChoices(pack,prefix,prefix.length).map(choice=>choice.value),alternatives);
  const concat=`assessment:
   variables:
