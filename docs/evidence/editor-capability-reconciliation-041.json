@@ -1,0 +1,19 @@
+{
+  "format": "scap-ng-vscode/editor-capability-reconciliation-0.1",
+  "schema_version": "0.4.1",
+  "schema_commit": "d1ab0283e09369c2c734d3b8f93b65007441cf07",
+  "schema_family_sha256": "1755c893712ef30334dc7ecadc88e5abf387c2d60a75211bc2445b7cefa2e7d4",
+  "pack_manifest_sha256": "9a531bcaaf6555b50689f4ceee06fb604c7013b3ee0b544b3af9e6b9dc7ac6e1",
+  "pack_resource_identity_sha256": "0dec67789229634cbd426229f899bf68876882eaa7ebc881f275f7731b649bc5",
+  "canonical_capabilities": 105,
+  "active_editor_capabilities": 101,
+  "experimental_capabilities": 4,
+  "excluded_experimental": [
+    "esx.host_account",
+    "esx.host_advancedsetting",
+    "esx.host_service",
+    "esx.host_vib"
+  ],
+  "qualification": "active editor catalog reconciled; experimental ESX content remains proposed and separately qualified",
+  "runtime_execution": "not_run; RI #196"
+}

@@ -31,11 +31,11 @@ test('Issue #61 Phase E audit executes schema-path CRUD coverage on current fixt
   assert.ok(summary.schemaCoverage.allOfBranches > 0);
   assert.ok(summary.schemaCoverage.conditionalLocations > 0);
   assert.equal(summary.schemaCoverage.qualifiedOperations, 123);
-  assert.equal(summary.schemaCoverage.conditionalOperations, 2089);
+  assert.equal(summary.schemaCoverage.conditionalOperations, 2257);
   assert.equal(summary.schemaCoverage.unsupportedOperations, 0);
-  assert.equal(summary.schemaCoverage.notEvidencedOperations, 4778);
-  assert.equal(summary.schemaCoverage.schemaCompositionLocations, 245);
-  assert.equal(summary.schemaCoverage.schemaCompositionOperations, 490);
+  assert.equal(summary.schemaCoverage.notEvidencedOperations, 5336);
+  assert.equal(summary.schemaCoverage.schemaCompositionLocations, 313);
+  assert.equal(summary.schemaCoverage.schemaCompositionOperations, 626);
   assert.equal(summary.schemaCoverage.patternPropertyLocations, 0, 'the approved pin currently declares no patternProperties');
   assert.equal(summary.schemaCoverage.readOnlyLocations, 0, 'the approved authoring schema declares no read-only nodes');
   assert.ok(summary.schemaCoverage.operationStatuses['read:not-evidenced'] > 0);

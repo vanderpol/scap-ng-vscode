@@ -35,7 +35,7 @@ only the exact, public Git commits listed there. It creates ignored resources:
 | `.external/scap-ng-tools/` | Converter, metadata exporter and shared normalizers | Development reference; not editor implementation target |
 | `.external/scap-ng-editor-sample-data/` | Small current fixture library | Source/Structured/YAML edge cases |
 | `.external/oval-v5.12.3/` | Official, sparse OVAL XSDs | Build-time pack generation only |
-| `.external/editor-pack/` | SHA-verified 236-resource pack | Offline metadata/validation integration |
+| `.external/editor-pack/` | SHA-verified 238-resource pack | Offline metadata/validation integration |
 
 The first three checkouts are obtained by `bootstrap:deps`; OVAL and the pack
 are added by `bootstrap:pack`. All checkouts stay at detached exact commit
@@ -44,7 +44,7 @@ overwritten. To move versions, deliberately archive the old `.external`
 resources first and use reviewed replacement pins. No script silently selects
 the latest `main`.
 
-The official 0.4.1 pack is generated directly by `scap-ng-tools@f44d71463d12948372747bded6834a10814fd3e7` from the exact `scap-ng@f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2` checkout. The exporter checks the flat schema family, OVAL pin, source commit and deterministic 236-resource identity; `schema-profile.json` records the resulting manifest SHA-256. There is one supported editor grammar: SCAP-NG 0.4.1. Older 0.4.0 documents fail with an actionable version/schema diagnostic and are not rewritten.
+The official 0.4.1 pack is generated directly by `scap-ng-tools@12fdbad376a83a8a691bdb8509de36ede1480088` from the exact `scap-ng@d1ab0283e09369c2c734d3b8f93b65007441cf07` checkout. The exporter checks the flat schema family, OVAL pin, source commit and deterministic 238-resource identity; `schema-profile.json` records the resulting manifest SHA-256. There is one supported editor grammar: SCAP-NG 0.4.1. Older 0.4.0 documents fail with an actionable version/schema diagnostic and are not rewritten.
 
 `npm run verify:offline` performs no fetch. It checks all checkout commits,
 origin URLs, manifest identity and each individual pack resource checksum.
