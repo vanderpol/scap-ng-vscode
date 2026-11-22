@@ -358,3 +358,11 @@ test('Graphical Rule context shows inherited applicability from coverage without
   assert.match(extensionSource, /inheritedApplicability/);
   assert.match(extensionSource, /will not replace this expression with a legacy list/);
 });
+
+test('Benchmark applicability view exposes clickable condition and Rule linkages', () => {
+  assert.match(extensionSource, /Applicability linkages/);
+  assert.match(extensionSource, /openLinkageSource/);
+  assert.match(extensionSource, /openLinkageRule/);
+  assert.match(extensionSource, /Rules using this condition/);
+  assert.match(extensionSource, /Inherited uses come from the converter coverage sidecar/);
+});

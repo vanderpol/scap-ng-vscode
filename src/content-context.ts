@@ -121,7 +121,7 @@ function coverageLevelsForRule(index: WorkspaceIndex, packagePath: string, rule:
   const row = coverage.rules.find(candidate => candidate.artifactPaths.some(artifact => artifact.replaceAll('\\', '/').endsWith('/rules/' + jsonName)));
   return row?.levels ?? [];
 }
-function applicabilityReferences(rule: BenchmarkContextDocument): string[] {
+export function applicabilityReferences(rule: BenchmarkContextDocument): string[] {
   return [...new Set([
     ...(rule.applicability ?? []),
     ...(rule.inheritedApplicability ?? []).flatMap(level => level.conditions)
@@ -258,6 +258,18 @@ export function benchmarkApplicabilityUsage(context: BenchmarkContextSummary, as
 
 /** Compact counts for the Applicability Assessments landing page. Usage details
  * are intentionally kept out of each list row and shown on demand instead. */
+export interface BenchmarkApplicabilityConditionUsage {
+  condition?: BenchmarkContextCondition;
+  benchmark: boolean;
+  rules: readonly BenchmarkContextDocument[];
+}
+export function benchmarkApplicabilityConditionUsage(context: BenchmarkContextSummary, conditionName: string): BenchmarkApplicabilityConditionUsage {
+  const condition = context.conditions.find(item => item.name === conditionName || item.targetId === conditionName);
+  const benchmark = new Set([...context.benchmark.benchmarkApplicability ?? [], ...inheritedBenchmarkConditionNames(context)]).has(condition?.name ?? conditionName);
+  const rules = context.rules.filter(rule => applicabilityReferences(rule).some(reference => reference === conditionName || reference === condition?.name || reference === condition?.targetId));
+  return { condition, benchmark, rules };
+}
+
 export interface BenchmarkApplicabilitySummary {
   assessmentCount: number;
   benchmarkConditionCount: number;
