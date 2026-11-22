@@ -13,7 +13,7 @@ export interface ApplicabilityOption { key: string; value: string; label: string
 export interface BenchmarkProfile { id?: string; title?: string; disabledRuleCount: number; }
 export interface IndexedDocument {
   uri: string; path: string; kind: DocumentKind; id?: string; version?: string | number; title?: string;
-  mode?: string; automationDisposition?: AutomationDisposition; capabilities: readonly string[]; references: readonly AssessmentReference[]; assessmentChoices: readonly AssessmentChoiceReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
+  mode?: string; automationDisposition?: AutomationDisposition; ruleApplicability: readonly string[]; capabilities: readonly string[]; references: readonly AssessmentReference[]; assessmentChoices: readonly AssessmentChoiceReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
   diagnostics: readonly IndexDiagnostic[];
 }
 
@@ -75,12 +75,15 @@ export class WorkspaceIndex {
     let record: MutableDocument;
     const parsed = parseDocument(text, { uniqueKeys: true });
     if (parsed.errors.length) {
-      record = { uri, path, kind: 'unknown', capabilities: [], references: [], assessmentChoices: [], applicabilityConditions: [], profiles: [], sourceHash: sha256(text) };
+      record = { uri, path, kind: 'unknown', ruleApplicability: [], capabilities: [], references: [], assessmentChoices: [], applicabilityConditions: [], profiles: [], sourceHash: sha256(text) };
     } else {
       const value = parsed.toJS({ maxAliasCount: 50 }) as Record<string, any>;
       const present = roots.filter(root => object(value) && Object.hasOwn(value, root));
       const kind = present.length === 1 ? present[0] : 'unknown';
       const body = kind !== 'unknown' && object(value[kind]) ? value[kind] : {};
+      const ruleApplicability = kind === 'rule' && Array.isArray(body.applicability)
+        ? body.applicability.filter((candidate: unknown): candidate is string => typeof candidate === 'string')
+        : [];
       const references: AssessmentReference[] = [];
       const assessmentChoices: AssessmentChoiceReference[] = [];
       const applicabilityConditions: ApplicabilityCondition[] = [];
@@ -111,7 +114,7 @@ export class WorkspaceIndex {
       }
       const capabilities = kind === 'assessment' && object(body.tests) ? Object.values(body.tests).flatMap(test => object(test) && typeof test.capability === 'string' ? [test.capability] : []) : [];
       const localReferenceAnalysis = kind === 'assessment' ? analyzeAssessmentReferences(body) : undefined;
-      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: assessmentMode(body.mode), capabilities: [...new Set(capabilities)], references, assessmentChoices, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
+      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: assessmentMode(body.mode), ruleApplicability, capabilities: [...new Set(capabilities)], references, assessmentChoices, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
     }
     this.documents.set(uri, record); if (rebuild) this.rebuildDiagnostics(); return this.get(uri)!;
   }

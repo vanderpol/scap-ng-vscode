@@ -102,6 +102,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
   assert.match(extensionSource, /Open Applicability Assessments/);
   assert.match(extensionSource, /benchmarkApplicabilityAssessments/);
+  assert.match(extensionSource, /benchmarkApplicabilityUsage/);
+  assert.match(extensionSource, /openUsageRule/);
   assert.match(welcomeSource, /Analyze automation gaps/);
   assert.match(welcomeSource, /action\.dataset\.command='scapNg\.analyzeBenchmarkAutomation'/);
   assert.doesNotMatch(welcomeSource, /automation\.innerHTML=automationCardHtml/);

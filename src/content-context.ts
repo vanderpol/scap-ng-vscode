@@ -18,6 +18,7 @@ export interface BenchmarkContextDocument {
   automationStatus?: RuleAutomationStatus;
   automationAssessmentId?: string;
   manualAssessmentId?: string;
+  applicability?: readonly string[];
 }
 
 export interface BenchmarkProfileSummary extends BenchmarkProfile {}
@@ -57,7 +58,7 @@ export function packageRootForPath(value: string): string | undefined {
 }
 
 function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>): BenchmarkContextDocument {
-  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, ...ruleAutomation };
+  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, ...ruleAutomation };
 }
 
 function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
@@ -198,6 +199,13 @@ export function benchmarkApplicabilityAssessments(context: BenchmarkContextSumma
 export function benchmarkRuleAssessments(context: BenchmarkContextSummary): BenchmarkContextDocument[] {
   const ids = new Set(context.rules.flatMap(rule => [rule.automationAssessmentId, rule.manualAssessmentId]).filter(Boolean));
   return context.assessments.filter(assessment => !benchmarkApplicabilityAssessmentIds(context).has(assessment.id ?? '') && ids.has(assessment.id ?? ''));
+}
+
+export function benchmarkApplicabilityUsage(context: BenchmarkContextSummary, assessmentId: string): { conditions: BenchmarkContextCondition[]; rules: BenchmarkContextDocument[] } {
+  const conditions = context.conditions.filter(condition => condition.targetId === assessmentId);
+  const conditionKeys = new Set(conditions.flatMap(condition => [condition.name, condition.targetId]));
+  const rules = context.rules.filter(rule => (rule.applicability ?? []).some(reference => conditionKeys.has(reference) || reference === assessmentId));
+  return { conditions, rules };
 }
 
 export function benchmarkContextForKey(contexts: readonly BenchmarkContextSummary[], key: string | undefined): BenchmarkContextSummary | undefined {

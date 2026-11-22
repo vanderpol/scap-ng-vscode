@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceIndex } from '../dist/indexer.js';
-import { applicabilityForBenchmark, benchmarkApplicabilityAssessments, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, benchmarkRuleAssessments } from '../dist/content-context.js';
+import { applicabilityForBenchmark, benchmarkApplicabilityAssessments, benchmarkApplicabilityUsage, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, benchmarkRuleAssessments } from '../dist/content-context.js';
 
 const root = '/workspace/content/documents/01-product/authoring/direct-slice';
 
@@ -9,7 +9,7 @@ test('benchmark contexts group related documents by package path and preserve ar
   const index = new WorkspaceIndex();
   index.update(`${root}/benchmark.yaml`, `benchmark:\n  id: direct-slice\n  version:\n    value: 001.002.003\n  title:\n    - text: Product Benchmark\n      language: en\n  profiles:\n    - id: product-profile\n      title: Product profile\n      disabled_rules: [product-rule]\n  rules: [product-rule]\n`);
   index.update(`${root}/applicability.yaml`, `applicability:\n  id: fixture-applicability\n  conditions:\n    product-condition:\n      assessment: product-applicability-assessment\n`);
-  index.update(`${root}/rules/product-rule-rule.yaml`, `rule:\n  id: product-rule\n  title: Product rule\n  assessment_choices:\n    automated:\n      assessment: product-assessment\n`);
+  index.update(`${root}/rules/product-rule-rule.yaml`, `rule:\n  id: product-rule\n  title: Product rule\n  applicability: [product-condition]\n  assessment_choices:\n    automated:\n      assessment: product-assessment\n`);
   index.update(`${root}/assessments/product-assessment-assessment.yaml`, `assessment:\n  id: product-assessment\n  version: 1\n  assessment_title: Product assessment\n  mode: automated\n`);
   index.update(`${root}/assessments/product-applicability-assessment-assessment.yaml`, `assessment:\n  id: product-applicability-assessment\n  version: 1\n  assessment_title: Product applicability\n  mode: automated\n`);
   index.update('/workspace/content/documents/02-other/authoring/direct-slice/assessments/duplicate-assessment.yaml', `assessment:\n  id: product-applicability-assessment\n  version: 1\n  assessment_title: Other applicability\n  mode: automated\n`);
@@ -27,6 +27,7 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].assessmentCount, 1);
   assert.deepEqual(benchmarkApplicabilityAssessments(contexts[0]).map(item => item.id), ['product-applicability-assessment']);
   assert.deepEqual(benchmarkRuleAssessments(contexts[0]).map(item => item.id), ['product-assessment']);
+  assert.deepEqual(benchmarkApplicabilityUsage(contexts[0], 'product-applicability-assessment').rules.map(item => item.id), ['product-rule']);
   assert.equal(contexts[0].assessments.find(item => item.id === 'manual-assessment')?.mode, 'manual');
   assert.equal(benchmarkContextLabels(contexts).get(contexts[0].key), 'Product Benchmark — direct-slice · v001.002.003');
   assert.equal(contexts[0].conditionCount, 1);
