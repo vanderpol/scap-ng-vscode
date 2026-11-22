@@ -143,6 +143,8 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     }))).sort((left, right) => left.name.localeCompare(right.name) || left.sourcePath.localeCompare(right.sourcePath));
     const catalogUris = applicability.map(document => document.uri);
     const conditionCount = conditions.length;
+    const ruleAssessmentIds = new Set(rules.flatMap(rule => [rule.automationAssessmentId, rule.manualAssessmentId]).filter(Boolean));
+    const applicabilityAssessmentIds = new Set(conditions.map(condition => condition.targetId).filter(Boolean));
     return [{
       // A content root may contain multiple Benchmark documents. Keep the
       // root path for grouping, but use a stable per-Benchmark key for the
@@ -153,8 +155,8 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
       profiles: benchmark.profiles.map(profile => ({ ...profile })),
       catalogUris,
       ruleCount: rules.length,
-      assessmentCount: assessments.length,
-      applicabilityCount: applicability.length,
+      assessmentCount: assessments.filter(assessment => ruleAssessmentIds.has(assessment.id ?? '')).length,
+      applicabilityCount: assessments.filter(assessment => applicabilityAssessmentIds.has(assessment.id ?? '')).length,
       conditionCount,
       rules,
       assessments,
@@ -181,6 +183,21 @@ export function benchmarkContextLabels(contexts: readonly BenchmarkContextSummar
     const name = compactBenchmarkName(context.benchmark.title);
     return [context.key, [name, identity].filter(Boolean).join(' — ') || context.packagePath];
   }));
+}
+
+/** Assessment IDs referenced by the applicability catalog are separate from
+ * Rule-linked Assessments. They are shown in the Applicability Assessments
+ * view, not mixed into the Rule Assessment list. */
+export function benchmarkApplicabilityAssessmentIds(context: BenchmarkContextSummary): Set<string> {
+  return new Set(context.conditions.map(condition => condition.targetId).filter(Boolean));
+}
+export function benchmarkApplicabilityAssessments(context: BenchmarkContextSummary): BenchmarkContextDocument[] {
+  const ids = benchmarkApplicabilityAssessmentIds(context);
+  return context.assessments.filter(assessment => Boolean(assessment.id && ids.has(assessment.id)));
+}
+export function benchmarkRuleAssessments(context: BenchmarkContextSummary): BenchmarkContextDocument[] {
+  const ids = new Set(context.rules.flatMap(rule => [rule.automationAssessmentId, rule.manualAssessmentId]).filter(Boolean));
+  return context.assessments.filter(assessment => !benchmarkApplicabilityAssessmentIds(context).has(assessment.id ?? '') && ids.has(assessment.id ?? ''));
 }
 
 export function benchmarkContextForKey(contexts: readonly BenchmarkContextSummary[], key: string | undefined): BenchmarkContextSummary | undefined {

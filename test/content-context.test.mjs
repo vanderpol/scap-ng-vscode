@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceIndex } from '../dist/indexer.js';
-import { applicabilityForBenchmark, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts } from '../dist/content-context.js';
+import { applicabilityForBenchmark, benchmarkApplicabilityAssessments, benchmarkContextLabels, benchmarkContextPlatform, benchmarkContexts, benchmarkRuleAssessments } from '../dist/content-context.js';
 
 const root = '/workspace/content/documents/01-product/authoring/direct-slice';
 
@@ -24,7 +24,9 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].rules[0].automationStatus, 'automated');
   assert.equal(contexts[0].automation.automated, 1);
   assert.equal(contexts[0].automation.needsAutomation, 0);
-  assert.equal(contexts[0].assessmentCount, 3);
+  assert.equal(contexts[0].assessmentCount, 1);
+  assert.deepEqual(benchmarkApplicabilityAssessments(contexts[0]).map(item => item.id), ['product-applicability-assessment']);
+  assert.deepEqual(benchmarkRuleAssessments(contexts[0]).map(item => item.id), ['product-assessment']);
   assert.equal(contexts[0].assessments.find(item => item.id === 'manual-assessment')?.mode, 'manual');
   assert.equal(benchmarkContextLabels(contexts).get(contexts[0].key), 'Product Benchmark — direct-slice · v001.002.003');
   assert.equal(contexts[0].conditionCount, 1);
@@ -62,7 +64,7 @@ test('benchmark contexts can group a user-selected folder outside the direct-sli
   assert.equal(contexts.length, 1);
   assert.equal(contexts[0].packagePath, root);
   assert.equal(contexts[0].ruleCount, 1);
-  assert.equal(contexts[0].assessmentCount, 1);
+  assert.equal(contexts[0].assessmentCount, 0);
 });
 
 test('multiple Benchmark documents in one root have distinct selectable context keys', () => {

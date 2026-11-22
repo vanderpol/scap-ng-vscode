@@ -86,17 +86,22 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   }
   assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
   assert.match(welcomeSource, /scapNg\.openBenchmarkApplicability/);
-  assert.match(welcomeSource, /scapNg\.openBenchmarkConditions/);
+  assert.doesNotMatch(welcomeSource, /scapNg\.openBenchmarkConditions/);
   assert.match(extensionSource, /Graphical editing writes localized changes/);
   assert.match(extensionSource, /availableAssessments/);
   assert.match(extensionSource, /automationStatus/);
   assert.match(extensionSource, /Manual-only flag/);
   assert.match(extensionSource, /automationDisposition/);
   assert.match(welcomeSource, /Needs automation/);
+  assert.match(welcomeSource, /Rule Assessments/);
+  assert.match(welcomeSource, /Applicability Assessments/);
+  assert.doesNotMatch(welcomeSource, /Conditions/);
   assert.match(welcomeSource, /Likely automatable/);
   assert.match(welcomeSource, /likely-automatable/);
   assert.match(extensionSource, /likelyRuleUris/);
   assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
+  assert.match(extensionSource, /Open Applicability Assessments/);
+  assert.match(extensionSource, /benchmarkApplicabilityAssessments/);
   assert.match(welcomeSource, /Analyze automation gaps/);
   assert.match(welcomeSource, /action\.dataset\.command='scapNg\.analyzeBenchmarkAutomation'/);
   assert.doesNotMatch(welcomeSource, /automation\.innerHTML=automationCardHtml/);
@@ -170,7 +175,7 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /id="actionStatus"/);
   assert.doesNotMatch(authoringSidebarSource, /welcome-panel|welcomeGuided|welcomeBenchmark|welcomeOptions/);
   assert.match(authoringSidebarSource, /actionStatus/);
-  assert.match(extensionSource, /Automated Assessments/);
+  assert.match(extensionSource, /groupName\+' Assessments \(/);
   assert.match(extensionSource, /vscode\.openWith/);
   assert.match(extensionSource, /workbench\.action\.openView/);
   assert.match(extensionSource, /initialWorkspacePath/);
