@@ -68,8 +68,9 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
 test('Home page prioritizes Assessment navigation without redundant sidebar action', () => {
   assert.doesNotMatch(welcomeSource, /Author compliance content with confidence/);
   assert.match(welcomeSource, /SCAP-NG Home/);
-  assert.match(welcomeSource, /Open an Assessment File/);
-  assert.match(welcomeSource, /scapNg\.openAssessmentFile/);
+  assert.doesNotMatch(welcomeSource, /Open Benchmark Assessment/);
+  assert.doesNotMatch(welcomeSource, /id="openAssessmentButton"/);
+  assert.doesNotMatch(welcomeSource, /id="createStandaloneButton"/);
   assert.match(welcomeSource, /data-benchmark-section/);
   assert.match(welcomeSource, /scapNg\.openBenchmarkContext/);
   assert.doesNotMatch(welcomeSource, /source files/);
@@ -78,6 +79,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
   assert.match(extensionSource, /without an Assessment, Home is the actionable creation surface/);
   assert.match(extensionSource, /section === 'assessments'/);
   assert.doesNotMatch(welcomeSource, /Open Authoring Sidebar/);
+  assert.ok(welcomeSource.indexOf('id="contextCard"') < welcomeSource.indexOf('id="packStatus"'), 'Benchmark context status follows the selected Benchmark card');
 });
 
 test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
