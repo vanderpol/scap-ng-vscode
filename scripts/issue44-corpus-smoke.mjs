@@ -2,12 +2,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MetadataPack } from '../dist/metadata.js';
 import { assessmentEditorModel } from '../dist/structured-model.js';
+import { compareCorpusPin } from './corpus-pin.mjs';
 
 const packPath = process.env.SCAP_NG_METADATA_PACK;
 const corpusRoot = process.env.SCAP_NG_CORPUS_ROOT;
 if (!packPath || !corpusRoot) throw new Error('Set SCAP_NG_METADATA_PACK and SCAP_NG_CORPUS_ROOT explicitly.');
 const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import.meta.url)));
 const pack = new MetadataPack(resolve(packPath), profile);
+const corpusPin = compareCorpusPin(corpusRoot, pack.pin);
 const files = [];
 function walk(directory) {
   for (const name of readdirSync(directory)) {
@@ -29,6 +31,6 @@ for (const file of files) {
     if (/^\s+set:/m.test(text)) setDocuments++;
   } catch { failed++; }
 }
-const result = { corpusRoot: resolve(corpusRoot), files: files.length, ok, failed, scalarProperties, maximumProperties, variableDocuments, filterDocuments, setDocuments, elapsedMs: Date.now() - started, schemaProfileSourceCommit: profile.sourceCommit, qualification: 'external stress inventory; not promoted as editor sample data' };
+const result = { corpusRoot: resolve(corpusRoot), files: files.length, ok, failed, scalarProperties, maximumProperties, variableDocuments, filterDocuments, setDocuments, elapsedMs: Date.now() - started, schemaProfileSourceCommit: profile.sourceCommit, corpusPin, qualification: corpusPin.verified ? 'external stress inventory; schema-pin matched; not promoted as editor sample data' : 'external stress inventory; schema pin unverified; not editor-qualified' };
 console.log(JSON.stringify(result, null, 2));
-if (failed) process.exitCode = 1;
+if (failed || (process.env.SCAP_NG_REQUIRE_CORPUS_PIN === '1' && !corpusPin.verified)) process.exitCode = 1;
