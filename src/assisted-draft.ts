@@ -29,6 +29,8 @@ interface ConditionalBranch { label: string; object: Record<string, Json>; }
 interface Candidate {
   capability: string;
   object: Record<string, Json>;
+  /** Candidate has deliberately supplied a complete Object even when its fields are not selector-tagged. */
+  objectComplete?: boolean;
   fields?: Record<string, Json>;
   testCandidates?: Array<{ title: string; object?: Record<string, Json>; fields?: Record<string, Json>; presenceOnly?: boolean; itemFound?: string }>;
   conditionalBranches?: ConditionalBranch[];
@@ -37,6 +39,14 @@ interface Candidate {
   itemFound?: string;
   assumptions: string[];
   confidence: AssistedConfidence;
+  /** The source describes a relationship this single-Test generator cannot safely encode. */
+  manualOnlyReason?: string;
+  /** Candidate-specific review items, when the heuristic has an explicit caveat. */
+  review?: string[];
+  /** Explanation for the false/unknown applicability branch in a conditional Evaluate. */
+  conditionalElseReason?: string;
+  /** Optional explicit Evaluate expression built after generated Test IDs are known. */
+  evaluateExpression?: (testIds: string[]) => Json;
 }
 
 function slug(value: string, suffix: string): string {
@@ -52,6 +62,24 @@ function slug(value: string, suffix: string): string {
 function firstPlatform(pack: MetadataPack): string { return new GuidedCatalog(pack).platforms()[0]?.value ?? 'unknown'; }
 function firstClass(pack: MetadataPack): string { return new GuidedCatalog(pack).classes().find(value => value.value === 'compliance')?.value ?? new GuidedCatalog(pack).classes()[0]?.value ?? 'compliance'; }
 function cleanText(value: string | undefined): string { return (value ?? '').replace(/\r\n?/g, '\n').trim(); }
+
+/**
+ * Remove converter-added OCIL wrapper prose before using a manual procedure
+ * as automation input. The actual commands, conditions and finding criteria
+ * remain intact; this only strips known provenance boilerplate that otherwise
+ * gets copied into the generated Assessment's review comments.
+ */
+export function cleanProcedureForAutomation(value: string | undefined): string {
+  const text = cleanText(value);
+  if (!text) return '';
+  const boilerplate = [
+    /^Manual alternative preserved from the original OCIL check\. Follow the source procedure; this Assessment does not execute OCIL\.?$/i,
+    /^Complete the source OCIL procedure and record the result\.?$/i
+  ];
+  const paragraphs = text.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean);
+  const kept = paragraphs.filter(paragraph => !boilerplate.some(pattern => pattern.test(paragraph)));
+  return kept.join('\n\n').trim();
+}
 /** Recover the original source text when an author pastes a prior annotated draft back into the prompt. */
 function unwrapAssistedDraft(value: string, depth = 0): { text: string; unwrapped: boolean } {
   if (depth > 3) return { text: value, unwrapped: false };
@@ -289,6 +317,20 @@ function sysctlCandidate(text: string): Candidate | undefined {
   const parsed: Json = /^-?\d+$/.test(value) ? Number(value) : value;
   return { capability: 'unix.sysctl', object: { name: { equals: name } }, fields: { value: { equals: parsed } }, confidence: 'high', assumptions: ['Inferred a Unix sysctl Object and expected value from the sysctl command/output.'] };
 }
+function firewallFallbackCandidate(text: string): Candidate | undefined {
+  if (!/firewalld|firewall-cmd|tcpwrappers|hosts\.(?:allow|deny)/i.test(text)) return undefined;
+  if (!/systemctl\s+(?:status|is-active)\s+firewalld|firewall-cmd|tcpwrappers|hosts\.(?:allow|deny)/i.test(text)) return undefined;
+  if (!/(?:not\s+installed|not\s+active|another firewall|ask the (?:system )?administrator|SA\b|system administrator)/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: {}, presenceOnly: true, confidence: 'low',
+    manualOnlyReason: 'This procedure has ordered alternative firewall implementations (firewalld, tcpwrappers, or an SA-approved replacement) and asks the administrator to determine the applicable program and acceptable host/service policy. The current single-Test generator cannot safely encode that multi-branch applicability and organization-specific predicate.',
+    assumptions: [
+      'Detected an ordered firewalld/tcpwrappers/alternate-firewall fallback procedure.',
+      'The firewalld and tcpwrappers branches require separate applicability checks before a compliance Test can be selected.',
+      'The required hosts/services access policy is organization-specific and is not inferable from the sample output.'
+    ]
+  };
+}
 function systemdCandidate(text: string): Candidate | undefined {
   const match = text.match(/\bsystemctl\s+(is-active|is-enabled|status)\s+([A-Za-z0-9_.@-]+)/i);
   if (!match || !/(?:systemctl|service|daemon)/i.test(text)) return undefined;
@@ -435,7 +477,7 @@ function sshdCandidate(text: string): Candidate | undefined {
   const line = text.match(/(?:^|[\n;])\s*([A-Za-z][A-Za-z0-9]+)\s+([^\n;]+?)(?=\s+(?:If|and|must|is|should|$))/im);
   const commandLine = text.match(/(?:grep\s+(?:-[A-Za-z]+\s+)?["']?\^?([A-Za-z][A-Za-z0-9]+)["']?\s+[^\n]*sshd_config|sshd\s+-T[^\n]*\|[^\n]*grep[^\n]*([A-Za-z][A-Za-z0-9]+))/i);
   const name = (line?.[1] ?? commandLine?.[1] ?? commandLine?.[2])?.toLowerCase();
-  if (!name || /^(verify|if|the|this|configuration)$/.test(name)) return undefined;
+  if (!name || /^(check|confirm|if|review|run|the|this|use|verify|configuration)$/.test(name)) return undefined;
   const rawValue = line?.[2]?.trim().replace(/[.,;]+$/, '')
     ?? text.match(new RegExp(`\\b${escapeRegex(name)}\\s+(?:must\\s+be\\s+|is\\s+|set\\s+to\\s+)?["']?([A-Za-z0-9_./:-]+)`, 'i'))?.[1];
   const fields = rawValue && !/^(?:not|configured|set|present|enabled|disabled)$/i.test(rawValue) ? { value: { case_insensitive_equals: unquote(rawValue) } } : undefined;
@@ -884,27 +926,161 @@ function policyCandidate(text: string, platform?: string): Candidate | undefined
   const capability = isPassword ? 'windows.passwordpolicy' : 'windows.lockoutpolicy';
   return { capability, object: {}, fields: { [metric]: { [operation]: value } }, confidence: 'medium', assumptions: [`Inferred ${capability} and ${metric} from the policy language and numeric threshold.`] };
 }
+function sshBannerCandidate(text: string): Candidate | undefined {
+  if (!/(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?banner\b[^\n]*\/etc\/ssh\/sshd_config/i.test(text)) return undefined;
+  if (!/\/etc\/issue\b/i.test(text) || !/(?:banner|notice and consent|exactly)/i.test(text)) return undefined;
+  const issueCommand = /\b(?:cat|head|tail)\s+\/etc\/issue\b/i.exec(text);
+  if (!issueCommand || issueCommand.index === undefined) return undefined;
+  const afterCommand = text.slice(issueCommand.index + issueCommand[0].length);
+  const end = /\n\s*If\s+the\s+banner\s+text\b/i.exec(afterCommand)?.index;
+  let banner = (end === undefined ? afterCommand : afterCommand.slice(0, end)).trim();
+  banner = banner.replace(/^[“"']/, '').replace(/[”"']$/, '').trim();
+  if (banner.length < 40 || !/notice and consent|you are accessing/i.test(banner)) return undefined;
+  const linePattern = String.raw`^\s*Banner\s+(\/etc\/issue)\s*(?:#.*)?$`;
+  const exactPattern = String.raw`^\s*${banner.split(/\r?\n/).map(line => escapeRegex(line.trim())).join(String.raw`\r?\n`)}\s*$`;
+  const commonObject = {
+    ignore_case: false,
+    multiline: true,
+    singleline: false,
+    item_creation: 'all_object_elements_fullfilled',
+    filesystem: 'all'
+  } as Record<string, Json>;
+  return {
+    capability: 'independent.textfilecontent',
+    objectComplete: true,
+    object: {
+      full_path: { equals: '/etc/ssh/sshd_config' },
+      pattern: { matches_regex: linePattern },
+      instance: { greater_than_or_equal: 1 },
+      ...commonObject,
+      ignore_case: true
+    },
+    testCandidates: [
+      {
+        title: 'SSHD Banner points to /etc/issue',
+        object: {
+          full_path: { equals: '/etc/ssh/sshd_config' },
+          pattern: { matches_regex: linePattern },
+          instance: { greater_than_or_equal: 1 },
+          ...commonObject,
+          ignore_case: true
+        },
+        fields: { subexpression: { equals: '/etc/issue' } },
+        presenceOnly: false,
+        itemFound: 'one_or_more'
+      },
+      {
+        title: 'The /etc/issue banner text matches the supplied standard',
+        object: {
+          full_path: { equals: '/etc/issue' },
+          pattern: { matches_regex: exactPattern },
+          instance: { equals: 1 },
+          ...commonObject
+        },
+        presenceOnly: true,
+        itemFound: 'one_or_more'
+      }
+    ],
+    evaluate: 'and',
+    confidence: 'medium',
+    assumptions: [
+      'Detected two distinct checks: the SSHD Banner directive and the contents of /etc/issue.',
+      'Used independent.textfilecontent for both literal-file checks because the procedure supplies grep/cat evidence.',
+      'Normalized only the quotation marks surrounding the displayed banner sample; review line endings, whitespace, and the target file population.'
+    ],
+    review: [
+      'The generated regex preserves the supplied banner text but does not prove that the running SSHD uses this file through includes or an alternate -f configuration.',
+      'Confirm the banner standard, exact line endings, and whether the file may contain a final newline or approved whitespace variation.'
+    ]
+  };
+}
+
 function textFileContentCandidate(text: string): Candidate | undefined {
   const command = text.match(/\b(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?([A-Za-z][A-Za-z0-9_.-]*)\s+(\/[^\s,;:)]+)/i);
   const line = text.match(/\b([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*([A-Za-z0-9_.+-]+)/);
-  const key = command?.[1] ?? line?.[1];
+  const commandKey = command?.[1];
+  const lineWithoutEquals = commandKey
+    ? text.match(new RegExp(`^\\s*${escapeRegex(commandKey)}\\s+([^\\s#]+)`, 'im'))
+    : undefined;
+  const key = commandKey ?? line?.[1];
   const path = command?.[2] ?? text.match(/(?:^|\s)(\/(?:etc|var|usr|opt|home|root|srv)\/[A-Za-z0-9_./-]+)/)?.[1];
   if (!key || !path || !/(?:grep|egrep|text file|configuration file|config file|line)/i.test(text)) return undefined;
-  const lineValue = line?.[1] === key ? line[2] : undefined;
+  const lineValue = line?.[1] === key ? line[2] : lineWithoutEquals?.[1];
   const alternatives = new Set<string>(); if (lineValue) alternatives.add(lineValue);
   const valuePhrase = text.match(new RegExp(escapeRegex(key) + String.raw`[^.\n]{0,120}?(?:set to|value of|equals?)\s+["']?([A-Za-z0-9_.+-]+)`, 'i'))?.[1];
-  if (valuePhrase) alternatives.add(valuePhrase);
-  for (const value of text.matchAll(/\b(?:True|False|true|false|yes|no|enabled|disabled)\b/g)) alternatives.add(value[0]);
+  // A positive output line is authoritative. Do not treat a value mentioned
+  // in a later finding clause (for example, "if set to no") as an accepted
+  // value; that silently turns a negative requirement into an OR predicate.
+  if (valuePhrase && !lineValue) alternatives.add(valuePhrase);
   if (!alternatives.size) return undefined;
   const escaped = [...alternatives].map(escapeRegex);
-  const pattern = String.raw`^\s*${escapeRegex(key)}\s*=\s*(\w+)\b\s*$`;
+  const pattern = String.raw`^\s*${escapeRegex(key)}\s*(?:=|\s+)\s*(.+?)\s*$`;
   const fields = { subexpression: { matches_regex: `^(${escaped.join('|')})$` } };
   const object = {
     full_path: { equals: path }, pattern: { matches_regex: pattern }, instance: { greater_than_or_equal: 1 },
-    ignore_case: false, multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
+    ignore_case: /\bgrep\s+-[A-Za-z]*i[A-Za-z]*\b/i.test(text), multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
   } as Record<string, Json>;
-  return { capability: 'independent.textfilecontent', object, fields, confidence: lineValue ? 'high' : 'medium', assumptions: ['Inferred a text-file content Object from the command, configuration path, and key/value line.', 'Review the generated regular expression and accepted values against the original check.'] };
+  return { capability: 'independent.textfilecontent', object, fields, confidence: lineValue ? 'high' : 'medium', assumptions: ['Interpreted the command as a text-file check using the named file and setting; confirm that this matches the original requirement.', 'Review the generated regular expression and accepted values against the original check.'] };
 }
+function postconfCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(postconf\s+-n\s+([A-Za-z0-9_]+))/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const parameter = match[2];
+  const quotedAllowed = [...text.matchAll(/["']([A-Za-z][A-Za-z0-9_-]*)["']/g)].map(item => item[1]);
+  const phraseAllowed = text.match(/entries?\s+other\s+than\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?\s+(?:and|or)\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?/i);
+  const allowed = [...new Set((phraseAllowed ? [phraseAllowed[1], phraseAllowed[2]] : quotedAllowed).filter(Boolean))];
+  if (allowed.length < 2 || !/(?:entries?|values?|parameters?).{0,80}(?:other than|anything other than|only)/i.test(text)) return undefined;
+  const token = `(?:${allowed.map(escapeRegex).join('|')})`;
+  const listPattern = String.raw`^\s*${token}(?:\s*,\s*${token})*\s*$`;
+  const objectPattern = String.raw`^\s*${escapeRegex(parameter)}\s*=\s*(.*)\s*$`;
+  return {
+    capability: 'independent.shellcommand',
+    object: shellCommandObject(command, objectPattern),
+    objectComplete: true,
+    fields: { subexpression: { matches_regex: listPattern } },
+    presenceOnly: false,
+    itemFound: 'one_or_more',
+    confidence: 'medium',
+    assumptions: [
+      `Inferred the Postfix configuration query '${command}'.`,
+      `Inferred that the '${parameter}' value may contain only: ${allowed.join(', ')}.`
+    ],
+    review: [
+      'Confirm the postconf output format, list ordering, duplicate handling, and whether whitespace or additional approved restrictions are permitted.',
+      'Confirm that the generated whole-list regular expression matches the scanner regex dialect and the target Postfix version.'
+    ]
+  };
+}
+
+function packageGatedTextFileCandidate(text: string): Candidate | undefined {
+  const packageMatch = text.match(/\b(?:yum|dnf)\s+(?:list|info)\s+(?:installed|--installed)\s+([A-Za-z0-9_.+:-]+)/i)
+    ?? text.match(/\brpm\s+-q(?:\s+--[A-Za-z-]+)?\s+([A-Za-z0-9_.+:-]+)/i);
+  if (!packageMatch || !/(?:not\s+installed|not\s+present|not\s+available)[\s\S]{0,220}(?:not\s+applicable|N\/?A)|(?:not\s+applicable|N\/?A)[\s\S]{0,220}(?:not\s+installed|not\s+present|not\s+available)/i.test(text)) return undefined;
+  const base = textFileContentCandidate(text) ?? postconfCandidate(text);
+  if (!base) return undefined;
+  const packageName = packageMatch[1];
+  const branchLabel = `${packageName} installed`;
+  return {
+    ...base,
+    testCandidates: [{
+      title: `${branchLabel}: ${base.testCandidates?.[0]?.title ?? 'configuration check'}`,
+      object: base.object,
+      fields: base.fields,
+      presenceOnly: base.presenceOnly,
+      itemFound: base.itemFound
+    }],
+    conditionalBranches: [{ label: branchLabel, object: base.object }],
+    confidence: base.confidence === 'high' ? 'medium' : base.confidence,
+    assumptions: [
+      ...base.assumptions,
+      `Detected an explicit Not Applicable branch when the '${packageName}' package is not installed.`,
+      `Created an applicability Assessment placeholder for the '${packageName} installed' condition; link it to a package-presence check before relying on this draft.`
+    ],
+    conditionalElseReason: `If the applicability Assessment does not confirm that '${packageName}' is installed, treat this Rule as Not Applicable or leave it not evaluated according to the Benchmark policy.`
+  };
+}
+
 function shellCommandCandidate(text: string): Candidate | undefined {
   const commandStart = '(?:Get-|Set-|Test-|Invoke-|Start-|Stop-|Select-|Where-|ForEach-|AuditPol\\b|auditctl\\b|ausearch\\b|aureport\\b|semanage\\b|getfacl\\b|Secedit\\b|dsquery\\b|dsmgmt\\b|netstat\\b|ss\\b|iptables\\b|nft\\b|firewall-cmd\\b|openssl\\b|kubectl\\b|systemsetup\\b|defaults\\b|launchctl\\b|dscl\\b|security\\b|profiles\\b|fdesetup\\b|nvram\\b|pwpolicy\\b|system_profiler\\b|Get-WinEvent\\b|grep\\b|egrep\\b|awk\\b|sed\\b|find\\b|cat\\b|mount\\b|gsettings\\b|yum\\b|dpkg\\b|ipadm\\b|uname\\b|pkg\\b|zypper\\b|chage\\b|logins\\b|dladm\\b|ls\\b|ps\\b|lastlogin\\b|zoneadm\\b|ufw\\b|ip\\b|postconf\\b|getent\\b|grubby\\b|nmcli\\b|getenforce\\b|pwck\\b|timedatectl\\b|authconfig\\b|df\\b|svcs\\b|projects\\b|blkid\\b|dmesg\\b|fips-mode-setup\\b|update-crypto-policies\\b|passwd\\b|opensc-tool\\b|usbguard\\b|xauth\\b|ipfstat\\b|pfctl\\b|cryptoadm\\b|sxadm\\b|dumpadm\\b|zonecfg\\b|sestatus\\b|ifconfig\\b|findmnt\\b|stat\\b|postmap\\b|systemd-analyze\\b|auditreduce\\b|nginx\\b|icacls\\b|systemctl\\b|sshd\\b|apachectl\\b|httpd\\b|nginx\\b|pfexec\\b|zonename\\b|ipadm\\b|dladm\\b|zfs\\b|zpool\\b|zoneadm\\b|zonecfg\\b|coreadm\\b|logins\\b|lastlogin\\b|gsettings\\b|yum\\b|zypper\\b|postconf\\b|firewall-cmd\\b|ufw\\b|pfctl\\b|ipfstat\\b|cryptoadm\\b|fips-mode-setup\\b|update-crypto-policies\\b|authconfig\\b|grubby\\b|nmcli\\b|dmesg\\b|findmnt\\b|systemd-analyze\\b|auditreduce\\b|auditconfig\\b|svcprop\\b|getsebool\\b|networkmanager\\b|wicked\\b|userattr\\b|xhost\\b|display\\b|routeadm\\b|rmformat\\b|zpool\\b|get-content\\b|get-childitem\\b|more\\b|cut\\b|cd\\b|appcmd\\b|Get-WebConfiguration\\b|Get-IISConfig\\b|netsh\\b|wevtutil\\b|reg\\b|sfc\\b|dism\\b|whoami\\b|tasklist\\b|query\\b|net\\b|sh\\b)';
   const quoted = text.match(new RegExp('[\"\'`](' + commandStart + '[^\"\'`\\n]*)[\"\'`]', 'i'))?.[1];
@@ -913,7 +1089,7 @@ function shellCommandCandidate(text: string): Candidate | undefined {
   if (!command) return undefined;
   const shell = /^(?:Get-|Set-|Test-|Invoke-|Start-|Stop-|Select-|Where-|ForEach-|AuditPol|dsquery|dsmgmt|Get-WinEvent)/i.test(command) ? 'powershell' : 'bash';
   const object: Record<string, Json> = { shell, command, error_if_exit_status_not_0: false, error_if_stderr_exists: false };
-  return { capability: 'independent.shellcommand', object, presenceOnly: true, confidence: quoted ? 'medium' : 'low', assumptions: ['Inferred a shell command Object from an explicitly pasted command.', 'The generated draft checks command collection only; command semantics and output predicates require author review.'] };
+  return { capability: 'independent.shellcommand', object, presenceOnly: true, confidence: quoted ? 'medium' : 'low', manualOnlyReason: 'The procedure supplied a command but no reliable output predicate; collecting command output alone would not automate the requirement.', assumptions: ['Inferred a shell command Object from an explicitly pasted command.', 'No reliable command-output predicate was inferred; the generated draft would otherwise check collection only.'] };
 }
 function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
   if (/(?:audit.*(?:cron|crontab)|crontab.*audit)/i.test(text) && /\bauditctl\b/i.test(text)) return undefined;
@@ -926,9 +1102,236 @@ function genericLinuxTextFileCandidate(text: string): Candidate | undefined {
     full_path: { equals: path }, pattern: { matches_regex: '.*' }, instance: { greater_than_or_equal: 1 },
     ignore_case: false, multiline: true, singleline: false, item_creation: 'all_object_elements_fullfilled', filesystem: 'all'
   };
-  return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern is intentionally broad; replace it with the exact requirement predicate before use.'] };
+  return { capability: 'independent.textfilecontent', object, presenceOnly: true, confidence: 'low', manualOnlyReason: 'The procedure provided a configuration path but no reliable expected pattern or field predicate; a broad text-file collection would be misleading.', assumptions: [`Inferred a text-file content collection from the command and configuration path '${path}'.`, 'The generated pattern would be intentionally broad; review the exact requirement predicate before attempting automation.'] };
 }
 
+function shellCommandObject(command: string, pattern?: string): Record<string, Json> {
+  return {
+    shell: 'bash', command, ...(pattern ? { pattern } : {}),
+    error_if_exit_status_not_0: false, error_if_stderr_exists: false
+  };
+}
+
+function graphicalDisplayCandidate(text: string): Candidate | undefined {
+  if (!/systemctl\s+get-default/i.test(text) || !/rpm\s+-qa\b/i.test(text) || !/xorg|graphical display manager/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: [
+      { title: 'Default target is multi-user.target', object: shellCommandObject('systemctl get-default', '^\\s*multi-user\\.target\\s*$'), presenceOnly: true, itemFound: 'one_or_more' },
+      { title: 'No Xorg server package is installed', object: shellCommandObject('rpm -qa | grep xorg | grep server', 'xorg.*server'), presenceOnly: true, itemFound: 'none' }
+    ],
+    assumptions: ['Inferred separate boot-target and Xorg package checks from the source procedure.'],
+    review: ['The source permits an ISSO-documented graphical-interface exception; this draft cannot encode that organizational approval.']
+  };
+}
+
+function auditRuleCandidate(text: string): Candidate | undefined {
+  if (!/\/etc\/audit\/audit\.rules\b/i.test(text) || !/\bgrep\b/i.test(text)) return undefined;
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(grep\s+(?:-[A-Za-z]+\s+)*(?:"[^"]+"|'[^']+'|\S+)\s+\/etc\/audit\/audit\.rules[^\n.;]*)/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const multiArchitecture = /arch=b32|arch=b64/i.test(command);
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: [
+      `Inferred the audit-rule inspection command '${command}'.`,
+      'Inferred that matching audit-rule output represents the required audit rule.'
+    ],
+    review: [
+      multiArchitecture
+        ? 'Confirm that every required architecture and syscall rule is present; this draft only requires command output.'
+        : 'Confirm the complete audit rule, filters, architecture, and key against the source requirement.',
+      'Confirm the effective loaded audit configuration, not only the source audit.rules file.'
+    ]
+  };
+}
+
+function awkViolationCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(awk\s+-F:\s+[^\n.;]+\s+\/(?:etc)\/(?:shadow|passwd)[^\n.;]*)/im);
+  if (!match) return undefined;
+  const source = match[1].trim();
+  const shadow = /\/etc\/shadow\b/i.test(source);
+  const uidZero = /\$3\s*==\s*0/i.test(source) && /\/etc\/passwd\b/i.test(source);
+  if (!shadow && !uidZero) return undefined;
+  const command = uidZero ? `awk -F: '$3 == 0 && $1 != "root" {print $1}' /etc/passwd` : source;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [
+      `Inferred the account-database violation scan '${command}'.`,
+      'Inferred that any command output represents a noncompliant account.'
+    ],
+    review: [
+      'Confirm exclusions for system accounts and organizational exceptions before relying on the no-output result.',
+      uidZero ? 'The generated command excludes root so only additional UID 0 accounts are findings.' : 'Confirm the awk field index and threshold against the source account-database requirement.'
+    ]
+  };
+}
+
+function promiscuousInterfaceCandidate(text: string): Candidate | undefined {
+  if (!/\bip\s+link\b/i.test(text) || !/promisc/i.test(text)) return undefined;
+  const command = 'ip link | grep -i promisc';
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command, 'promisc'),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: ['Inferred the ip-link promiscuous-mode scan from the source procedure.', 'Inferred that matching promisc output represents an unapproved finding.'],
+    review: ['The source allows an ISSO-documented exception; this draft only checks for matching interfaces and does not encode approval metadata.']
+  };
+}
+
+function auditFailureCandidate(text: string): Candidate | undefined {
+  if (!/\bauditctl\s+-s\b/i.test(text) || !/\bfailure\s+[12]\b/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject('auditctl -s | grep -i "fail"', '^\\s*failure\\s+(?:1|2)\\s*$'),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: ['Inferred the auditctl failure-action query and accepted failure values 1 or 2 from the procedure.'],
+    review: ['If failure=1 is used, verify the documented availability exception and monitoring of the kernel log; the draft cannot encode that organizational decision.']
+  };
+}
+
+function shostsEquivCandidate(text: string): Candidate | undefined {
+  if (!/shosts\.equiv/i.test(text) || !/\bfind\b/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: { filepath: { matches_regex: '(^|/)shosts\\.equiv$' } },
+    presenceOnly: true, itemFound: 'none', confidence: 'high',
+    assumptions: ['Inferred a system-wide shosts.equiv file search from the find procedure.', 'Inferred that matching files must be absent.'],
+    review: ['Confirm filesystem scope and traversal policy for the target scanner.']
+  };
+}
+
+function worldWritableDirectoryCandidate(text: string): Candidate | undefined {
+  if (!/\bfind\b/i.test(text) || !/-perm\s+-0002/i.test(text) || !/-type\s+d/i.test(text) || !/world-writable/i.test(text)) return undefined;
+  const groupOrOwner = /-gid\s+\+?999/i.test(text) ? 'group owner' : /-uid\s+\+?999/i.test(text) ? 'owner' : undefined;
+  if (!groupOrOwner) return undefined;
+  const command = `find / -xdev -type d -perm -0002 ${groupOrOwner === 'group owner' ? '-gid +999' : '-uid +999'} -print`;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [`Inferred a world-writable directory scan for non-system ${groupOrOwner}s.`, 'Inferred that command output represents a finding.'],
+    review: ['The source says to run this once per local partition; replace / with each applicable partition or confirm the scanner traversal policy.']
+  };
+}
+
+function releaseCandidate(text: string): Candidate | undefined {
+  if (!/\/etc\/redhat-release\b/i.test(text) || !/\bcat\b/i.test(text)) return undefined;
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject('cat /etc/redhat-release', '^\\s*Red Hat Enterprise Linux .*release\\s+7\\.[0-9]+'),
+    presenceOnly: true, itemFound: 'one_or_more', confidence: 'medium',
+    assumptions: ['Inferred the RHEL release query from cat /etc/redhat-release and the sample output.'],
+    review: ['Confirm the supported-release boundary and lifecycle status externally; the command only identifies the installed release.']
+  };
+}
+
+function mfaCandidate(text: string): Candidate | undefined {
+  if (!/\bauthconfig\s+--test\b/i.test(text) || !/smartcard|pam_pkcs11/i.test(text)) return undefined;
+  const checks = [
+    ['authconfig --test | grep "pam_pkcs11 is enabled"', 'pam_pkcs11\\s+is\\s+enabled'],
+    ['authconfig --test | grep "smartcard removal action"', 'smartcard\\s+removal\\s+action\\s+\\S+'],
+    ['authconfig --test | grep "smartcard module"', 'smartcard\\s+module\\s+\\S+']
+  ];
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: checks.map(([command, pattern]) => ({ title: `MFA configuration: ${command}`, object: shellCommandObject(command, pattern), presenceOnly: true, itemFound: 'one_or_more' })),
+    assumptions: ['Inferred three required authconfig smartcard/MFA evidence checks from the procedure.'],
+    review: ['The source permits other AO-approved MFA mechanisms; confirm the organization uses smartcard authentication before relying on this draft.']
+  };
+}
+
+function deviceLabelCandidate(text: string): Candidate | undefined {
+  if (!/find\s+\/dev\b/i.test(text) || !/(?:device_t|unlabeled_t)/i.test(text)) return undefined;
+  const checks = [
+    ['find /dev -context *:device_t:* \\( -type c -o -type b \\) -printf "%p %Z\\n"', 'device_t'],
+    ['find /dev -context *:unlabeled_t:* \\( -type c -o -type b \\) -printf "%p %Z\\n"', 'unlabeled_t']
+  ];
+  return {
+    capability: 'independent.shellcommand', object: {}, evaluate: 'and', confidence: 'medium',
+    testCandidates: checks.map(([command, label]) => ({ title: `Device label scan: ${label}`, object: shellCommandObject(command), presenceOnly: true, itemFound: 'none' })),
+    assumptions: ['Inferred the two SELinux device-label scans from the source procedure.', 'Inferred that either command producing output represents a mislabeled device finding.'],
+    review: ['Confirm documented virtual-machine exceptions such as /dev/vmci and the complete device search scope.']
+  };
+}
+
+function sshPrivateKeyCandidate(text: string): Candidate | undefined {
+  if (!/ssh_host.*key/i.test(text) || !/\bfind\b/i.test(text) || !/0640/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: { filepath: { matches_regex: '.*/ssh_host[^/]*key$' } },
+    fields: { owner_execute: { equals: false }, group_write: { equals: false }, group_execute: { equals: false }, other_read: { equals: false }, other_write: { equals: false }, other_execute: { equals: false } },
+    confidence: 'medium', assumptions: ['Inferred an SSH private host-key file selector from the find procedure.', 'Inferred the forbidden permission bits for mode 0640 or less permissive.'],
+    review: ['Confirm that the required owner read/write bits, group ownership, and private-key path set are also enforced by the source policy.']
+  };
+}
+
+function findNoGroupCandidate(text: string): Candidate | undefined {
+  const match = text.match(/(?:^|\n|[#$]\s*)(?:(?:sudo|env)\s+)?(find\s+\/[^\n.;]*?-(nogroup|nouser)[^\n.;]*)/im);
+  if (!match) return undefined;
+  const command = match[1].trim();
+  const kind = match[2].toLowerCase() === 'nouser' ? 'owner' : 'group';
+  const filesystemType = text.match(/-fstype\s+([A-Za-z0-9_.-]+)/i)?.[1];
+  return {
+    capability: 'independent.shellcommand', object: shellCommandObject(command),
+    presenceOnly: true, itemFound: 'none', confidence: 'medium',
+    assumptions: [
+      `Inferred the find scan for files without a resolvable ${kind} from '${command}'.`,
+      'Inferred that any command output represents a finding.'
+    ],
+    review: [
+      filesystemType
+        ? `The procedure labels '${filesystemType}' as an example; replace it or broaden the command for every filesystem type required by the benchmark.`
+        : 'Confirm filesystem scope and traversal policy for the target scanner.',
+      'Confirm the scanner execution identity and account-database semantics before relying on the no-output result.'
+    ]
+  };
+}
+
+function nmcliWirelessCandidate(text: string): Candidate | undefined {
+  if (!/\bnmcli\s+(?:device|dev)\b/i.test(text) || !/(?:wireless|\bwifi\b|network interfaces?|network adapters?)/i.test(text)) return undefined;
+  const command = text.match(/\bnmcli\s+(?:device|dev)(?:\s+status)?\b/i)?.[0] ?? 'nmcli device';
+  const wirelessPattern = '^\\s*\\S+\\s+[Ww][Ii][Ff][Ii]\\s+';
+  const object = {
+    shell: 'bash', command, pattern: wirelessPattern,
+    error_if_exit_status_not_0: false, error_if_stderr_exists: false
+  } as Record<string, Json>;
+  return {
+    capability: 'independent.shellcommand',
+    objectComplete: true,
+    object,
+    // Keep the population/applicability gate separate from the technical
+    // requirement. If a wireless adapter is present, the second Test is an
+    // ordinary absence check and therefore fails when a matching row exists.
+    testCandidates: [
+      {
+        title: 'Determine whether a wireless adapter is present',
+        object,
+        fields: { stdout_line: { matches_regex: wirelessPattern } },
+        presenceOnly: false,
+        itemFound: 'one_or_more'
+      },
+      {
+        title: 'No wireless interface is configured',
+        object,
+        presenceOnly: true,
+        itemFound: 'none'
+      }
+    ],
+    evaluateExpression: testIds => ({
+      if: { test: testIds[0] },
+      then: { test: testIds[1] },
+      else: { not_applicable: { reason: 'No wireless network adapter was detected.' } }
+    }),
+    confidence: 'medium',
+    assumptions: [
+      `Inferred the nmcli wireless-interface inventory command '${command}'.`,
+      'Used a separate population Test so no-adapter systems can be Not Applicable.',
+      'Inferred that a wireless row is a technical finding; an ISSO-approved deviation is handled after the failed technical result.'
+    ],
+    review: [
+      'The source permits an ISSO-documented exception; the technical absence Test intentionally fails when a matching wireless row is found so the deviation can be recorded after evaluation.',
+      'Confirm the nmcli output format and wireless-interface predicate on the target platform.',
+      'The source command may not distinguish absent hardware from an unconfigured adapter; confirm that the population Test is an acceptable applicability proxy.'
+    ]
+  };
+}
 function rhelSemanticCandidate(text: string, platform?: string): Candidate | undefined {
   const contextual = /(?:rhel|oracle[_ -]?linux|toss)/i.test(platform ?? '');
   if (!contextual && !/(?:RHEL|Red Hat|Linux|system-auth|password-auth|auditd|SSH daemon|\bOL\s*[0-9]+)/i.test(text)) return undefined;
@@ -961,6 +1364,19 @@ function rhelSemanticCandidate(text: string, platform?: string): Candidate | und
   return undefined;
 }
 
+function interactiveInitializationOwnershipCandidate(text: string): Candidate | undefined {
+  if (!/(?:initialization files?|dot files?).*(?:owned by that user|owned by the user|owner|root)|owned by (?:that user|the user) or root/i.test(text)) return undefined;
+  if (!/\/etc\/passwd|local interactive users?|home director(?:y|ies)/i.test(text)) return undefined;
+  return {
+    capability: 'unix.file', object: {}, presenceOnly: true, confidence: 'low', manualOnlyReason:
+      'This requirement relates each user to that user’s home directory and file owner. A safe automated draft needs a native foreach/shared-Object relationship; the current single-Test best-guess generator does not encode that relationship.',
+    assumptions: [
+      'Recognized a per-user initialization-file ownership requirement from the passwd, home-directory, and owner wording.',
+      'The awk and ls commands enumerate evidence, but their output does not by itself prove the owner relationship.'
+    ]
+  };
+}
+
 function unixFileCandidate(text: string): Candidate | undefined {
   const shosts = /\.shosts\b/i.test(text) && /(?:no|not|without|find|search|exist)/i.test(text);
   const path = text.match(/(?:^|\s)(\/(?:etc|var|usr|opt|home|bin|sbin|boot|tmp|root)\/[A-Za-z0-9_./-]+)/)?.[1]
@@ -977,13 +1393,18 @@ function unixFileCandidate(text: string): Candidate | undefined {
   if (/mode\s+0*0{3,4}|mode\s+0000/i.test(text)) {
     for (const name of ['setuid','setgid','sticky','owner_read','owner_write','owner_execute','group_read','group_write','group_execute','other_read','other_write','other_execute']) fields[name] = { equals: false };
   }
-  return { capability: 'unix.file', object, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !Object.keys(fields).length, itemFound: shosts ? 'none' : undefined, confidence: Object.keys(fields).length || shosts ? 'high' : 'medium', assumptions: [shosts ? 'Inferred a Unix file search for .shosts files.' : `Inferred a Unix file Object from the absolute path '${path}'.`, ...(Object.keys(fields).length ? ['Inferred ownership or permission predicates from the requirement text.'] : ['The expected file state still needs author review; this draft checks Item presence only.'])] };
+  const needsStatePredicate = !Object.keys(fields).length && !shosts && /(?:owner|ownership|group|permission|mode|writable|executable)/i.test(text);
+  return { capability: 'unix.file', object, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !Object.keys(fields).length, itemFound: shosts ? 'none' : undefined, confidence: Object.keys(fields).length || shosts ? 'high' : 'medium', manualOnlyReason: needsStatePredicate ? 'The procedure identifies a file path but the required ownership, group, mode, or permission predicate was not safely inferred.' : undefined, assumptions: [shosts ? 'Inferred a Unix file search for .shosts files.' : `Inferred a Unix file Object from the absolute path '${path}'.`, ...(Object.keys(fields).length ? ['Inferred ownership or permission predicates from the requirement text.'] : ['The expected file state still needs author review; this draft checks Item presence only.'])] };
 }
 
-function annotation(input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
+function annotation(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): string {
   const lines = [
     '# Assisted Assessment draft — best guess only; review before use.',
-    '# Generated by the offline heuristic workflow; no AI or scanner was used.',
+    '# Generation method: offline-heuristic.',
+    '# No AI or scanner was used.',
+    `# SCAP-NG schema: ${pack.pin.schemaVersion}.`,
+    `# Canonical source commit: ${pack.pin.sourceCommit}.`,
+    `# Editor-pack manifest SHA-256: ${pack.pin.manifestSha256}.`,
     `# Confidence: ${confidence}.`,
     ...assumptions.map(value => `# Assumption: ${value}`),
     ...unresolved.map(value => `# Review needed: ${value}`),
@@ -999,7 +1420,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? textFileContentCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? sshBannerCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1014,7 +1435,7 @@ function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: 
       { value: 'no', label: 'Does not meet requirement', outcome: 'false' }
     ], allow_comment: true, allow_evidence: true }
   });
-  const notes = annotation({ title, checkText }, confidence, assumptions, unresolved);
+  const notes = annotation(pack, { title, checkText }, confidence, assumptions, unresolved);
   return { ...result, yaml: `${notes}\n${result.yaml}`, confidence, assumptions, unresolved, generatedMode: 'manual' };
 }
 
@@ -1036,16 +1457,37 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       'The draft was created as a manual procedure so no scanner semantics were invented.'
     ]);
   }
+  if (candidate.manualOnlyReason) {
+    return manualDraft(pack, { ...input, title, checkText }, candidate.confidence, [...titleAssumptions, ...candidate.assumptions], [candidate.manualOnlyReason]);
+  }
   const catalog = new GuidedCatalog(pack);
   const required = catalog.objectRequirements(candidate.capability);
   const authoredObjectFields = new Set(Object.keys(candidate.object));
-  const complete = candidate.presenceOnly || authoredObjectFields.size === 0 || required.some(branch => branch.fields.every(field => authoredObjectFields.has(field)));
+  const complete = candidate.objectComplete === true || candidate.presenceOnly || authoredObjectFields.size === 0 || required.some(branch => branch.fields.every(field => authoredObjectFields.has(field)));
   if (!complete) {
     return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], ['The inferred Object does not satisfy a complete schema-required selector branch.']);
   }
   const testCandidates = candidate.testCandidates ?? [{ title: generatedTestTitle(pack, { capability: candidate.capability, object: candidate.object, fields: candidate.fields, presenceOnly: candidate.presenceOnly }), fields: candidate.fields ?? {}, presenceOnly: candidate.presenceOnly, itemFound: candidate.itemFound }];
-  const testIds = testCandidates.map((_, index) => candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'));
+  // OVAL 5.12.3 shellcommand collection always yields one Item so stderr and
+  // exit status remain observable, even when stdout is empty or filtered out.
+  // Native absence therefore belongs on the stdout_line field, not on the
+  // Item cardinality. Keep this normalization at the generator boundary so
+  // every shellcommand heuristic gets the same safe semantics.
+  const normalizedTests = testCandidates.map(test => {
+    const requestedItemFound = test.itemFound ?? candidate.itemFound;
+    const authoredFields = test.fields ?? candidate.fields;
+    const shellCommand = candidate.capability === 'independent.shellcommand';
+    const absenceOnly = shellCommand && requestedItemFound === 'none' && Object.keys(authoredFields ?? {}).length === 0;
+    return {
+      ...test,
+      fields: absenceOnly ? { stdout_line: { values_found: 'none' } } : authoredFields,
+      presenceOnly: absenceOnly ? false : test.presenceOnly,
+      itemFound: shellCommand ? 'one_or_more' : requestedItemFound
+    };
+  });
+  const testIds = normalizedTests.map((_, index) => candidate.testCandidates ? slug(`${title.slice(0, 42)}-${index + 1}`, 'test') : slug(title, 'test'));
   const conditionalDependencies: Record<string, Json> = {};
+  const explicitEvaluate = candidate.evaluateExpression?.(testIds);
   const conditionalEvaluate = candidate.conditionalBranches?.length
     ? (() => {
       const branches = candidate.conditionalBranches;
@@ -1054,15 +1496,17 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
         conditionalDependencies[alias] = { assessment: `select-${slug(branch.label, 'applicability-assessment')}`, expected_version: 1, purpose: 'applicability' };
         return { alias, test: testIds[index], label: branch.label };
       });
-      return { if: { assessment: conditions[0].alias }, then: { test: conditions[0].test }, else_if: conditions.slice(1).map(condition => ({ if: { assessment: condition.alias }, then: { test: condition.test } })), else: { not_evaluated: { reason: `Select or create applicability Assessments for ${conditions.map(condition => condition.label).join(' and ')} before relying on this draft.` } } };
+      const expression: Record<string, Json> = { if: { assessment: conditions[0].alias }, then: { test: conditions[0].test }, else: { not_evaluated: { reason: candidate.conditionalElseReason ?? `Select or create applicability Assessments for ${conditions.map(condition => condition.label).join(' and ')} before relying on this draft.` } } };
+      if (conditions.length > 1) expression.else_if = conditions.slice(1).map(condition => ({ if: { assessment: condition.alias }, then: { test: condition.test } }));
+      return expression;
     })()
     : undefined;
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), evaluate: conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
-    tests: testCandidates.map((test, index) => ({
+    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: explicitEvaluate || conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
+    tests: normalizedTests.map((test, index) => ({
       id: testIds[index], title: test.title, capability: candidate.capability,
-      object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound ?? candidate.itemFound
+      object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound
     }))
   });
   if (generated.diagnostics.length) {
@@ -1070,8 +1514,17 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
       `The best automated guess failed pinned schema validation: ${generated.diagnostics.join('; ')}`
     ]);
   }
-  const unresolved = candidate.conditionalBranches ? [`Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.'];
+  const generatedTests = Object.values((generated.document as any)?.assessment?.tests ?? {}) as Array<Record<string, any>>;
+  const selectorlessPlaceholder = generatedTests.some(test =>
+    Object.keys(test.object ?? {}).length === 0 && Object.keys(test.require?.fields ?? {}).length === 0
+  );
+  if (selectorlessPlaceholder) {
+    return manualDraft(pack, { ...input, title, checkText }, 'low', [...titleAssumptions, ...candidate.assumptions], [
+      'The heuristic recognized the requirement but did not infer a concrete Object selector or field predicate; no empty-object automated draft was emitted.'
+    ]);
+  }
+  const unresolved = candidate.conditionalBranches ? [candidate.conditionalElseReason ?? `Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
-  const notes = annotation({ title, checkText }, candidate.confidence, assumptions, unresolved);
+  const notes = annotation(pack, { title, checkText }, candidate.confidence, assumptions, unresolved);
   return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated' };
 }

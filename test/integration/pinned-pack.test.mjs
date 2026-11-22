@@ -222,6 +222,13 @@ test('graphical operator controls resolve every Object/Require context from the 
  assert.deepEqual(selectorOperatorChoices(pack,'independent.shellcommand','exit_status',true).map(x=>x.value),[
    'equals','not_equal','case_insensitive_equals','case_insensitive_not_equal','greater_than',
    'greater_than_or_equal','less_than','less_than_or_equal','matches_regex']);
+ const textSelectors={assessment:{id:'text-selector-assessment',version:1,assessment_title:'Text selector',mode:'automated',class:'compliance',tests:{'text-selector-test':{test_title:'Text selector',capability:'independent.textfilecontent',object:{full_path:{equals:'/etc/pam.d/common-password'},pattern:{matches_regex:'^\\s*remember'},instance:{greater_than_or_equal:1}},require:{item_requirement:{items_found:'one_or_more'}}}}}};
+ for(const [field,operator] of [['full_path','equals'],['pattern','matches_regex'],['instance','greater_than_or_equal']]) assert.ok(selectorOperatorChoices(pack,'independent.textfilecontent',field,false).some(choice=>choice.value===operator),`textfilecontent ${field} should allow ${operator}`);
+ const textModel=assessmentEditorModel({getText:()=>new SourceBuffer(JSON.stringify(textSelectors)).text,version:1},pack);
+ for(const [field,operator] of [['full_path','equals'],['pattern','matches_regex'],['instance','greater_than_or_equal']]) {
+   const entry=textModel.fields.find(value=>value.path.join('.')===`assessment.tests.text-selector-test.object.${field}.${operator}`);
+   assert.ok(entry,`missing ${field}.${operator} model entry`); assert.notEqual(entry.operatorCompatible,false,`${field}.${operator} was incorrectly marked incompatible`);
+ }
  assert.deepEqual(selectorValueChoices(pack,'windows.registry','type','equals',true).map(x=>x.value),
    pack.resource(pack.manifest.capabilities['windows.registry'].mapping_uri).native.state_value_enums.type);
  const forbidden=/^(float|binary|version|ipv4|ipv6|rpm_evr|debian_evr|fileset_revision|ios_version)_/;

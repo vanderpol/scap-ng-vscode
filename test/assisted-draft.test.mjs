@@ -15,6 +15,7 @@ test('assisted registry draft is deterministic, annotated, and pinned-schema val
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.diagnostics.length, 0);
   assert.match(result.yaml, /best guess only/);
+  assert.match(result.yaml, /Generation method: offline-heuristic/);
   assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].capability, 'windows.registry');
   assert.equal(result.document.assessment.tests['prevent-lock-screen-slide-show-test'].require.fields.value.equals, 1);
   assert.deepEqual(parseDocument(result.yaml).errors, []);
@@ -26,7 +27,7 @@ test('assisted draft can infer its title and test summary from check text', () =
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.document.assessment.assessment_title, checkText);
   const test = Object.values(result.document.assessment.tests)[0];
-  assert.match(test.test_title, /^Check Read Windows Registry/);
+  assert.match(test.test_title, /^Check .*Windows Registry/);
   assert.match(result.yaml, /No Rule title was supplied/);
 });
 
@@ -124,6 +125,24 @@ test('assisted labeled Windows registry input infers hive, path, value name, typ
   assert.equal(test.require.fields.value.equals, 1);
 });
 
+test('assisted firewall fallback procedures stay manual when applicability and policy are organization-specific', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The access control program must grant or deny access to specific hosts and services.',
+    checkText: `If the "firewalld" package is not installed, ask the System Administrator (SA) if another firewall application such as iptables is installed. If an application firewall is not installed, this is a finding.
+
+Check to see if firewalld is active with systemctl status firewalld.
+
+If firewalld is not active, determine whether tcpwrappers is being used by checking /etc/hosts.allow and /etc/hosts.deny.
+
+If firewalld and tcpwrappers are not installed, configured, and active, ask the SA if another access control program is installed and active.`
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.unresolved.some(reason => /multi-branch|organization-specific|applicability/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /capability: linux\.systemdunitproperty/);
+});
+
 test('assisted common command and policy patterns stay native and schema-valid', () => {
   const cases = [
     ['unix.sysctl', 'Restrict kernel pointers', 'Run: $ sudo sysctl kernel.kptr_restrict kernel.kptr_restrict = 1'],
@@ -131,7 +150,6 @@ test('assisted common command and policy patterns stay native and schema-valid',
     ['linux.systemdunitproperty', 'Service must be active', 'Verify with: $ systemctl is-active systemd-journald active'],
     ['windows.passwordpolicy', 'Password history must be 24', 'If Enforce password history is less than 24 passwords remembered, this is a finding.'],
     ['independent.textfilecontent', 'Configuration must be enabled', 'Verify with: $ grep localpkg_gpgcheck /etc/dnf/dnf.conf localpkg_gpgcheck=1 If localpkg_gpgcheck is not set to 1 or True, this is a finding.'],
-    ['independent.shellcommand', 'Directory memberships must be reviewed', 'Open PowerShell and enter "Get-ADGroupMember -Identity EnterpriseAdmins".']
   ];
   for (const [capability, title, checkText] of cases) {
     const result = createAssistedAssessment(pack, { title, checkText });
@@ -200,10 +218,9 @@ test('assisted shell fallback preserves explicit complex command collection with
     title: 'Audit rules must be configured',
     checkText: 'Verify with: $ sudo auditctl -l | grep /etc/sudoers -w /etc/sudoers -p wa'
   });
-  assert.equal(result.generatedMode, 'automated');
-  assert.equal(result.document.assessment.tests['audit-rules-must-be-configured-test'].capability, 'independent.shellcommand');
-  assert.match(result.yaml, /command collection only/);
-  assert.deepEqual(result.document.assessment.tests['audit-rules-must-be-configured-test'].require, { item_requirement: { items_found: 'one_or_more' } });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.match(result.yaml, /no reliable output predicate|collecting command output alone/i);
 });
 
 test('assisted draft preserves a selected shared applicability dependency', () => {
@@ -276,13 +293,13 @@ test('assisted Ubuntu context maps package, audit, and password checks to native
     title: 'Ubuntu 24.04 LTS must generate audit records for uses of passwd.',
     checkText: 'Review the audit configuration for the required passwd events.'
   });
-  assert.equal(Object.values(auditDraft.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(auditDraft.generatedMode, 'manual');
   const passwordDraft = createAssistedAssessment(pack, {
     platform: 'ubuntu',
     title: 'Ubuntu 24.04 LTS must enforce password complexity requiring a numeric character.',
     checkText: 'Verify the password quality policy requires at least one numeric character.'
   });
-  assert.equal(Object.values(passwordDraft.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(passwordDraft.generatedMode, 'manual');
 });
 
 test('assisted Solaris context maps release, file, and audit checks to native capabilities', () => {
@@ -291,19 +308,19 @@ test('assisted Solaris context maps release, file, and audit checks to native ca
     title: 'The operating system must be a supported release.',
     checkText: 'Verify that the installed Solaris release is supported.'
   });
-  assert.equal(Object.values(releaseDraft.document.assessment.tests)[0].capability, 'unix.uname');
+  assert.equal(releaseDraft.generatedMode, 'manual');
   const fileDraft = createAssistedAssessment(pack, {
     platform: 'solaris',
     title: 'User .netrc files must not exist.',
     checkText: 'Search user home directories for .netrc files.'
   });
-  assert.equal(Object.values(fileDraft.document.assessment.tests)[0].capability, 'unix.file');
+  assert.equal(fileDraft.generatedMode, 'manual');
   const auditDraft = createAssistedAssessment(pack, {
     platform: 'solaris',
     title: 'The audit system must be configured to audit account creation.',
     checkText: 'Review Solaris audit configuration and verify account creation is audited.'
   });
-  assert.equal(Object.values(auditDraft.document.assessment.tests)[0].capability, 'independent.shellcommand');
+  assert.equal(auditDraft.generatedMode, 'manual');
 });
 
 test('assisted Office and Chrome contexts select the application policy collectors', () => {
@@ -312,20 +329,19 @@ test('assisted Office and Chrome contexts select the application policy collecto
     title: 'Macros must be blocked from running in Excel files from the Internet.',
     checkText: 'Verify the Office macro policy is configured as required.'
   });
-  assert.equal(office.generatedMode, 'automated');
-  assert.equal(Object.values(office.document.assessment.tests)[0].capability, 'windows.ntuser');
+  assert.equal(office.generatedMode, 'manual');
   const officeMachine = createAssistedAssessment(pack, {
     platform: 'office365',
     title: 'The Information Bar must be enabled in all Office programs.',
     checkText: 'Verify the machine-wide Office policy.'
   });
-  assert.equal(Object.values(officeMachine.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(officeMachine.generatedMode, 'manual');
   const chrome = createAssistedAssessment(pack, {
     platform: 'chrome',
     title: 'Chrome development tools must be disabled.',
     checkText: 'Verify the Chrome enterprise policy.'
   });
-  assert.equal(Object.values(chrome.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(chrome.generatedMode, 'manual');
 });
 
 test('assisted Firefox contexts distinguish registry, profile-variable, and text checks', () => {
@@ -334,19 +350,19 @@ test('assisted Firefox contexts distinguish registry, profile-variable, and text
     title: 'Firefox private browsing must be disabled.',
     checkText: 'Verify the Firefox enterprise policy.'
   });
-  assert.equal(Object.values(registry.document.assessment.tests)[0].capability, 'windows.registry');
+  assert.equal(registry.generatedMode, 'manual');
   const variable = createAssistedAssessment(pack, {
     platform: 'firefox-windows',
     title: 'Firefox must be configured to prevent JavaScript from moving or resizing windows.',
     checkText: 'Verify the Firefox profile preference.'
   });
-  assert.equal(Object.values(variable.document.assessment.tests)[0].capability, 'variable.value');
+  assert.equal(variable.generatedMode, 'manual');
   const text = createAssistedAssessment(pack, {
     platform: 'firefox-linux',
     title: 'Firefox must be configured to not automatically execute or download MIME types.',
     checkText: 'Verify the Firefox profile handler configuration.'
   });
-  assert.equal(Object.values(text.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(text.generatedMode, 'manual');
 });
 
 
@@ -356,32 +372,303 @@ test('assisted SLES context maps Linux policy families to converted native capab
     title: 'The SUSE operating system must generate audit records for all uses of the crontab command.',
     checkText: 'Verify the SLES audit rule for crontab.'
   });
-  assert.equal(Object.values(audit.document.assessment.tests)[0].capability, 'independent.textfilecontent');
+  assert.equal(audit.generatedMode, 'manual');
   const sysctl = createAssistedAssessment(pack, {
     platform: 'sles12',
     title: 'The SUSE operating system must implement kptr-restrict.',
     checkText: 'Verify the kernel sysctl value.'
   });
-  assert.equal(Object.values(sysctl.document.assessment.tests)[0].capability, 'unix.sysctl');
+  assert.equal(sysctl.generatedMode, 'manual');
   const packageCheck = createAssistedAssessment(pack, {
     platform: 'sles15',
     title: 'The SUSE operating system must not have the vsftpd package installed.',
     checkText: 'Verify that vsftpd is not installed.'
   });
-  assert.equal(Object.values(packageCheck.document.assessment.tests)[0].capability, 'linux.rpminfo');
+  assert.equal(packageCheck.generatedMode, 'manual');
 });
 
 test('assisted benchmark family context selects native collectors for obscure remaining STIGs', () => {
   const mac = createAssistedAssessment(pack, {
     platform: 'macos', title: 'The macOS system must disable Handoff.', checkText: 'Verify the macOS setting.'
   });
-  assert.equal(Object.values(mac.document.assessment.tests)[0].capability, 'independent.shellcommand');
+  assert.equal(mac.generatedMode, 'manual');
   const cisco = createAssistedAssessment(pack, {
     platform: 'cisco_ios-xe', title: 'The Cisco router must be configured to display the security banner.', checkText: 'Verify the device configuration.'
   });
-  assert.equal(Object.values(cisco.document.assessment.tests)[0].capability, 'iosxe.line');
+  assert.equal(cisco.generatedMode, 'manual');
   const iis = createAssistedAssessment(pack, {
     platform: 'iis_site', title: 'Cookies exchanged between the IIS website and the client must have cookie properties set to prohibit client-side scripts from reading the cookie data.', checkText: 'Verify the IIS site configuration.'
   });
-  assert.equal(Object.values(iis.document.assessment.tests)[0].capability, 'windows.appcmdlistconfig');
+  assert.equal(iis.generatedMode, 'manual');
+});
+
+test('automation procedure cleanup removes converter OCIL wrapper boilerplate but preserves check content', async () => {
+  const { cleanProcedureForAutomation } = await import('../dist/assisted-draft.js');
+  const source = `Manual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nComplete the source OCIL procedure and record the result.\n\nManual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nVerify the setting with:\n\n$ grep -i remember /etc/pam.d/common-password\n\nIf remember is less than 5, this is a finding.`;
+  const cleaned = cleanProcedureForAutomation(source);
+  assert.doesNotMatch(cleaned, /source OCIL|Manual alternative preserved/i);
+  assert.match(cleaned, /grep -i remember/);
+  assert.match(cleaned, /this is a finding/);
+});
+
+test('assisted interactive initialization ownership checks stay manual until foreach relationships are supported', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel9',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all local initialization files for interactive users are owned by the home directory user or root.',
+    checkText: `Verify the local initialization files of all local interactive users are owned by that user.
+
+Check the home directory assignment for all nonprivileged users on the system with the following command:
+
+# awk -F: '($3>=1000)&&($7 !~ /nologin/){print $1, $3, $6}' /etc/passwd
+
+Check the owner of all local interactive users' initialization files with the following command:
+
+# ls -al /home/smithj/.[^.]* | more
+
+If all local interactive users' initialization files are not owned by that user or root, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.unresolved.some(reason => /per-user|foreach|relationship/i.test(reason)));
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.doesNotMatch(result.yaml, /capability:\s*unix\.file/);
+});
+
+test('assisted RHEL nmcli wireless checks infer a filtered absence test and preserve exceptions', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all wireless network adapters are disabled.',
+    checkText: `Verify that there are no wireless interfaces configured on the system.
+
+This is N/A for systems that do not have wireless network adapters.
+
+Check for the presence of active wireless interfaces with the following command:
+
+# nmcli device
+DEVICE TYPE STATE
+eth0 ethernet connected
+wlp3s0 wifi disconnected
+lo loopback unmanaged
+
+If a wireless interface is configured and its use on the system is not documented with the Information System Security Officer (ISSO), this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const tests = Object.values(result.document.assessment.tests);
+  assert.equal(tests.length, 2);
+  const populationTest = tests[0];
+  const technicalTest = tests[1];
+  assert.equal(populationTest.capability, 'independent.shellcommand');
+  assert.equal(populationTest.object.command, 'nmcli device');
+  assert.match(populationTest.object.pattern, /\[Ww\].*\[Ii\].*\[Ff\].*\[Ii\]/);
+  assert.equal(populationTest.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(populationTest.require.fields.stdout_line, { matches_regex: populationTest.object.pattern });
+  assert.deepEqual(technicalTest.require.fields.stdout_line, { values_found: 'none' });
+  assert.equal(result.document.assessment.evaluate.if.test, Object.keys(result.document.assessment.tests)[0]);
+  assert.equal(result.document.assessment.evaluate.then.test, Object.keys(result.document.assessment.tests)[1]);
+  assert.ok(result.document.assessment.evaluate.else.not_applicable);
+  assert.ok(result.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /text file \(presence check\)/i);
+});
+
+test('assisted package-gated configuration checks generate an applicability branch', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The TFTP daemon must operate in secure mode if the TFTP server is required.',
+    checkText: `Verify the TFTP daemon is configured to operate in secure mode.
+
+Check to see if a TFTP server has been installed with the following commands:
+
+# yum list installed tftp-server
+tftp-server.x86_64 x.x-x.el7 rhel-7-server-rpms
+
+If a TFTP server is not installed, this is Not Applicable.
+
+If a TFTP server is installed, check for the server arguments with the following command:
+
+# grep server_args /etc/xinetd.d/tftp
+server_args = -s /var/lib/tftpboot
+
+If the "server_args" line does not have a "-s" option and a subdirectory is not assigned, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const assessment = result.document.assessment;
+  const test = Object.values(assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.ok(assessment.dependencies['applicability-tftp-server-installed']);
+  assert.equal(assessment.dependencies['applicability-tftp-server-installed'].purpose, 'applicability');
+  assert.equal(assessment.evaluate.if.assessment, 'applicability-tftp-server-installed');
+  assert.equal(assessment.evaluate.then.test, test.id ?? Object.keys(assessment.tests)[0]);
+  assert.equal(Object.hasOwn(assessment.evaluate, 'else_if'), false);
+  assert.match(assessment.evaluate.else.not_evaluated.reason, /tftp-server.*Not Applicable/i);
+  assert.deepEqual(test.require.fields.subexpression, { matches_regex: '^(-s)$' });
+  assert.ok(result.assumptions.some(reason => /applicability Assessment placeholder/i.test(reason)));
+});
+
+test('assisted package-gated postconf checks preserve applicability and allowed-list logic', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The system must prevent unrestricted mail relaying.',
+    checkText: `Verify the system is configured to prevent unrestricted mail relaying.
+
+Determine if "postfix" is installed with the following commands:
+
+# yum list installed postfix
+postfix-2.6.6-6.el7.x86_64.rpm
+
+If postfix is not installed, this is Not Applicable.
+
+If postfix is installed, determine if it is configured to reject connections from unknown or untrusted networks with the following command:
+
+# postconf -n smtpd_client_restrictions
+smtpd_client_restrictions = permit_mynetworks, reject
+
+If the "smtpd_client_restrictions" parameter contains any entries other than "permit_mynetworks" and "reject", this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const assessment = result.document.assessment;
+  const test = Object.values(assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.equal(test.object.command, 'postconf -n smtpd_client_restrictions');
+  assert.match(test.object.pattern, /smtpd_client_restrictions/);
+  assert.match(test.require.fields.subexpression.matches_regex, /permit_mynetworks/);
+  assert.match(test.require.fields.subexpression.matches_regex, /reject/);
+  assert.equal(assessment.evaluate.if.assessment, 'applicability-postfix-installed');
+  assert.equal(assessment.dependencies['applicability-postfix-installed'].purpose, 'applicability');
+  assert.equal(assessment.evaluate.then.test, Object.keys(assessment.tests)[0]);
+  assert.match(assessment.evaluate.else.not_evaluated.reason, /postfix.*Not Applicable/i);
+});
+
+test('assisted RHEL find nogroup checks preserve the command and generate an absence test', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The Red Hat Enterprise Linux operating system must be configured so that all files and directories have a valid group owner.',
+    checkText: `Verify all files and directories on the system have a valid group.
+
+Check the owner of all files and directories with the following command:
+
+# find / -fstype xfs -nogroup
+
+If any files on the system do not have an assigned group, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.shellcommand');
+  assert.equal(test.object.command, 'find / -fstype xfs -nogroup');
+  assert.equal(test.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(test.require.fields.stdout_line, { values_found: 'none' });
+  assert.ok(result.unresolved.some(reason => /example|filesystem type/i.test(reason)));
+  assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
+});
+
+test('assisted drafts refuse selectorless placeholder automation', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The operating system must enforce an unrecognized configuration policy.',
+    checkText: 'Verify the configuration and confirm the required policy is enabled.'
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.equal(Object.keys(result.document.assessment.tests ?? {}).length, 0);
+  assert.match(result.yaml, /no empty-object automated draft was emitted/i);
+  assert.doesNotMatch(result.yaml, /object:\s*\{\}/);
+});
+
+test('assisted RHEL audit, account, and graphical procedures preserve concrete command predicates', () => {
+  const audit = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The system must audit use of semanage.',
+    checkText: '# sudo grep -w "/usr/sbin/semanage" /etc/audit/audit.rules -a always,exit -F path=/usr/sbin/semanage -F perm=x -F auid>=1000'
+  });
+  assert.equal(audit.generatedMode, 'automated');
+  assert.equal(audit.confidence, 'medium');
+  const auditTest = Object.values(audit.document.assessment.tests)[0];
+  assert.equal(auditTest.capability, 'independent.shellcommand');
+  assert.match(auditTest.object.command, /semanage/);
+  assert.equal(auditTest.require.item_requirement.items_found, 'one_or_more');
+
+  const accounts = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'Accounts with an invalid shadow entry must be absent.',
+    checkText: '# awk -F: \'!$2 {print $1}\' /etc/shadow\nIf the command returns any results, this is a finding.'
+  });
+  assert.equal(accounts.generatedMode, 'automated');
+  const accountTest = Object.values(accounts.document.assessment.tests)[0];
+  assert.equal(accountTest.require.item_requirement.items_found, 'one_or_more');
+  assert.deepEqual(accountTest.require.fields.stdout_line, { values_found: 'none' });
+
+  const graphical = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'The graphical display manager must not be installed unless approved.',
+    checkText: '$ systemctl get-default\nmulti-user.target\n$ rpm -qa | grep xorg | grep server'
+  });
+  assert.equal(graphical.generatedMode, 'automated');
+  assert.equal(Object.values(graphical.document.assessment.tests).length, 2);
+  assert.ok(graphical.unresolved.some(reason => /ISSO|organizational approval/i.test(reason)));
+});
+
+test('assisted text configuration parsing preserves case-insensitive keys and multi-token values', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'SSH MAC algorithms must be FIPS-approved.',
+    checkText: '# grep -i macs /etc/ssh/sshd_config\nMACs hmac-sha2-512,hmac-sha2-256\nIf any other hashes are listed, this is a finding.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.equal(test.object.ignore_case, true);
+  assert.match(test.object.pattern.matches_regex, /\(\.\+\?\)/);
+  assert.match(test.require.fields.subexpression.matches_regex, /hmac-sha2-512/);
+});
+
+test('assisted SSH banner checks preserve both configuration and banner-content steps', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'ubuntu',
+    title: 'The Ubuntu operating system must display the Standard Mandatory DoD Notice and Consent Banner.',
+    checkText: `Check the SSH Banner with the following command:
+
+# grep -i banner /etc/ssh/sshd_config
+Banner /etc/issue
+
+Check the specified banner file to verify that it matches the Standard Mandatory DoD Notice and Consent Banner exactly:
+
+# cat /etc/issue
+
+“You are accessing a U.S. Government (USG) Information System (IS) provided for USG-authorized use only.”
+
+If the banner text does not match exactly, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'medium');
+  assert.equal(result.diagnostics.length, 0);
+  const tests = Object.values(result.document.assessment.tests);
+  assert.equal(tests.length, 2);
+  assert.ok(tests.every(test => test.capability === 'independent.textfilecontent'));
+  assert.equal(tests[0].object.full_path.equals, '/etc/ssh/sshd_config');
+  assert.equal(tests[0].require.fields.subexpression.equals, '/etc/issue');
+  assert.equal(tests[1].object.full_path.equals, '/etc/issue');
+  assert.equal(tests[0].object.filesystem, 'all');
+  assert.ok(result.unresolved.some(reason => /running SSHD|includes/i.test(reason)));
+});
+
+test('assisted SSH directive checks do not accept the explicitly noncompliant value', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'ubuntu',
+    title: 'The Ubuntu SSH daemon must prevent remote hosts from connecting to the proxy display.',
+    checkText: `Check the SSH X11UseLocalhost setting with the following command:
+
+# sudo grep -i x11uselocalhost /etc/ssh/sshd_config
+X11UseLocalhost yes
+
+If the "X11UseLocalhost" keyword is set to "no", is missing, or is commented out, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'independent.textfilecontent');
+  assert.deepEqual(test.require.fields.subexpression, { matches_regex: '^(yes)$' });
 });

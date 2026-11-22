@@ -1,17 +1,19 @@
 import { parseDocument } from 'yaml';
 import { sha256, type Json } from './metadata.js';
 import { analyzeAssessmentReferences, type AssessmentReferenceAnalysis } from './reference-graph.js';
+import type { AutomationDisposition } from './automation-metadata.js';
 
 export type DocumentKind = 'assessment' | 'rule' | 'benchmark' | 'applicability' | 'unknown';
 export type IndexDiagnosticCode = 'parse-error' | 'duplicate-id' | 'unresolved-assessment' | 'ambiguous-assessment' | 'wrong-reference-kind' | 'incompatible-version' | 'unresolved-local-reference';
 export interface IndexDiagnostic { code: IndexDiagnosticCode; message: string; uri: string; path?: string; severity: 'error' | 'warning' }
 export interface AssessmentReference { targetId: string; expectedVersion?: string | number; path: string; purpose?: 'assessment' | 'applicability'; }
+export interface AssessmentChoiceReference { choice: string; targetId: string; expectedVersion?: string | number; path: string; }
 export interface ApplicabilityCondition { name: string; targetId: string; path: string; catalogUri: string; }
 export interface ApplicabilityOption { key: string; value: string; label: string; description?: string; condition: string; assessmentId: string; expectedVersion: string | number; catalogUri: string; targetUri?: string; available: boolean; }
 export interface BenchmarkProfile { id?: string; title?: string; disabledRuleCount: number; }
 export interface IndexedDocument {
   uri: string; path: string; kind: DocumentKind; id?: string; version?: string | number; title?: string;
-  mode?: string; capabilities: readonly string[]; references: readonly AssessmentReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
+  mode?: string; automationDisposition?: AutomationDisposition; capabilities: readonly string[]; references: readonly AssessmentReference[]; assessmentChoices: readonly AssessmentChoiceReference[]; applicabilityConditions: readonly ApplicabilityCondition[]; profiles: readonly BenchmarkProfile[]; localReferenceAnalysis?: AssessmentReferenceAnalysis; sourceHash: string;
   diagnostics: readonly IndexDiagnostic[];
 }
 
@@ -32,6 +34,14 @@ function title(value: any): string | undefined {
     return entry?.text;
   }
   return undefined;
+}
+/** Normalize the two authoring modes used by Assessment choices. Unknown
+ * values remain visible for diagnostics/search, but casing and surrounding
+ * whitespace must not make a valid mode appear in the wrong picker group. */
+function assessmentMode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLocaleLowerCase();
+  return normalized || undefined;
 }
 function benchmarkProfiles(value: any): BenchmarkProfile[] {
   if (!Array.isArray(value)) return [];
@@ -56,17 +66,23 @@ export class WorkspaceIndex {
     let record: MutableDocument;
     const parsed = parseDocument(text, { uniqueKeys: true });
     if (parsed.errors.length) {
-      record = { uri, path, kind: 'unknown', capabilities: [], references: [], applicabilityConditions: [], profiles: [], sourceHash: sha256(text) };
+      record = { uri, path, kind: 'unknown', capabilities: [], references: [], assessmentChoices: [], applicabilityConditions: [], profiles: [], sourceHash: sha256(text) };
     } else {
       const value = parsed.toJS({ maxAliasCount: 50 }) as Record<string, any>;
       const present = roots.filter(root => object(value) && Object.hasOwn(value, root));
       const kind = present.length === 1 ? present[0] : 'unknown';
       const body = kind !== 'unknown' && object(value[kind]) ? value[kind] : {};
       const references: AssessmentReference[] = [];
+      const assessmentChoices: AssessmentChoiceReference[] = [];
       const applicabilityConditions: ApplicabilityCondition[] = [];
       if (kind === 'rule' && object(body.assessment_choices)) {
         for (const [choice, candidate] of Object.entries(body.assessment_choices)) {
-          if (object(candidate) && typeof candidate.assessment === 'string') references.push({ targetId: candidate.assessment, expectedVersion: version(candidate.expected_version), path: pointer(kind, 'assessment_choices', choice, 'assessment'), purpose: 'assessment' });
+          if (object(candidate) && typeof candidate.assessment === 'string') {
+            const pathToAssessment = pointer(kind, 'assessment_choices', choice, 'assessment');
+            const expectedVersion = version(candidate.expected_version);
+            assessmentChoices.push({ choice, targetId: candidate.assessment, ...(expectedVersion === undefined ? {} : { expectedVersion }), path: pathToAssessment });
+            references.push({ targetId: candidate.assessment, expectedVersion, path: pathToAssessment, purpose: 'assessment' });
+          }
         }
       }
       if (kind === 'assessment' && object(body.dependencies)) {
@@ -85,7 +101,7 @@ export class WorkspaceIndex {
       }
       const capabilities = kind === 'assessment' && object(body.tests) ? Object.values(body.tests).flatMap(test => object(test) && typeof test.capability === 'string' ? [test.capability] : []) : [];
       const localReferenceAnalysis = kind === 'assessment' ? analyzeAssessmentReferences(body) : undefined;
-      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: typeof body.mode === 'string' ? body.mode : undefined, capabilities: [...new Set(capabilities)], references, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
+      record = { uri, path, kind, id: typeof body.id === 'string' ? body.id : undefined, version: version(body.version), title: title(body.title ?? body.assessment_title ?? body.benchmark_title), mode: assessmentMode(body.mode), capabilities: [...new Set(capabilities)], references, assessmentChoices, applicabilityConditions, profiles: kind === 'benchmark' ? benchmarkProfiles(body.profiles) : [], localReferenceAnalysis, sourceHash: sha256(text) };
     }
     this.documents.set(uri, record); if (rebuild) this.rebuildDiagnostics(); return this.get(uri)!;
   }
@@ -108,6 +124,17 @@ export class WorkspaceIndex {
     return this.all();
   }
 
+  setAutomationDisposition(uri: string, disposition: AutomationDisposition | undefined) {
+    this.setAutomationDispositions(new Map([[uri, disposition]]));
+  }
+  setAutomationDispositions(values: ReadonlyMap<string, AutomationDisposition | undefined>) {
+    for (const [uri, disposition] of values) {
+      const document = this.documents.get(uri);
+      if (!document || document.kind !== 'rule') continue;
+      document.automationDisposition = disposition;
+    }
+    this.rebuildDiagnostics();
+  }
   remove(uri: string) { this.documents.delete(uri); this.rebuildDiagnostics(); }
   get(uri: string): IndexedDocument | undefined { const document = this.documents.get(uri); return document ? this.withDiagnostics(document) : undefined; }
   all(): IndexedDocument[] { return [...this.documents.values()].sort((a, b) => a.uri.localeCompare(b.uri)).map(document => this.withDiagnostics(document)); }

@@ -10,10 +10,29 @@ test('indexes logical documents and reverse Assessment usage without path identi
   index.update('file:///workspace/a.assessment.yaml', assessment('assessment-a'), '/workspace/a.assessment.yaml');
   index.update('file:///workspace/r.rule.yaml', rule('rule-r', 'assessment-a'), '/workspace/r.rule.yaml');
   assert.equal(index.find('assessment-a').length, 1);
+  assert.deepEqual(index.get('file:///workspace/r.rule.yaml').assessmentChoices, [{ choice: 'default-choice', targetId: 'assessment-a', path: '/rule/assessment_choices/default-choice/assessment' }]);
   assert.equal(index.usedBy('assessment-a')[0].id, 'rule-r');
   assert.equal(index.search('WINDOWS.REGISTRY')[0].id, 'assessment-a');
   assert.equal(index.search('a.assessment.yaml')[0].id, 'assessment-a');
   assert.equal(index.diagnostics().length, 0);
+});
+
+test('normalizes Assessment authoring modes for exact graphical choice filtering', () => {
+  const index = new WorkspaceIndex();
+  index.update('auto.assessment.yaml', `assessment:
+  id: auto
+  version: 1
+  assessment_title: Automated
+  mode: ' AUTOMATED '
+`);
+  index.update('manual.assessment.yaml', `assessment:
+  id: manual
+  version: 1
+  assessment_title: Manual
+  mode: MANUAL
+`);
+  assert.equal(index.get('auto.assessment.yaml').mode, 'automated');
+  assert.equal(index.get('manual.assessment.yaml').mode, 'manual');
 });
 
 test('reports duplicate, unresolved, wrong-kind and incompatible-version references deterministically', () => {

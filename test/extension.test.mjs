@@ -6,6 +6,7 @@ const profile = JSON.parse(readFileSync(new URL('../schema-profile.json', import
 const authoringSidebarSource = readFileSync(new URL('../src/authoring-sidebar.ts', import.meta.url), 'utf8');
 const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/welcome.ts', import.meta.url), 'utf8');
+const aiConfigurationPanelSource = readFileSync(new URL('../src/ai-configuration-panel.ts', import.meta.url), 'utf8');
 test('P0 extension manifest exposes offline Assessment Studio and exact pin descriptor', () => {
   assert.equal(packageJson.main, './dist/extension.js');
   assert.equal(packageJson.publisher, 'vanderpol');
@@ -23,6 +24,7 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openBenchmarkContext'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openWelcome'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentFile'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAiConfiguration'));
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open an Assessment File/);
   assert.doesNotMatch(packageJson.contributes.viewsWelcome[0].contents, /Open Authoring tools/);
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open SCAP-NG Home/);
@@ -38,6 +40,11 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['none', 'local', 'vscode', 'remote']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.mode'].default, 'none');
+  assert.match(packageJson.contributes.configuration.properties['scapNg.ai.mode'].description, /opt-in/i);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.model'].default, '');
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentAuthoringPrototype'));
@@ -74,7 +81,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
 });
 
 test('Benchmark counters use dedicated searchable source navigation and editable entity inspectors', () => {
-  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
+  for (const command of ['scapNg.openBenchmarkRules', 'scapNg.openBenchmarkAutomationGaps', 'scapNg.openBenchmarkLikelyAutomation', 'scapNg.analyzeBenchmarkAutomation', 'scapNg.openBenchmarkAssessments', 'scapNg.openBenchmarkApplicability', 'scapNg.openBenchmarkConditions']) {
     assert.ok(packageJson.contributes.commands.some(item => item.command === command), command);
   }
   assert.match(welcomeSource, /scapNg\.openBenchmarkRules/);
@@ -82,13 +89,47 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(welcomeSource, /scapNg\.openBenchmarkConditions/);
   assert.match(extensionSource, /Graphical editing writes localized changes/);
   assert.match(extensionSource, /availableAssessments/);
+  assert.match(extensionSource, /automationStatus/);
+  assert.match(extensionSource, /Manual-only flag/);
+  assert.match(extensionSource, /automationDisposition/);
+  assert.match(welcomeSource, /Needs automation/);
+  assert.match(welcomeSource, /Likely automatable/);
+  assert.match(welcomeSource, /likely-automatable/);
+  assert.match(extensionSource, /likelyRuleUris/);
+  assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
+  assert.match(welcomeSource, /Analyze automation gaps/);
+  assert.match(welcomeSource, /action\.dataset\.command='scapNg\.analyzeBenchmarkAutomation'/);
+  assert.doesNotMatch(welcomeSource, /automation\.innerHTML=automationCardHtml/);
+  assert.match(welcomeSource, /scapNg\.openBenchmarkAutomationGaps/);
+  assert.doesNotMatch(welcomeSource, /data-filter=\"needs-automation\"/);
+  assert.match(extensionSource, /selectedPackagePath/);
+  assert.match(extensionSource, /pathWithinIndexedRoot/);
+  assert.match(extensionSource, /benchmarkContextViewData/);
+  assert.match(extensionSource, /event\.data\.type==='contexts'/);
+  assert.match(extensionSource, /Selecting a different Benchmark must explicitly hydrate its package/);
+  assert.match(extensionSource, /Could not load the selected Benchmark content/);
+  assert.match(extensionSource, /selection page shows identity only/);
+  assert.doesNotMatch(extensionSource, /profileCount: context\.profiles\.length/);
+  assert.doesNotMatch(extensionSource, /item\.profileCount\+' profiles'/);
+  assert.match(extensionSource, /mode:name==='automated'\|\|name==='manual'\?name:undefined/);
+  assert.match(extensionSource, /if\(expectedMode&&item\?\.mode!==expectedMode\)return false/);
   assert.match(extensionSource, /Search existing Assessments by title or ID/);
+  assert.match(extensionSource, /Search applicability conditions or Assessment IDs/);
+  assert.doesNotMatch(extensionSource, /automationFilter/);
+  assert.match(extensionSource, /No Rules needing automation were found/);
+  assert.match(extensionSource, /assessmentTitle/);
   assert.match(extensionSource, /Search and add existing conditions/);
   assert.match(extensionSource, /picker-results/);
   assert.match(extensionSource, /id=\"yaml\"/);
   assert.match(extensionSource, /script-src 'nonce-scap-ng-entity-editor'/);
   assert.doesNotMatch(extensionSource, /id=\"initialFallback\"/);
   assert.match(extensionSource, /message.type === 'webviewError'/);
+  assert.match(extensionSource, /analyzeBenchmarkAutomation/);
+  assert.match(extensionSource, /withProgress/);
+  assert.match(extensionSource, /generatedMode === 'automated'/);
+  assert.match(extensionSource, /item\.automationStatus==='needs-automation'/);
+  assert.match(extensionSource, /canCreateAutomation=model\.automationDisposition!=='manual-only'/);
+  assert.match(extensionSource, /already has automation or is marked manual-only/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {
@@ -140,6 +181,56 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /On every workspace activation/);
   assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
+  assert.match(authoringSidebarSource, /id=\"aiMode\"/);
+  assert.match(authoringSidebarSource, /id=\"configureAi\"/);
+  assert.doesNotMatch(authoringSidebarSource, /id=\"aiDialog\"/);
+  assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'none\'/);
+  assert.match(authoringSidebarSource, /openAiConfiguration/);
+  assert.match(aiConfigurationPanelSource, /AI-assisted authoring configuration/);
+  assert.match(aiConfigurationPanelSource, /createWebviewPanel/);
+  assert.match(aiConfigurationPanelSource, /Safety contract/);
+  assert.match(aiConfigurationPanelSource, /Check available VS Code providers/);
+  assert.match(aiConfigurationPanelSource, /selectChatModels/);
+  assert.match(aiConfigurationPanelSource, /Store API key securely/);
+  assert.match(aiConfigurationPanelSource, /Test OpenAI-compatible gateway/);
+  assert.match(aiConfigurationPanelSource, /Query available models/);
+  assert.match(aiConfigurationPanelSource, /id=\"model\"/);
+  assert.match(aiConfigurationPanelSource, /Enter model ID manually/);
+  assert.match(aiConfigurationPanelSource, /withtools recommended/);
+  assert.match(aiConfigurationPanelSource, /provider-only.*may fail structured authoring/);
+  assert.match(aiConfigurationPanelSource, /pinned local SCAP-NG capability\/search\/validation tools/);
+  assert.match(extensionSource, /provider-only output may be less reliable/);
+  assert.match(extensionSource, /provider-format\/content failure, not a manual-only classification/);
+  assert.match(extensionSource, /provider classified this procedure as manual-only/);
+  assert.match(extensionSource, /No automated YAML was accepted because the provider response failed local validation/);
+  assert.match(extensionSource, /Disposition: '\+disposition/);
+  assert.match(extensionSource, /manual\/site-specific review was noted, but manual-only was not established/);
+  assert.match(extensionSource, /Manual-only by provider logic/);
+  assert.match(extensionSource, /Next step: Retry configured AI or generate the deterministic offline draft/);
+  assert.match(extensionSource, /Retry configured AI/);
+  assert.match(extensionSource, /Automation was not created/);
+  assert.match(extensionSource, /Show technical\/provider details/);
+  assert.match(extensionSource, /This is not a manual-only decision/);
+  assert.match(extensionSource, /AI provider responded, but its draft failed the pinned SCAP-NG 0\.4\.1 validation contract/);
+  assert.match(extensionSource, /not a token or quota failure/);
+  assert.match(extensionSource, /AI provider request did not complete/);
+  assert.match(extensionSource, /AI provider reported a quota or rate-limit error/);
+  assert.match(extensionSource, /AI quota or rate limit reached/);
+  assert.match(extensionSource, /Wait for the provider quota reset/);
+  assert.match(extensionSource, /out of tokens\/credits/);
+  assert.match(extensionSource, /Candidate generated — coverage confirmation missing/);
+  assert.match(extensionSource, /returned candidate YAML, but omitted the required procedure-coverage confirmation/);
+  assert.match(extensionSource, /Candidate YAML — review only/);
+  assert.match(extensionSource, /Rejected draft — no YAML accepted/);
+  assert.match(extensionSource, /context as any\)\.secrets/);
+  assert.match(extensionSource, /remoteApiKey/);
+  assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
+  assert.match(authoringSidebarSource, /None \(no AI\)/);
+  assert.match(authoringSidebarSource, /VS Code AI provider/);
+  assert.match(authoringSidebarSource, /Configured remote AI/);
+  assert.match(aiConfigurationPanelSource, /does not make a request/);
+  assert.match(extensionSource, /scapNg\.openAiConfiguration/);
+  assert.match(extensionSource, /scapNg\.setAiMode/);
   assert.match(authoringSidebarSource, /id=\"openHome\"/);
   assert.doesNotMatch(authoringSidebarSource, /Open native YAML beside sidebar/);
   assert.match(authoringSidebarSource, /type:'saveOptions'/);
@@ -165,6 +256,16 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(extensionSource, /id="showRelatedData"|textContent='Show all related data'/);
   assert.match(extensionSource, /Applicability \(optional; can be added later\)/);
   assert.match(extensionSource, /The copied check text drives best-guess inference/);
+  assert.match(extensionSource, /Create automated Assessment from Rule/);
+  assert.match(extensionSource, /createAutomationFromRule/);
+  assert.match(extensionSource, /ruleAutomationSeed/);
+  assert.match(extensionSource, /linkAutomatedAssessment/);
+  assert.match(extensionSource, /Create and link automated Assessment/);
+  assert.match(extensionSource, /id=\"aiProgress\"/);
+  assert.match(extensionSource, /function stopAiProgress/);
+  assert.match(extensionSource, /function render\(result\)\{stopAiProgress\(\);/);
+  assert.match(extensionSource, /manual Assessment procedure/);
+  assert.match(extensionSource, /createAutomation/);
   assert.match(extensionSource, /\$\('applicabilitySection'\)\.hidden=assisted/);
   assert.match(extensionSource, /No Benchmark root is selected/);
   assert.doesNotMatch(authoringSidebarSource, /openSettings|workbench\.action\.openSettings/);

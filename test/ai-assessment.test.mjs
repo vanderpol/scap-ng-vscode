@@ -1,0 +1,325 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { MetadataPack } from '../dist/metadata.js';
+import { createAssistedAssessment } from '../dist/assisted-draft.js';
+import { buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
+
+const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
+const validYaml = createAssistedAssessment(pack, {
+  title: 'Check the passwd file',
+  checkText: 'Verify that the file /etc/passwd is present on the system.'
+}).yaml;
+
+test('withtools model token detection is explicit and does not match similarly named models', () => {
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools-v2'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools_beta'), true);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash'), false);
+  assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withouttools'), false);
+});
+
+function response(content) {
+  return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) };
+}
+
+async function withFetch(handler, action) {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    return handler({ url: String(url), options });
+  };
+  try { return { result: await action(), requests }; }
+  finally { globalThis.fetch = original; }
+}
+
+test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and relevant capability guidance', () => {
+  const knowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), { platform: 'rhel', checkText: 'systemctl status firewalld' }));
+  assert.equal(knowledge.contract.schema_version, '0.4.1');
+  assert.equal(knowledge.contract.canonical_source_commit, JSON.parse(readFileSync('schema-profile.json', 'utf8')).sourceCommit);
+  assert.equal(knowledge.contract.editor_pack_manifest_sha256, JSON.parse(readFileSync('schema-profile.json', 'utf8')).manifestSha256);
+  assert.equal(knowledge.contract.schema_is_authoritative, true);
+  assert.equal(knowledge.contract.runtime_execution_proof, false);
+  assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  const populationKnowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), { platform: 'ubuntu', checkText: 'For each local interactive user home directory, verify file permissions and ownership from /etc/passwd.' }));
+  assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.password'));
+  assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.file'));
+  assert.ok(knowledge.schemas['capability-common.schema.json'].defs.set_expression);
+  assert.ok(knowledge.schemas['capability-common.schema.json'].defs.file_traversal);
+  assert.ok(knowledge.schemas['variable-expression.schema.json'].defs.expression);
+  assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /(?:Do not|never) emit OVAL spellings such as at_least_one/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /pattern_match is not a SCAP-NG operator/i.test(item)));
+  assert.match(knowledge.current_authoring_examples.applicability_gate_with_failure, /not_applicable/);
+  assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
+  assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /population gate|technical Test/i);
+  assert.match(knowledge.current_authoring_examples.shellcommand_existence, /field_requirement/);
+  assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /always creates an Item/);
+  // Keep the outbound prompt bounded enough for an enterprise gateway while
+  // retaining schema/mapping/history context.
+  assert.ok(JSON.stringify(knowledge).length < 250_000);
+});
+
+test('AI response parser accepts prose-wrapped JSON without accepting prose as content', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
+    assumptions: ['Wrapped response'], unresolved_questions: [], citations: []
+  });
+  const wrapped = `Here is the requested contract:
+\`\`\`json
+${payload}
+\`\`\`
+`;
+  const { result } = await withFetch(() => response(wrapped), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'wrapped-rule', title: 'Wrapped', checkText: 'Review manually.'
+  }));
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.assumptions.includes('Wrapped response'));
+});
+
+test('AI response can recover an omitted generated_mode from an explicit automated Assessment', async () => {
+  const payload = JSON.stringify({
+    confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'The provider omitted the protocol mode field.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-a', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.assumptions.some(message => /omitted generated_mode.*assessment\.mode: automated/i.test(message)));
+});
+
+test('AI response is parsed, pinned-schema validated, and remains review-only', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated',
+    confidence: 'medium',
+    assessment_yaml: validYaml,
+    assumptions: ['The file presence wording is unambiguous.'],
+    unresolved_questions: ['Confirm target filesystem visibility.'],
+    citations: ['schemas/assessment.schema.json', 'relevant_capability_mappings: unix.file'],
+    rationale: 'A native file existence check is available.',
+    coverage: {
+      applicability: 'not-needed',
+      procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }],
+      path_patterns: []
+    }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'secret-not-logged', 'model-a', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.document.assessment.mode, 'automated');
+  assert.equal(result.method, 'configured-ai');
+  assert.equal(result.provider, 'api.example.test');
+  assert.equal(result.model, 'model-a');
+  assert.match(result.yaml, /generation_method: configured-ai/);
+  assert.match(result.yaml, /model: model-a/);
+  assert.match(result.yaml, /tool_mode: not-requested/);
+  assert.equal(result.toolMode, 'not-requested');
+  assert.equal(typeof result.durationMs, 'number');
+  assert.match(result.yaml, /duration_ms:/);
+  assert.match(result.yaml, /assessment:/);
+  assert.ok(result.assumptions.includes('The file presence wording is unambiguous.'));
+  const body = JSON.parse(requests[0].options.body);
+  assert.equal(body.model, 'model-a');
+  assert.match(body.messages[0].content, /canonical_source_commit/);
+  assert.match(body.messages[0].content, /0\.4\.1/);
+  assert.doesNotMatch(body.messages[0].content, /secret-not-logged/);
+});
+
+test('malformed AI JSON and schema-invalid YAML are rejected without a usable draft', async () => {
+  const malformed = await withFetch(() => response('not json'), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'bad-rule', title: 'Bad', checkText: 'Review manually.'
+  }));
+  assert.equal(malformed.result.generatedMode, 'manual-only');
+  assert.ok(malformed.result.diagnostics.some(message => /valid JSON|correction pass/i.test(message)));
+
+  const invalid = await withFetch(() => response(JSON.stringify({ generated_mode: 'automated', confidence: 'high', assessment_yaml: 'assessment:\n  mode: automated\n', assumptions: [], unresolved_questions: [], citations: [] })), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'invalid-rule', title: 'Invalid', checkText: 'Review.'
+  }));
+  assert.equal(invalid.result.generatedMode, 'automated');
+  assert.ok(invalid.result.diagnostics.length > 0);
+  assert.equal(invalid.result.document, undefined);
+});
+
+test('manual-only AI response is preserved as a non-linkable review result', async () => {
+  const { result } = await withFetch(() => response(JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
+    assumptions: ['The procedure requires an ISSO decision.'],
+    unresolved_questions: ['Human approval branch cannot be represented safely.'],
+    citations: ['ASSISTED-ASSESSMENT-DRAFTS.md']
+  })), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'manual-rule', title: 'Manual', checkText: 'Ask the ISSO.'
+  }));
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.yaml, '');
+  assert.equal(result.document, undefined);
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.unresolved.length > 0);
+});
+
+test('AI generation fails closed before network use when no key or model is configured', async () => {
+  let called = false;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { called = true; throw new Error('network must not be used'); };
+  try {
+    const result = await createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', '', '', {
+      ruleId: 'none-rule', title: 'No provider', checkText: 'Review.'
+    });
+    assert.equal(result.generatedMode, 'manual-only');
+    assert.equal(called, false);
+    assert.match(result.diagnostics[0], /API key/i);
+  } finally { globalThis.fetch = original; }
+});
+
+test('AI drafts with partial applicability or path coverage are visibly rejected', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [],
+    unresolved_questions: ['The applicability branch is not implemented.', 'Additional conf.d/*.conf files require a complex set evaluation.'],
+    citations: [], rationale: 'Partial draft',
+    coverage: {
+      applicability: 'not-representable',
+      procedure_steps: [{ summary: 'Check configuration', represented: true, tests: ['check-file-test'] }],
+      path_patterns: [{ pattern: '/etc/sssd/conf.d/*.conf', represented: false }]
+    }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'LDAP protection', checkText: 'If LDAP is not being utilized, this is Not Applicable. Check /etc/sssd/sssd.conf and /etc/sssd/conf.d/*.conf.'
+  }));
+  assert.equal(result.confidence, 'low');
+  assert.ok(result.diagnostics.some(item => /Not Applicable|conditional branch/i.test(item)));
+  assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
+});
+
+test('AI generation performs one bounded correction pass after local rejection', async () => {
+  let calls = 0;
+  const repaired = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Corrected draft',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => {
+    calls++;
+    return response(calls === 1 ? JSON.stringify({ generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml, assumptions: [], unresolved_questions: [], citations: [] }) : repaired);
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.rationale, 'Corrected draft');
+});
+
+test('AI manual-only output remains provider-authored review state without offline content injection', async () => {
+  const wireless = `Verify that there are no wireless interfaces configured on the system.\n\nThis is N/A for systems that do not have wireless network adapters.\n\nCheck for the presence of active wireless interfaces with the following command:\n\n# nmcli device\nDEVICE TYPE STATE\neth0 ethernet connected\nwlp3s0 wifi disconnected\nlo loopback unmanaged\n\nIf a wireless interface is configured and its use on the system is not documented with the Information System Security Officer (ISSO), this is a finding.`;
+  const payload = JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '',
+    assumptions: ['The provider could not represent the wireless branch.'],
+    unresolved_questions: ['ISSO review is required.'], citations: []
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'wireless-rule', title: 'Wireless interfaces must be disabled', checkText: wireless, platform: 'rhel'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.method, 'configured-ai');
+  assert.equal(result.yaml, '');
+  assert.equal(result.document, undefined);
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.unresolved.includes('ISSO review is required.'));
+});
+
+test('withtools models fall back once when the gateway rejects tools', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Fallback draft',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  let calls = 0;
+  let persisted = false;
+  const { result, requests } = await withFetch(() => {
+    calls++;
+    if (calls <= 3) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { type: 'invalid_request_error', code: 'tools_unsupported', param: 'tools', message: 'Tools are not supported for this model.' } }) };
+    return response(payload);
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel'
+  }, { onToolsRejected: async () => { await new Promise(resolve => setTimeout(resolve, 1)); persisted = true; } }));
+  assert.equal(requests.length, 4);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(persisted, true);
+  assert.equal(result.toolMode, 'fallback-no-tools');
+  assert.match(result.toolWarning, /tools_unsupported|retried once without tools/i);
+  assert.match(result.yaml, /tool_mode: fallback-no-tools/);
+  assert.equal(JSON.parse(requests[0].options.body).tools.length, 3);
+  assert.equal(JSON.parse(requests[3].options.body).tools, undefined);
+});
+
+test('withtools models receive pinned local tools and resume after a tool result', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Tool-assisted draft',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  let calls = 0;
+  const { result, requests } = await withFetch(() => {
+    calls++;
+    if (calls === 1) return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '', tool_calls: [{ id: 'tool-1', type: 'function', function: { name: 'scap_ng_search_capabilities', arguments: JSON.stringify({ query: 'file presence', platform: 'rhel' }) } }] } }] }) };
+    return response(payload);
+  }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.tools.example.test/v1', 'key', 'gemini-3.8-flash-withtools', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.toolMode, 'local-pinned-pack');
+  assert.equal(typeof result.durationMs, 'number');
+  assert.match(result.yaml, /tool_mode: local-pinned-pack/);
+  const first = JSON.parse(requests[0].options.body);
+  const second = JSON.parse(requests[1].options.body);
+  assert.ok(first.tools.some(tool => tool.function.name === 'scap_ng_search_capabilities'));
+  assert.equal(second.messages.at(-1).role, 'tool');
+  assert.match(second.messages.at(-1).content, /unix\.file|capability/);
+});
+
+test('persisted tool rejection skips the failed tools negotiation on later requests', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Cached capability',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.cached.example/v1', 'key', 'gemini-3.8-flash-withtools', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }, { skipTools: true }));
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(requests.length, 1);
+  assert.equal(JSON.parse(requests[0].options.body).tools, undefined);
+  assert.equal(result.toolMode, 'fallback-no-tools');
+});
+
+test('provider Assessment IDs are normalized generically before correction when they exceed schema limits', async () => {
+  const longId = 'ubuntu-operating-system-inactivity-client-alive-interval-configuration-assessment-generated-by-provider';
+  const longYaml = validYaml.replace(/id: [^\n]+/, `id: ${longId}`);
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: longYaml,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.id.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.document.assessment.id, 'check-file-assessment');
+  assert.ok(result.assumptions.some(item => /normalized.*identity limit/i.test(item)));
+});

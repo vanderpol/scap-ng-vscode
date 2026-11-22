@@ -22,7 +22,10 @@
     "package:offline-bundle": "npm run package:vsix && node scripts/package-offline-bundle.mjs",
     "test:host:status": "npm run build && node scripts/status-host-probe.mjs",
     "test:corpus:graphical": "npm run build && node scripts/issue44-corpus-smoke.mjs",
-    "audit:editability": "npm run build && node scripts/audit-editability.mjs"
+    "audit:editability": "npm run build && node scripts/audit-editability.mjs",
+    "test:ai:offline": "npm run build && node scripts/ai-authoring-benchmark.mjs --offline",
+    "test:ai:offline:strict": "npm run build && node scripts/ai-authoring-benchmark.mjs --offline --strict",
+    "test:ai:live": "npm run build && node scripts/ai-authoring-benchmark.mjs --live"
   },
   "files": [
     "dist",
@@ -75,9 +78,14 @@
     "onCommand:scapNg.enterStandaloneMode",
     "onCommand:scapNg.clearBenchmarkContext",
     "onCommand:scapNg.openBenchmarkRules",
+    "onCommand:scapNg.openBenchmarkAutomationGaps",
+    "onCommand:scapNg.openBenchmarkLikelyAutomation",
     "onCommand:scapNg.openBenchmarkAssessments",
     "onCommand:scapNg.openBenchmarkApplicability",
-    "onCommand:scapNg.openBenchmarkConditions"
+    "onCommand:scapNg.openBenchmarkConditions",
+    "onCommand:scapNg.analyzeBenchmarkAutomation",
+    "onCommand:scapNg.openAiConfiguration",
+    "onCommand:scapNg.testAiAuthoring"
   ],
   "contributes": {
     "commands": [
@@ -92,6 +100,10 @@
       {
         "command": "scapNg.openAuthoringSidebar",
         "title": "SCAP-NG: Open Authoring Sidebar"
+      },
+      {
+        "command": "scapNg.openAiConfiguration",
+        "title": "SCAP-NG: Configure AI-assisted authoring"
       },
       {
         "command": "scapNg.openWelcome",
@@ -174,6 +186,18 @@
         "title": "SCAP-NG: Open Benchmark Rules"
       },
       {
+        "command": "scapNg.openBenchmarkAutomationGaps",
+        "title": "SCAP-NG: Review Rules needing automation"
+      },
+      {
+        "command": "scapNg.openBenchmarkLikelyAutomation",
+        "title": "SCAP-NG: Open likely automatable Rules"
+      },
+      {
+        "command": "scapNg.analyzeBenchmarkAutomation",
+        "title": "SCAP-NG: Analyze Benchmark automation gaps"
+      },
+      {
         "command": "scapNg.openBenchmarkAssessments",
         "title": "SCAP-NG: Open Benchmark Assessments"
       },
@@ -184,6 +208,10 @@
       {
         "command": "scapNg.openBenchmarkConditions",
         "title": "SCAP-NG: Open Benchmark Conditions"
+      },
+      {
+        "command": "scapNg.testAiAuthoring",
+        "title": "SCAP-NG: Test configured AI authoring"
       }
     ],
     "viewsContainers": {
@@ -261,6 +289,36 @@
           "default": "tree",
           "scope": "resource",
           "description": "Presentation style for newly authored SCAP-NG Object mappings. Existing YAML is never reformatted on open or save."
+        },
+        "scapNg.ai.mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "local",
+            "vscode",
+            "remote"
+          ],
+          "enumDescriptions": [
+            "Do not use AI assistance. The deterministic offline workflow remains available separately.",
+            "Use a model served by a local loopback endpoint; no internet connection is required.",
+            "Use an approved model exposed through the VS Code Language Model API when available.",
+            "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope."
+          ],
+          "default": "none",
+          "scope": "window",
+          "description": "AI assistance mode for proposing Assessment authoring changes. None is the default; AI is opt-in and never writes YAML without review."
+        },
+        "scapNg.ai.endpoint": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Optional AI endpoint. Local mode accepts loopback HTTP(S); remote mode requires HTTPS. Credentials are not stored in this setting."
+        },
+        "scapNg.ai.model": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Optional model identifier or hint. The VS Code provider will be discovered later when the Language Model API is available."
         }
       }
     },

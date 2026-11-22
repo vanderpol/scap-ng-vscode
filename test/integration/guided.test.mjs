@@ -54,8 +54,9 @@ test('guided authoring generates a native test_title when the optional summary i
     fields: { type: { equals: 'dword' } }
   });
   assert.match(title, /^Check .*Windows Registry/);
-  assert.match(title, /hive equals local_machine/);
-  assert.match(title, /type equals dword/);
+  assert.match(title, /hive = local_machine/);
+  assert.ok(title.length <= 60);
+  assert.doesNotMatch(title, /\n/);
   const generatedDraft = { capability: 'windows.registry', object: { hive: { equals: 'local_machine' }, key: { equals: 'SOFTWARE\\Policies' }, name: { equals: 'PolicyValue' } }, fields: { type: { equals: 'dword' } } };
   const generated = createGuidedAssessment(pack, { platform: 'windows', id: 'generated-summary-assessment', title: 'Generated summary', mode: 'automated', className: 'compliance', tests: [
     { id: 'generated-summary-test', title: '  ', ...generatedDraft }

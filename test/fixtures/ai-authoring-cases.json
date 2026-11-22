@@ -1,0 +1,739 @@
+[
+  {
+    "id": "unix-file-presence",
+    "title": "The passwd file must be present",
+    "platform": "ubuntu",
+    "checkText": "Verify that the file /etc/passwd is present on the system.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "/etc/passwd"
+      ]
+    }
+  },
+  {
+    "id": "rpm-package-absent",
+    "title": "The telnet client must not be installed",
+    "platform": "rhel",
+    "checkText": "Verify the telnet package is not installed. Use rpm -q telnet; if it is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    }
+  },
+  {
+    "id": "kernel-module-absent",
+    "title": "The cramfs kernel module must not be loaded",
+    "platform": "rhel",
+    "checkText": "Verify the cramfs kernel module is not loaded. Use lsmod | grep cramfs; if it is loaded, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.kernelmodule"
+      ],
+      "required": [
+        "cramfs"
+      ]
+    }
+  },
+  {
+    "id": "selinux-boolean",
+    "title": "SELinux must deny ptrace",
+    "platform": "rhel",
+    "checkText": "Verify the SELinux boolean deny_ptrace is set to on with getsebool deny_ptrace. If it is off, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.selinuxboolean"
+      ],
+      "required": [
+        "deny_ptrace"
+      ]
+    }
+  },
+  {
+    "id": "systemd-default-target",
+    "title": "The default systemd target must be multi-user",
+    "platform": "rhel",
+    "checkText": "Run systemctl get-default and verify the output is multi-user.target.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "systemctl get-default",
+        "multi-user.target"
+      ]
+    }
+  },
+  {
+    "id": "wireless-nmcli",
+    "title": "Wireless interfaces must not be configured",
+    "platform": "rhel",
+    "checkText": "Verify that there are no wireless interfaces configured. This is N/A for systems without wireless network adapters. Check with nmcli device. If a wireless interface is configured and its use is not documented with the ISSO, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "nmcli device",
+        "wifi"
+      ],
+      "minTests": 2
+    }
+  },
+  {
+    "id": "ssh-x11-localhost",
+    "title": "The SSH daemon must prevent remote proxy display connections",
+    "platform": "ubuntu",
+    "checkText": "Check the SSH X11UseLocalhost setting with grep -i x11uselocalhost /etc/ssh/sshd_config. X11UseLocalhost yes. If the keyword is set to no, missing, or commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "X11UseLocalhost",
+        "/etc/ssh/sshd_config",
+        "yes"
+      ]
+    }
+  },
+  {
+    "id": "ssh-banner-two-files",
+    "title": "The SSH banner must display the approved notice",
+    "platform": "ubuntu",
+    "checkText": "Check Banner with grep -i banner /etc/ssh/sshd_config. Banner /etc/issue. If commented out, this is a finding. Then cat /etc/issue and verify it matches the Standard Mandatory DoD Notice and Consent Banner exactly: You are accessing a U.S. Government Information System. If the banner text does not match exactly, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/ssh/sshd_config",
+        "/etc/issue"
+      ],
+      "minTests": 2
+    }
+  },
+  {
+    "id": "ssh-clientalive",
+    "title": "SSH sessions must terminate after inactivity",
+    "platform": "ubuntu",
+    "checkText": "Check ClientAliveInterval with grep -i clientalive /etc/ssh/sshd_config. ClientAliveInterval 600. If it does not exist, is greater than 600, or is commented out, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "ClientAliveInterval",
+        "600"
+      ]
+    }
+  },
+  {
+    "id": "windows-registry-dword",
+    "title": "Windows must disable the lock screen slideshow",
+    "platform": "windows",
+    "checkText": "Set the registry value NoLockScreenSlideshow under HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization to 1.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.registry"
+      ],
+      "required": [
+        "NoLockScreenSlideshow",
+        "1"
+      ]
+    }
+  },
+  {
+    "id": "windows-service-stopped",
+    "title": "The Bluetooth service must be stopped",
+    "platform": "windows",
+    "checkText": "Use sc query bthserv. The Bluetooth Support Service must be stopped; if it is running, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.service"
+      ],
+      "required": [
+        "bthserv"
+      ]
+    }
+  },
+  {
+    "id": "windows-password-policy",
+    "title": "The minimum password length must be 14",
+    "platform": "windows",
+    "checkText": "The Windows minimum password length must be 14 characters or greater. Verify the effective password policy.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.passwordpolicy"
+      ],
+      "required": [
+        "14"
+      ]
+    }
+  },
+  {
+    "id": "auditpol-success",
+    "title": "Authorization Policy Change success auditing is required",
+    "platform": "windows",
+    "checkText": "Use AuditPol /get /category:* and verify Policy Change - Authorization Policy Change is Success. If it is not audited, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.auditeventpolicysubcategories"
+      ],
+      "required": [
+        "AuditPol"
+      ]
+    }
+  },
+  {
+    "id": "find-nogroup",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "Run find / -xdev -nouser -print. If any files are returned without a resolvable owner, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "find / -xdev -nouser"
+      ]
+    }
+  },
+  {
+    "id": "postfix-allowed-list",
+    "title": "Postfix restrictions must use the approved list",
+    "platform": "rhel",
+    "checkText": "Run postconf -n smtpd_client_restrictions. The value may contain only reject_unknown_client_hostname and permit_mynetworks; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf -n smtpd_client_restrictions"
+      ]
+    }
+  },
+  {
+    "id": "package-gated-config",
+    "title": "TFTP must operate in secure mode when installed",
+    "platform": "rhel",
+    "checkText": "Verify whether tftp-server is installed with yum list installed tftp-server. If it is not installed, this is Not Applicable. If installed, grep server_args /etc/xinetd.d/tftp and verify server_args = -s /var/lib/tftpboot.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/xinetd.d/tftp"
+      ]
+    }
+  },
+  {
+    "id": "manual-approval-only",
+    "title": "The system owner must approve the configuration",
+    "platform": "linux",
+    "checkText": "Review the supplied evidence with the ISSO and obtain documented system-owner approval. There is no command or objective technical predicate.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "per-user-ownership",
+    "title": "User initialization files must be owned correctly",
+    "platform": "rhel",
+    "checkText": "For each local interactive user, inspect the user's home-directory initialization files and verify each file is owned by that user or root. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "wildcard-config-set",
+    "title": "All SSSD configuration fragments must use the approved setting",
+    "platform": "rhel",
+    "checkText": "Check /etc/sssd/sssd.conf and every file in /etc/sssd/conf.d/*.conf. The ldap_id_use_start_tls setting must be true in every applicable file.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "unsupported-procedure",
+    "title": "The proprietary agent must be configured securely",
+    "platform": "linux",
+    "checkText": "Verify the proprietary security agent is configured securely according to the vendor's current guidance. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "unix-sysctl",
+    "title": "IPv4 forwarding must be disabled",
+    "platform": "rhel",
+    "checkText": "Verify net.ipv4.ip_forward is set to 0 using sysctl net.ipv4.ip_forward. If the value is not 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sysctl"
+      ],
+      "required": [
+        "net.ipv4.ip_forward"
+      ]
+    }
+  },
+  {
+    "id": "file-permissions",
+    "title": "The SSH private host key must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -name 'ssh_host_*_key' -perm /g+w. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    }
+  },
+  {
+    "id": "macos-remote-login",
+    "title": "Remote login must be disabled",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output must be Remote Login: Off; if it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    }
+  },
+  {
+    "id": "logical-alternatives",
+    "title": "The system must use one approved authentication source",
+    "platform": "linux",
+    "checkText": "Verify either the approved local authentication configuration or the approved centralized authentication configuration is present. If neither is configured, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "linux-text-config",
+    "title": "Local package signatures must be checked",
+    "platform": "rhel",
+    "checkText": "Use grep localpkg_gpgcheck /etc/dnf/dnf.conf. The output must be localpkg_gpgcheck=1; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.textfilecontent"
+      ],
+      "required": [
+        "/etc/dnf/dnf.conf",
+        "localpkg_gpgcheck"
+      ]
+    }
+  },
+  {
+    "id": "linux-partition-nodev",
+    "title": "The home filesystem must use nodev",
+    "platform": "rhel",
+    "checkText": "Run mount | grep /home and verify the /home filesystem includes the nodev option. If nodev is absent, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.partition"
+      ],
+      "required": [
+        "/home",
+        "nodev"
+      ]
+    }
+  },
+  {
+    "id": "ssh-private-key-mode",
+    "title": "SSH private host keys must not be group writable",
+    "platform": "rhel",
+    "checkText": "Find SSH private host key files with find /etc/ssh -type f -name 'ssh_host_*_key' -perm 0640. Verify the files are mode 0640 or less permissive; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.file"
+      ],
+      "required": [
+        "ssh_host"
+      ]
+    }
+  },
+  {
+    "id": "audit-failure-action",
+    "title": "Audit failure must halt or log",
+    "platform": "rhel",
+    "checkText": "Run auditctl -s | grep -i failure. The failure action must be 1 or 2; if it is 0, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "auditctl"
+      ]
+    }
+  },
+  {
+    "id": "promiscuous-interface",
+    "title": "Network interfaces must not be promiscuous",
+    "platform": "rhel",
+    "checkText": "Run ip link | grep -i promisc. If any interface is in promiscuous mode, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "promisc"
+      ]
+    }
+  },
+  {
+    "id": "world-writable-directories",
+    "title": "World-writable directories must be restricted",
+    "platform": "rhel",
+    "checkText": "Find world-writable directories using find / -xdev -type d -perm -0002 -uid +999 -print. Any result is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-perm -0002"
+      ]
+    }
+  },
+  {
+    "id": "rhel-release",
+    "title": "The system must run a supported RHEL release",
+    "platform": "rhel",
+    "checkText": "Run cat /etc/redhat-release. The result must identify Red Hat Enterprise Linux release 9; otherwise this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "/etc/redhat-release"
+      ]
+    }
+  },
+  {
+    "id": "windows-wmi-feature",
+    "title": "The FTP server feature must not be installed",
+    "platform": "windows",
+    "checkText": "Use Get-WindowsFeature Web-Ftp-Service. If the feature is installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.wmi.query"
+      ],
+      "required": [
+        "Web-Ftp-Service"
+      ]
+    }
+  },
+  {
+    "id": "windows-ad-user-filter",
+    "title": "Unapproved AD users must not exist",
+    "platform": "windows",
+    "checkText": "Use Get-ADUser -Filter {Enabled -eq $true -and PasswordNeverExpires -eq $true}. Any returned account is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.cmdlet"
+      ],
+      "required": [
+        "Get-ADUser"
+      ]
+    }
+  },
+  {
+    "id": "windows-file-presence",
+    "title": "The security configuration file must be present",
+    "platform": "windows",
+    "checkText": "Verify the Windows file C:\\Windows\\System32\\security.cfg is present.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.file"
+      ],
+      "required": [
+        "security.cfg"
+      ]
+    }
+  },
+  {
+    "id": "windows-user-right",
+    "title": "The debug privilege must be restricted",
+    "platform": "windows",
+    "checkText": "The Debug programs user right must not be assigned to ordinary users. Review the User Rights Assignment and remove unapproved trustees.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "windows.userright"
+      ],
+      "required": [
+        "windows.userright"
+      ]
+    }
+  },
+  {
+    "id": "macos-systemsetup",
+    "title": "Remote login must be disabled on macOS",
+    "platform": "macos",
+    "checkText": "Run systemsetup -getremotelogin. The output is Remote Login: Off. If it is On, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.systemsetup"
+      ],
+      "required": [
+        "systemsetup"
+      ]
+    }
+  },
+  {
+    "id": "macos-disabled-service",
+    "title": "The sharing service must be disabled",
+    "platform": "macos",
+    "checkText": "Run launchctl print-disabled system. The output shows \"com.apple.screensharing\" => disabled.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.disabledservice"
+      ],
+      "required": [
+        "com.apple.screensharing"
+      ]
+    }
+  },
+  {
+    "id": "macos-account-shell",
+    "title": "The service account shell must be restricted",
+    "platform": "macos",
+    "checkText": "Run dscl . -read /Users/daemon UserShell. The output is UserShell: /usr/bin/false.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "macos.accountinfo"
+      ],
+      "required": [
+        "daemon"
+      ]
+    }
+  },
+  {
+    "id": "solaris-service",
+    "title": "The insecure service must be disabled",
+    "platform": "solaris",
+    "checkText": "Use svcs -a and inspect the service state. The legacy network service must be disabled; if online, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "sles-package",
+    "title": "The insecure package must not be installed",
+    "platform": "sles",
+    "checkText": "Verify the telnet package is not installed with zypper search --installed-only telnet. If present, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.rpminfo"
+      ],
+      "required": [
+        "telnet"
+      ]
+    }
+  },
+  {
+    "id": "ubuntu-package",
+    "title": "The rsh client must not be installed",
+    "platform": "ubuntu",
+    "checkText": "Verify the rsh-client package is not installed with dpkg -s rsh-client. If installed, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "linux.dpkginfo"
+      ],
+      "required": [
+        "rsh-client"
+      ]
+    }
+  },
+  {
+    "id": "ubuntu-root-login",
+    "title": "Direct root login must be restricted",
+    "platform": "ubuntu",
+    "checkText": "Verify direct remote login to the root account is disabled. Check the root account shell and SSH configuration; if root login is permitted, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "manual-deviation",
+    "title": "The organization must document an approved exception",
+    "platform": "linux",
+    "checkText": "If the control is not implemented, obtain an approved ISSO deviation and document the operational justification. No objective command or selector is provided.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "dynamic-banner-path",
+    "title": "The configured SSH banner file must contain the approved text",
+    "platform": "linux",
+    "checkText": "Run grep -i banner /etc/ssh/sshd_config to identify the Banner file, then read that dynamically selected file and compare the complete rendered login banner exactly.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "wildcard-home-files",
+    "title": "All user startup files must be owned correctly",
+    "platform": "linux",
+    "checkText": "For each local user and every file matching /home/*/.[a-z]*, verify ownership and permissions. Any mismatch is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "unsupported-cloud-agent",
+    "title": "The cloud agent must use approved cryptography",
+    "platform": "linux",
+    "checkText": "Verify the cloud vendor agent uses the approved cryptographic configuration. Follow the vendor's current documentation; otherwise this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "duplicate-sshd-directive",
+    "title": "Only one SSH banner directive must be effective",
+    "platform": "ubuntu",
+    "checkText": "Check /etc/ssh/sshd_config for Banner /etc/issue. If duplicate or conflicting Banner directives exist, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "ssh-effective-value",
+    "title": "The effective SSH client alive interval must be limited",
+    "platform": "rhel",
+    "checkText": "Run sshd -T | grep -i clientaliveinterval and verify clientaliveinterval 600 or less. If the effective value exceeds 600, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "unix.sshd"
+      ],
+      "required": [
+        "clientaliveinterval"
+      ]
+    }
+  },
+  {
+    "id": "shell-output-absence",
+    "title": "No unauthorized accounts may be returned",
+    "platform": "rhel",
+    "checkText": "Run awk -F: '$3 == 0 && $1 != \"root\" {print $1}' /etc/passwd. Any output is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "awk"
+      ]
+    }
+  },
+  {
+    "id": "file-no-group",
+    "title": "Files without a resolvable group must not exist",
+    "platform": "rhel",
+    "checkText": "# find / -xdev -nogroup -print\nIf any files are returned without a resolvable group, this is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "-nogroup"
+      ]
+    }
+  },
+  {
+    "id": "postfix-restrictions-real",
+    "title": "Postfix relay restrictions must be approved",
+    "platform": "rhel",
+    "checkText": "# postconf -n smtpd_client_restrictions\nsmtpd_client_restrictions = permit_mynetworks, reject_unknown_client_hostname\nOnly permit_mynetworks and reject_unknown_client_hostname are allowed; anything else is a finding.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postconf"
+      ]
+    }
+  },
+  {
+    "id": "applicability-package",
+    "title": "The service configuration applies only when the service is installed",
+    "platform": "rhel",
+    "checkText": "Determine whether postfix is installed with yum list installed postfix. If postfix is not installed, this is Not Applicable. If installed, run postconf -n smtpd_banner and verify the approved value.",
+    "expected": {
+      "mode": "automated",
+      "capabilities": [
+        "independent.shellcommand"
+      ],
+      "required": [
+        "postfix"
+      ]
+    }
+  },
+  {
+    "id": "manual-rendered-banner",
+    "title": "The rendered login banner must be reviewed",
+    "platform": "linux",
+    "checkText": "Log in through SSH and visually verify that the complete approved banner is displayed before authentication. Record reviewer evidence.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  },
+  {
+    "id": "unknown-command",
+    "title": "The custom control must meet policy",
+    "platform": "linux",
+    "checkText": "Run /opt/vendor/bin/check-control --security and determine whether the proprietary result meets the policy. If not, this is a finding.",
+    "expected": {
+      "mode": "manual-only"
+    }
+  }
+]

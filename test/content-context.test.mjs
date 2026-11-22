@@ -21,6 +21,9 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].benchmark.version, '001.002.003');
   assert.deepEqual(contexts[0].profiles, [{ id: 'product-profile', title: 'Product profile', disabledRuleCount: 1 }]);
   assert.equal(contexts[0].ruleCount, 1);
+  assert.equal(contexts[0].rules[0].automationStatus, 'automated');
+  assert.equal(contexts[0].automation.automated, 1);
+  assert.equal(contexts[0].automation.needsAutomation, 0);
   assert.equal(contexts[0].assessmentCount, 3);
   assert.equal(contexts[0].assessments.find(item => item.id === 'manual-assessment')?.mode, 'manual');
   assert.equal(benchmarkContextLabels(contexts).get(contexts[0].key), 'Product Benchmark — direct-slice · v001.002.003');
@@ -71,4 +74,20 @@ test('multiple Benchmark documents in one root have distinct selectable context 
   assert.equal(contexts.length, 2);
   assert.notEqual(contexts[0].key, contexts[1].key);
   assert.equal(new Set(contexts.map(context => context.packagePath)).size, 1);
+});
+
+test('manual Assessment links stay in the automation queue until explicitly flagged', () => {
+  const index = new WorkspaceIndex();
+  const root = '/workspace/manual-queue/authoring/direct-slice';
+  index.update(`${root}/benchmark.yaml`, 'benchmark:\n  id: queue-benchmark\n  title: Queue Benchmark\n');
+  index.update(`${root}/rules/manual-rule-rule.yaml`, `rule:\n  id: manual-rule\n  title: Manual Rule\n  assessment_choices:\n    manual:\n      assessment: manual-assessment\n`);
+  index.update(`${root}/assessments/manual-assessment-assessment.yaml`, `assessment:\n  id: manual-assessment\n  version: 1\n  assessment_title: Manual Assessment\n  mode: manual\n`);
+  let context = benchmarkContexts(index)[0];
+  assert.equal(context.rules[0].automationStatus, 'needs-automation');
+  assert.equal(context.automation.needsAutomation, 1);
+  index.setAutomationDisposition(`${root}/rules/manual-rule-rule.yaml`, 'manual-only');
+  context = benchmarkContexts(index)[0];
+  assert.equal(context.rules[0].automationStatus, 'manual-only');
+  assert.equal(context.automation.manualOnly, 1);
+  assert.equal(context.automation.needsAutomation, 0);
 });
