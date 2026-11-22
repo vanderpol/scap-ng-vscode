@@ -153,6 +153,15 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /item\.automationStatus==='needs-automation'/);
   assert.match(extensionSource, /canCreateAutomation=model\.automationDisposition!=='manual-only'/);
   assert.match(extensionSource, /already has automation or is marked manual-only/);
+  assert.match(extensionSource, /Automate all offline/);
+  assert.match(extensionSource, /Automate all AI/);
+  assert.match(extensionSource, /Batch Assessment automation review/);
+  assert.match(extensionSource, /Only currently unautomated Rules in this page scope are included/);
+  assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);
+  assert.match(extensionSource, /openBenchmarkBatchAutomationPanel/);
+  assert.match(extensionSource, /Existing automation is never replaced/);
+  assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
+  assert.match(extensionSource, /The batch stopped before this Rule was sent/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {
