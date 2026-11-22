@@ -31,6 +31,7 @@ import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+import { validateNativeSemantics } from './native-semantic.js';
 const schemaBase = SCHEMA_BASE;
 const profilePath = (root: string) => join(root, 'schema-profile.json');
 
@@ -532,9 +533,12 @@ function genericSchemaSeed(pack: MetadataPack, locations: any[]): any {
 function validateGraphicalSchemaEdit(pack: MetadataPack, before: any, edit: any, label: string) {
   const schemaUri = pinnedSchemaUri(pack, 'assessment.schema.json');
   const beforeErrors = pack.validate(schemaUri, before);
-  const afterErrors = pack.validate(schemaUri, edit.document.json());
+  const afterValue = edit.document.json();
+  const afterErrors = pack.validate(schemaUri, afterValue);
   const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
   if (introduced.length) throw new Error(`Pinned schema rejected ${label}: ${introduced.join('; ')}`);
+  const semantic = validateNativeSemantics(afterValue);
+  if (semantic.length) throw new Error(`Native semantic rule rejected ${label}: ${semantic.map(error => error.message).join('; ')}`);
 }
 function preferred<T extends { value: string; isDefault?: boolean }>(options: T[]) { return options.find(option => option.isDefault)?.value ?? options[0]?.value; }
 
@@ -2615,6 +2619,9 @@ function validateDocument(document: vscode.TextDocument, profile: Pin, diagnosti
         for (const error of pack.validateDetailed(schemaUri, value as any)) {
           const path = error.instancePath || '/';
           output.push(new vscode.Diagnostic(schemaErrorRange(document, path), `${path}: ${error.message ?? 'schema validation error'}`, vscode.DiagnosticSeverity.Error));
+        }
+        for (const error of validateNativeSemantics(value)) {
+          output.push(new vscode.Diagnostic(schemaErrorRange(document, '/' + error.path.slice(1).map(part => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')), error.message, vscode.DiagnosticSeverity.Error));
         }
       }
     }
