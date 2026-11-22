@@ -126,3 +126,14 @@ test('indexes external Assessment dependencies in Evaluate and resolves exact ta
   }]);
   assert.equal(index.diagnostics().length, 0);
 });
+
+test('clearing the index removes the prior corpus before an exclusive root is loaded', () => {
+  const index = new WorkspaceIndex();
+  index.update('/workspace/legacy/benchmark.yaml', 'benchmark:\n  id: legacy-040\n  title: Legacy 0.4.0\n');
+  assert.equal(index.byKind('benchmark').length, 1);
+  index.clear();
+  assert.equal(index.all().length, 0);
+  assert.equal(index.diagnostics().length, 0);
+  index.update('/imports/q4/benchmark.yaml', 'benchmark:\n  id: q4-041\n  title: Q4 2026 0.4.1\n');
+  assert.deepEqual(index.byKind('benchmark').map(item => item.id), ['q4-041']);
+});

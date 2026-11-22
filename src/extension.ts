@@ -1727,7 +1727,14 @@ async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTre
 }
 
 async function indexWorkspaceAndImportedRoots(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
-  let count = await indexWorkspace(index, tree, api, indexDiagnostics, () => state.onChange?.(), state);
+  // A selected content root is an exclusive source of Benchmark data. The
+  // workspace often contains historical fixtures and previously imported
+  // corpora; indexing both made an explicit Q4 2026 selection appear to
+  // contain legacy 0.4.0 Benchmarks as well.
+  index.clear();
+  if (!state.importedRoots.length)
+    return indexWorkspace(index, tree, api, indexDiagnostics, () => state.onChange?.(), state);
+  let count = 0;
   for (const root of state.importedRoots) {
     if (!api.Uri?.file) continue;
     count += await indexSelectedContentFolder(index, tree, api, indexDiagnostics, api.Uri.file(root), () => state.onChange?.(), state);
@@ -1799,6 +1806,10 @@ async function updateRuleAutomationDisposition(index: WorkspaceIndex, state: Ben
 }
 
 async function updateIndexedUri(index: WorkspaceIndex, uri: any, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state?: BenchmarkContextState) {
+  // File watchers are workspace-scoped. Once an imported root is selected,
+  // ignore edits elsewhere in the workspace so historical fixtures cannot
+  // re-enter the exclusive content index.
+  if (state?.importedRoots.length && !state.importedRoots.some(root => pathWithinIndexedRoot(uri.fsPath ?? '', root))) return;
   try { const document = await api.workspace.openTextDocument(uri); if (!isAutomationMetadataPath(uri.fsPath ?? '')) index.update(uri.toString(), document.getText(), uri.fsPath); if (state) loadAutomationMetadata(index, state.importedRoots); publishIndexDiagnostics(index, indexDiagnostics, api); tree.refresh(); state?.onChange?.(); } catch { /* file may have been removed between watcher events */ }
 }
 
@@ -1891,6 +1902,11 @@ async function promptForContentFolder(index: WorkspaceIndex, tree: StudioTree, a
   const root = folder?.fsPath;
   if (!root) return undefined;
   setImportedBenchmarkRoot(state, root);
+  // Drop the prior workspace/imported corpus immediately so the chooser
+  // cannot mix stale Benchmarks into the newly selected root while it loads.
+  index.clear();
+  tree.refresh();
+  publishIndexDiagnostics(index, indexDiagnostics, api);
   const indexFolder = () => indexSelectedContentFolder(index, tree, api, indexDiagnostics, folder, () => {
     state.onChange?.();
     for (const listener of state.refreshListeners) listener();

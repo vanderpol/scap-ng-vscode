@@ -166,6 +166,8 @@ export class WorkspaceIndex {
     this.rebuildDiagnostics();
   }
   remove(uri: string) { this.documents.delete(uri); this.rebuildDiagnostics(); }
+  /** Remove all indexed documents before switching to an exclusive content root. */
+  clear() { this.documents.clear(); this.rebuildDiagnostics(); }
   get(uri: string): IndexedDocument | undefined { const document = this.documents.get(uri); return document ? this.withDiagnostics(document) : undefined; }
   all(): IndexedDocument[] { return [...this.documents.values()].sort((a, b) => a.uri.localeCompare(b.uri)).map(document => this.withDiagnostics(document)); }
   private withDiagnostics(document: MutableDocument): IndexedDocument { return { ...document, diagnostics: this.diagnosticsFor(document.uri) }; }
