@@ -48,3 +48,15 @@ branches (`literal`, `variable`, `input`, `values`, `to_integer`,
 including the two aliases represented by the 14 function suite entries).
 Runtime collection, status propagation, and scanner equivalence remain RI #196
 holds and require execution receipts.
+
+## CRUD evidence boundary
+
+The schema-path audit independently enumerates 2,461 reachable locations (1,040
+scalar, 530 map, 235 array, 343 variant, 65 conditional, 792 dynamic-member
+locations). Across the pinned fixture matrix it executed 123 qualified CRUD
+transactions, 2,257 conditional/schema-composition operations, and 5,336
+not-evidenced operations; 2,655 intentionally rejected mutations are retained
+as negative evidence. This is schema/editability coverage, not a claim that every
+conditional branch has a graphical transaction. The corpus round-trip receipt
+proves source-preserving open/edit/reopen/undo for every opened file; branch-level
+CRUD gaps remain explicitly reported rather than promoted to complete coverage.
