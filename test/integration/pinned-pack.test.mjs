@@ -202,7 +202,7 @@ test('schema-driven model exposes canonical Registry enum help and revision',()=
 });
 test('Variable graphical operations come only from the active native expression schema',()=>{
  const operations=variableExpressionOperations(pack).map(option=>option.value);
- assert.deepEqual(operations, ['literal','variable','values','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge']);
+ assert.deepEqual(operations, ['literal','variable','input','values','to_integer','time_difference','concat','regex_capture','unique','count','split','substring','arithmetic','begin','end','merge']);
  assert.ok(operations.includes('count'));
  const assessment=pack.resource(base+'assessment.schema.json');
  assert.equal(assessment.properties.assessment.properties.variables.additionalProperties.$ref,'variable-expression.schema.json');
