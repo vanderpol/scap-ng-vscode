@@ -7,7 +7,7 @@ Captured 2026-11-03 on VS Code 1.128.0/Linux at 1920×968 using the locally buil
 ## Exact inputs
 
 - Canonical `scap-ng`: `463675f3b931e596c922352a131cb3c515ab2265`
-- `scap-ng-tools`: `bacb360b9d4a688b8658b8303f439b83a91ef731`
+- `scap-ng-tools`: `f44d71463d12948372747bded6834a10814fd3e7`
 - Current sample data: `990a1bff999f4f82c603bca1de36353c1cb08f01`
 - Metadata profile: `schema-profile.json`, 235-resource offline pack
 

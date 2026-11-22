@@ -42,7 +42,7 @@ test('adopted optional Input guard shape preserves source without inventing bind
 });
 
 test('all 100 mappings and every annotated location resolve offline with valid suggestions',()=>{
- assert.equal(Object.keys(pack.manifest.capabilities).length,100);
+ assert.equal(Object.keys(pack.manifest.capabilities).length,101);
  const ids=new Set();let count=0;
  for(const resource of pack.manifest.resources.filter(r=>r.kind==='schema')){
   const walk=(node,path='')=>{

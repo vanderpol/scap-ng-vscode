@@ -37,7 +37,7 @@
   },
   "candidate": {
     "status": "current-single-version-0.4.1",
-    "sourceCommit": "cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a",
-    "toolsCommit": "bacb360b9d4a688b8658b8303f439b83a91ef731"
+    "sourceCommit": "f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2",
+    "toolsCommit": "f44d71463d12948372747bded6834a10814fd3e7"
   }
 }

@@ -44,7 +44,7 @@ overwritten. To move versions, deliberately archive the old `.external`
 resources first and use reviewed replacement pins. No script silently selects
 the latest `main`.
 
-The official 0.4.1 pack is generated directly by `scap-ng-tools@bacb360b9d4a688b8658b8303f439b83a91ef731` from the exact `scap-ng@cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a` checkout. The exporter checks the flat schema family, OVAL pin, source commit and deterministic 236-resource identity; `schema-profile.json` records the resulting manifest SHA-256. There is one supported editor grammar: SCAP-NG 0.4.1. Older 0.4.0 documents fail with an actionable version/schema diagnostic and are not rewritten.
+The official 0.4.1 pack is generated directly by `scap-ng-tools@f44d71463d12948372747bded6834a10814fd3e7` from the exact `scap-ng@f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2` checkout. The exporter checks the flat schema family, OVAL pin, source commit and deterministic 236-resource identity; `schema-profile.json` records the resulting manifest SHA-256. There is one supported editor grammar: SCAP-NG 0.4.1. Older 0.4.0 documents fail with an actionable version/schema diagnostic and are not rewritten.
 
 `npm run verify:offline` performs no fetch. It checks all checkout commits,
 origin URLs, manifest identity and each individual pack resource checksum.

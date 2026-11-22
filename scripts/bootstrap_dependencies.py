@@ -73,7 +73,8 @@ def verify_pack(directory):
     if manifest['source_commit'] != PROFILE['sourceCommit'] or manifest['schema_version'] != PROFILE['schemaVersion']:
         raise ValueError('editor pack version/source commit mismatch')
     expected_resources = int(PROFILE.get('packResourceCount', 236))
-    if len(manifest['resources']) != expected_resources or len(manifest['capabilities']) != 100:
+    expected_capabilities = int(PROFILE.get('packCapabilityCount', 100))
+    if len(manifest['resources']) != expected_resources or len(manifest['capabilities']) != expected_capabilities:
         raise ValueError(f'incomplete editor pack: expected {expected_resources} resources')
     for item in manifest['resources']:
         path = Path(item['path'])

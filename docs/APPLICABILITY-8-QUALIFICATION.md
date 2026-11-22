@@ -19,10 +19,10 @@ was **not copied into the repository or VSIX**.
 The editor remains qualified against the approved pin, unchanged by this
 receipt:
 
-- source/schema commit `cb82e6bd3cbfad2c11bc2ee6e68b87ee6c96944a`
+- source/schema commit `f51ab2c5bd82c94a9c292a7abb2ef1a7edc91ca2`
 - 145 JSON files, 35 roots, 652 references
 - schema digest `2adf88f5c1fd950e997579c00064388b5f12e9e29cde38075bf75b76d1f25843`
-- tools commit `bacb360b9d4a688b8658b8303f439b83a91ef731`
+- tools commit `f44d71463d12948372747bded6834a10814fd3e7`
 
 The archive therefore has the same file count but a different canonical
 schema/source/tools qualification. It is not valid evidence for the editor's

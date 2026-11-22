@@ -11,5 +11,6 @@
   "schemaFamilySha256": "11b5ae735dd0a7a1db496b421e0d12f757c027f734da688c2b1d96940f4c47dc",
   "ovalCommit": "2f140ee5c5dd1ed9606fcd5afc301f6baeb48706",
   "sampleDataCommit": "990a1bff999f4f82c603bca1de36353c1cb08f01",
-  "singleVersion": true
+  "singleVersion": true,
+  "packCapabilityCount": 101
 }
