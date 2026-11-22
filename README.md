@@ -1,6 +1,8 @@
-# SCAP-NG Assessment Studio for VS Code
+# SCAP-NG Assessment Studio — Security Content Authoring & Lifecycle Management
 
 An open-source, offline-first VS Code extension for drafting and reviewing **SCAP-NG** security Assessments, Rules and STIG content.
+
+**Product direction:** expand Assessment Studio into a STIG content lifecycle suite for first-run import, release-to-release maintenance, AI-assisted Assessment engineering, validation, and optional repository integration. Those lifecycle capabilities are **future design work, not implemented features or current Codex tasking**. See the [Content Lifecycle Management roadmap and issue breakdown (#81)](https://github.com/vanderpol/scap-ng-vscode/issues/81). The existing repository slug and extension identity remain unchanged.
 
 The authoritative **[owner-amended pre-release 0.4 schemas](https://github.com/vanderpol/scap-ng/tree/d1ab0283e09369c2c734d3b8f93b65007441cf07/schema)** and [small, current converted Assessment examples](https://github.com/vanderpol/scap-ng/tree/d1ab0283e09369c2c734d3b8f93b65007441cf07/examples) live in the public canonical repository. The [shared converter and metadata-pack tooling](https://github.com/vanderpol/scap-ng-tools) lives separately; its [qualified integration boundary](https://github.com/vanderpol/scap-ng-tools/blob/12fdbad376a83a8a691bdb8509de36ede1480088/docs/CONVERTER-CUTOVER.md) does **not** mean the VS Code extension or its backend integration is already implemented. Large historical research/DRAFT corpora are not part of this editor's bootstrap.
 
