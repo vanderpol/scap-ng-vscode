@@ -20,6 +20,7 @@ export interface BenchmarkContextDocument {
   manualAssessmentId?: string;
   applicability?: readonly string[];
   benchmarkApplicability?: readonly string[];
+  benchmarkPlatformIdentities?: readonly { value: string; binding?: string; source?: { kind?: string; id?: string; idref?: string; sha256?: string } }[];
 }
 
 export interface BenchmarkProfileSummary extends BenchmarkProfile {}
@@ -27,7 +28,7 @@ export interface BenchmarkProfileSummary extends BenchmarkProfile {}
 /** A named applicability condition and the catalog file that authors it. */
 export interface BenchmarkContextCondition {
   name: string;
-  targetId: string;
+  targetId?: string;
   path: string;
   sourceUri: string;
   sourcePath: string;
@@ -59,7 +60,7 @@ export function packageRootForPath(value: string): string | undefined {
 }
 
 function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>): BenchmarkContextDocument {
-  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, benchmarkApplicability: document.benchmarkApplicability, ...ruleAutomation };
+  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, benchmarkApplicability: document.benchmarkApplicability, benchmarkPlatformIdentities: document.benchmarkPlatformIdentities, ...ruleAutomation };
 }
 
 function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
@@ -138,7 +139,7 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     const applicability = applicabilityRecords.map(record => documentSummary(record)).sort(byTitle);
     const conditions = applicabilityRecords.flatMap(record => record.applicabilityConditions.map(condition => ({
       name: condition.name,
-      targetId: condition.targetId,
+      ...(condition.targetId ? { targetId: condition.targetId } : {}),
       path: condition.path,
       sourceUri: record.uri,
       sourcePath: record.path
@@ -148,9 +149,15 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     const ruleAssessmentIds = new Set(rules.flatMap(rule => [rule.automationAssessmentId, rule.manualAssessmentId]).filter(Boolean));
     const benchmarkConditionKeys = new Set(benchmark.benchmarkApplicability ?? []);
     const benchmarkApplicabilityAssessmentIds = new Set(conditions
-      .filter(condition => benchmarkConditionKeys.has(condition.name) || benchmarkConditionKeys.has(condition.targetId))
-      .map(condition => condition.targetId)
-      .filter(Boolean));
+      .filter(condition => condition.targetId && (benchmarkConditionKeys.has(condition.name) || benchmarkConditionKeys.has(condition.targetId)))
+      .map(condition => condition.targetId as string));
+    const benchmarkConditionNames = new Set(conditions
+      .filter(condition => benchmarkConditionKeys.has(condition.name) || (condition.targetId && benchmarkConditionKeys.has(condition.targetId)))
+      .map(condition => condition.name));
+    const benchmarkApplicabilityCount = new Set([
+      ...benchmarkConditionNames,
+      ...(benchmark.benchmarkPlatformIdentities ?? []).map(identity => identity.value)
+    ]).size;
     return [{
       // A content root may contain multiple Benchmark documents. Keep the
       // root path for grouping, but use a stable per-Benchmark key for the
@@ -162,7 +169,10 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
       catalogUris,
       ruleCount: rules.length,
       assessmentCount: assessments.filter(assessment => ruleAssessmentIds.has(assessment.id ?? '')).length,
-      applicabilityCount: assessments.filter(assessment => benchmarkApplicabilityAssessmentIds.has(assessment.id ?? '')).length,
+      // Direct CPE identities are valid 0.4.1 Benchmark platform metadata,
+      // not Assessment links. Count them for navigation while keeping the
+      // executable Assessment list separate below.
+      applicabilityCount: benchmarkApplicabilityCount,
       conditionCount,
       rules,
       assessments,
@@ -197,9 +207,8 @@ export function benchmarkContextLabels(contexts: readonly BenchmarkContextSummar
 export function benchmarkApplicabilityAssessmentIds(context: BenchmarkContextSummary): Set<string> {
   const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
   return new Set(context.conditions
-    .filter(condition => benchmarkKeys.has(condition.name) || benchmarkKeys.has(condition.targetId))
-    .map(condition => condition.targetId)
-    .filter(Boolean));
+    .filter(condition => condition.targetId && (benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId))))
+    .map(condition => condition.targetId as string));
 }
 export function benchmarkApplicabilityAssessments(context: BenchmarkContextSummary): BenchmarkContextDocument[] {
   const ids = benchmarkApplicabilityAssessmentIds(context);
@@ -213,9 +222,9 @@ export function benchmarkRuleAssessments(context: BenchmarkContextSummary): Benc
 export function benchmarkApplicabilityUsage(context: BenchmarkContextSummary, assessmentId: string): { benchmarkConditions: BenchmarkContextCondition[]; ruleConditions: BenchmarkContextCondition[]; rules: BenchmarkContextDocument[] } {
   const conditions = context.conditions.filter(condition => condition.targetId === assessmentId);
   const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
-  const benchmarkConditions = conditions.filter(condition => benchmarkKeys.has(condition.name) || benchmarkKeys.has(condition.targetId));
+  const benchmarkConditions = conditions.filter(condition => benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId)));
   const ruleConditions = conditions.filter(condition => context.rules.some(rule => (rule.applicability ?? []).some(reference => reference === condition.name || reference === condition.targetId || reference === assessmentId)));
-  const conditionKeys = new Set(ruleConditions.flatMap(condition => [condition.name, condition.targetId]));
+  const conditionKeys = new Set(ruleConditions.flatMap(condition => [condition.name, condition.targetId].filter(Boolean) as string[]));
   const rules = context.rules.filter(rule => (rule.applicability ?? []).some(reference => conditionKeys.has(reference) || reference === assessmentId));
   return { benchmarkConditions, ruleConditions, rules };
 }
@@ -231,12 +240,18 @@ export interface BenchmarkApplicabilitySummary {
 }
 export function benchmarkApplicabilitySummary(context: BenchmarkContextSummary): BenchmarkApplicabilitySummary {
   const assessments = benchmarkApplicabilityAssessments(context);
-  const usages = assessments.map(assessment => benchmarkApplicabilityUsage(context, assessment.id ?? ''));
+  const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
+  const benchmarkConditions = context.conditions.filter(condition => benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId)));
+  const ruleConditions = context.conditions.filter(condition => context.rules.some(rule => (rule.applicability ?? []).some(reference => reference === condition.name || reference === condition.targetId)));
+  const conditionKeys = new Set(ruleConditions.flatMap(condition => [condition.name, condition.targetId].filter(Boolean) as string[]));
+  const rules = context.rules.filter(rule => (rule.applicability ?? []).some(reference => conditionKeys.has(reference)));
   return {
     assessmentCount: assessments.length,
-    benchmarkConditionCount: new Set(usages.flatMap(usage => usage.benchmarkConditions.map(condition => condition.name))).size,
-    ruleConditionCount: new Set(usages.flatMap(usage => usage.ruleConditions.map(condition => condition.name))).size,
-    referencedRuleCount: new Set(usages.flatMap(usage => usage.rules.map(rule => rule.uri))).size,
+    // Executable Benchmark conditions remain distinct from direct CPE
+    // metadata; the chooser reports both categories separately.
+    benchmarkConditionCount: new Set(benchmarkConditions.map(condition => condition.name)).size,
+    ruleConditionCount: new Set(ruleConditions.map(condition => condition.name)).size,
+    referencedRuleCount: new Set(rules.map(rule => rule.uri)).size,
     catalogCount: context.catalogUris.length
   };
 }

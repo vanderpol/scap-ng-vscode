@@ -342,3 +342,11 @@ test('Variable authoring has a serializable template for every active schema ope
     assert.match(source, new RegExp(`case '${operation}':`), operation);
   }
 });
+
+test('direct 0.4.1 applicability expressions are displayed read-only instead of being coerced to legacy lists', () => {
+  assert.match(extensionSource, /renderApplicabilityExpression/);
+  assert.match(extensionSource, /SCAP-NG 0\.4\.1 expression \(condition\/all_of\/any_of\/not\)/);
+  assert.match(extensionSource, /if\(Array\.isArray\(model\.applicability\)\)/);
+  assert.match(extensionSource, /will not replace this expression with a legacy list/);
+  assert.match(extensionSource, /Declared Benchmark OS\/App identities/);
+});

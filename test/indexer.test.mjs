@@ -137,3 +137,40 @@ test('clearing the index removes the prior corpus before an exclusive root is lo
   index.update('/imports/q4/benchmark.yaml', 'benchmark:\n  id: q4-041\n  title: Q4 2026 0.4.1\n');
   assert.deepEqual(index.byKind('benchmark').map(item => item.id), ['q4-041']);
 });
+
+test('indexes provenance-only applicability conditions and declared Benchmark CPE metadata', () => {
+  const index = new WorkspaceIndex();
+  index.update('benchmark.yaml', `benchmark:
+  id: b
+  platform:
+    id: fixture-platform
+    title: Fixture platform
+    expected_cpe_identities:
+      - value: cpe:/o:fixture:os:1
+        binding: cpe_uri_2_2
+        source:
+          kind: cpe_platform
+          id: cpe:/o:fixture:os:1
+          sha256: ${'a'.repeat(64)}
+  applicability_catalog: catalog
+`);
+  index.update('applicability.yaml', `applicability:
+  id: catalog
+  conditions:
+    cpe-platform:
+      source:
+        kind: cpe_platform
+        id: cpe:/o:fixture:os:1
+        sha256: ${'b'.repeat(64)}
+`);
+  const benchmark = index.get('benchmark.yaml');
+  const catalog = index.get('applicability.yaml');
+  assert.deepEqual(benchmark.benchmarkPlatformIdentities.map(item => item.value), ['cpe:/o:fixture:os:1']);
+  assert.deepEqual(catalog.applicabilityConditions, [{
+    name: 'cpe-platform',
+    path: '/applicability/conditions/cpe-platform',
+    catalogUri: 'applicability.yaml',
+    source: { kind: 'cpe_platform', id: 'cpe:/o:fixture:os:1', sha256: 'b'.repeat(64) }
+  }]);
+  assert.equal(index.applicabilityOptions().length, 0);
+});

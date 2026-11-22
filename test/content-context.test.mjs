@@ -162,3 +162,50 @@ test('Benchmark applicability is limited to the platform OS/application gate, no
     rules: [context.rules[0]]
   });
 });
+
+test('Benchmark context exposes direct CPE metadata and source-only applicability without inventing Assessments', () => {
+  const index = new WorkspaceIndex();
+  const root = '/workspace/direct/authoring/direct-slice';
+  index.update(`${root}/benchmark.yaml`, `benchmark:
+  id: direct-slice
+  title: Direct platform benchmark
+  platform:
+    id: fixture-platform
+    title: Fixture platform
+    expected_cpe_identities:
+      - value: cpe:/o:fixture:os:1
+        binding: cpe_uri_2_2
+        source:
+          kind: cpe_platform
+          id: cpe:/o:fixture:os:1
+          sha256: ${'a'.repeat(64)}
+  applicability_catalog: direct-slice-applicability
+`);
+  index.update(`${root}/applicability.yaml`, `applicability:
+  id: direct-slice-applicability
+  conditions:
+    cpe-platform:
+      source:
+        kind: cpe_platform
+        id: cpe:/o:fixture:os:1
+        sha256: ${'b'.repeat(64)}
+`);
+  index.update(`${root}/rules/rule.yaml`, `rule:
+  id: rule
+  title: Rule
+  applicability:
+    condition: cpe-platform
+`);
+  const context = benchmarkContexts(index)[0];
+  assert.equal(context.applicabilityCount, 1);
+  assert.equal(context.conditionCount, 1);
+  assert.equal(context.rules[0].applicability[0], 'cpe-platform');
+  assert.deepEqual(benchmarkApplicabilitySummary(context), {
+    assessmentCount: 0,
+    benchmarkConditionCount: 0,
+    ruleConditionCount: 1,
+    referencedRuleCount: 1,
+    catalogCount: 1
+  });
+  assert.deepEqual(benchmarkApplicabilityAssessments(context), []);
+});
