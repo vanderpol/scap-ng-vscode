@@ -162,7 +162,10 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Existing automation is never replaced/);
   assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
   assert.match(extensionSource, /The batch stopped before this Rule was sent/);
-  assert.match(extensionSource, /saveApprovedRuleLink/);
+  assert.match(extensionSource, /saveApprovedRuleLink\(api, document\)/);
+  assert.match(extensionSource, /updateIndexedAutomationLink\(index, document, saved\)/);
+  assert.match(extensionSource, /updateIndexedAutomationLink\(index, ruleDocument, assessmentDocument\)/);
+  assert.match(extensionSource, /Index the Assessment first so Rule resolution is/);
   assert.match(extensionSource, /comparison-only/);
   assert.match(extensionSource, /Existing automated Rules will be comparison-only/);
   assert.match(extensionSource, /Assisted generation is a draft preview only/);
@@ -170,6 +173,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Do not create an untitled/);
   assert.match(extensionSource, /saveGeneratedAssessmentForBenchmark\(api, entry\.result\.yaml/);
   assert.match(extensionSource, /no persisted automation linkage was confirmed/);
+  assert.match(extensionSource, /visible to the filesystem index/);
+  assert.match(extensionSource, /could not be verified on disk/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {
