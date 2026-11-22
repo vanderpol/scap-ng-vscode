@@ -11,10 +11,13 @@ canonical SCAP-NG 0.4.1 pack, not against a scanner.
 - Pack: 238 resources; manifest SHA-256 `9a531bcaaf6555b50689f4ceee06fb604c7013b3ee0b544b3af9e6b9dc7ac6e1`
 - Active editor mappings: **101/101**; four ESX mappings remain proposed/experimental and are excluded.
 
-The d1ab conformance corpus at `scap-ng@d61286dfd763eb4c192582cd2ffeeefc44dd2e56`
-was independently opened and modelled: **153/153 files**, **147 active-editor-
-qualified files**, **6 explicitly excluded experimental files**, and **7,892
-scalar properties**. The exclusions are the four direct ESX Assessments and
+The d1ab conformance corpus was independently opened and modelled against the
+current canonical source pin: **158/158 files**, **152 active-editor-qualified
+files**, **6 explicitly excluded experimental files**, and **8,027 scalar
+properties**. The pre-decision baseline remains reproducibly **147 active files**
+(153 total minus the six ESX files); this increment adds five decision/negative
+vectors without changing the active language pin. Invalid authoring vectors are
+opened for diagnostics and remain separate from scanner qualification. The exclusions are the four direct ESX Assessments and
 two aggregate cases that contain those capabilities. This is schema/editor
 qualification only; it is not execution evidence.
 
@@ -28,7 +31,7 @@ qualification only; it is not execution evidence.
 - Mutation host probe with isolated Red Hat YAML 2.0.0: **passed**
 - Installed VSIX host probe with d1ab pack: **passed**
 - Status host probe: **passed**; intentional `partial` status remains visible
-- `npm run test:corpus:graphical`: **153 opened, 0 failures**; active subset qualification as above
+- `npm run test:corpus:graphical`: **158 opened, 0 failures**; 152 files model-qualified after six experimental ESX exclusions
 - `python3 scripts/audit_repository.py`: **PASS**
 
 The Red Hat YAML host reports one known `$ref` resolution warning for the

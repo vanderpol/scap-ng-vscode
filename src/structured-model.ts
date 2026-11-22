@@ -8,6 +8,7 @@ import { analyzeVariables, expressionContract, inferredVariableDatatype, variabl
 import { analyzeAssessmentReferences } from './reference-graph.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
+import { validateNativeSemantics } from './native-semantic.js';
 const schemaBase = SCHEMA_BASE;
 type EditPath = (string | number)[];
 function scalarEntries(value: Json, path: EditPath = []): Array<{ path: EditPath; value: Json }> {
@@ -532,8 +533,9 @@ export function modelFor(document: any, pack?: MetadataPack) {
     // diagnostics separate from YAML parse errors and make the value-aware
     // default policy conservative: invalid authored values must stay visible.
     const schemaDiagnostics = pack && root && !parsed.draft ? pack.validateDetailed(root, value as Json).map(schemaDiagnostic) : [];
-    const diagnostics = [...parsed.diagnostics, ...schemaDiagnostics.map((error: any) => error.message)];
-    const schemaValid = !parsed.draft && schemaDiagnostics.length === 0;
+    const nativeSemanticDiagnostics = validateNativeSemantics(value).map(error => ({ ...error, instancePath: '/' + error.path.slice(1).map(part => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/'), message: error.message }));
+    const diagnostics = [...parsed.diagnostics, ...schemaDiagnostics.map((error: any) => error.message), ...nativeSemanticDiagnostics.map(error => error.message)];
+    const schemaValid = !parsed.draft && schemaDiagnostics.length === 0 && nativeSemanticDiagnostics.length === 0;
     const fields = scalarEntries(value).map(field => {
       const help = schemaHelp(pack, root, field.path, parsed.draft);
       const parentValue = field.path.length > 1 ? field.path.slice(0, -1).reduce((parent: any, part: string | number) => parent?.[part as any], value) : undefined;
@@ -579,7 +581,7 @@ export function modelFor(document: any, pack?: MetadataPack) {
       };
     });
     const variableDraft = pack && value?.assessment && typeof value.assessment === 'object' ? analyzeVariables(pack, value.assessment, true).diagnostics.some(item => item.code.startsWith('incomplete-')) : false;
-    return { ok: true, draft: parsed.draft || variableDraft, schemaValid, parseDiagnostics: parsed.diagnostics, schemaDiagnostics, diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields, structuralNodes: structuralNodes(pack, root, value, []) };
+    return { ok: true, draft: parsed.draft || variableDraft, schemaValid, parseDiagnostics: parsed.diagnostics, schemaDiagnostics, nativeSemanticDiagnostics, diagnostics, revision: sha256(document.getText()), version: document.version, explanation: explainAssessment(value, pack), fields, structuralNodes: structuralNodes(pack, root, value, []) };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error), fields: [] }; }
 }
 
@@ -670,6 +672,7 @@ export function assessmentEditorModel(document: any, pack?: MetadataPack) {
     delete concern.count;
     authoringConcerns.push(concern);
   }
+  for (const diagnostic of base.nativeSemanticDiagnostics ?? []) authoringConcerns.push({ code: diagnostic.code, category: 'semantic', title: 'Native semantic rule', message: diagnostic.message, path: diagnostic.path, blocking: true, resolver: 'yaml' });
   if (referenceAnalysis) {
     for (const reference of referenceAnalysis.unresolved) authoringConcerns.push({ code: 'unresolved-reference', category: 'reference', title: 'Reference does not resolve', message: `The ${reference.kind} reference "${reference.targetId}" does not match a declared local definition.`, path: reference.path, blocking: true, resolver: 'yaml' });
     const evaluatedTests = new Set(referenceAnalysis.references.filter(reference => reference.kind === 'test' && reference.context === 'evaluate').map(reference => reference.targetId));
