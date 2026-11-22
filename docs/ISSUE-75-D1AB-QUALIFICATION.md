@@ -31,7 +31,7 @@ qualification only; it is not execution evidence.
 - Mutation host probe with isolated Red Hat YAML 2.0.0: **passed**
 - Installed VSIX host probe with d1ab pack: **passed**
 - Status host probe: **passed**; intentional `partial` status remains visible
-- `npm run test:corpus:graphical`: **158 opened, 0 failures**; 152 files model-qualified after six experimental ESX exclusions
+- `npm run test:corpus:graphical`: **158 opened, 0 failures**; 152 files model-qualified after six experimental ESX exclusions; no-op open/save, scalar edit/reopen, and undo restored exact bytes for **158/158** files
 - `python3 scripts/audit_repository.py`: **PASS**
 
 The Red Hat YAML host reports one known `$ref` resolution warning for the
