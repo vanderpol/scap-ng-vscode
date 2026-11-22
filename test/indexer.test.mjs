@@ -104,3 +104,25 @@ test('indexes typed local Assessment references and reports unresolved targets w
   assert.equal(record.localReferenceAnalysis.referencesTo('test', 'first-test').length, 0, 'literal selector text is not a Test reference');
   assert.deepEqual(record.diagnostics.map(diagnostic => diagnostic.code), ['unresolved-local-reference']);
 });
+
+test('indexes external Assessment dependencies in Evaluate and resolves exact targets', () => {
+  const index = new WorkspaceIndex();
+  index.update('parent.assessment.yaml', `assessment:
+  id: parent
+  version: 1
+  assessment_title: Parent
+  mode: automated
+  tests: {}
+  evaluate:
+    not:
+      assessment: child
+      expected_version: 2
+`);
+  index.update('child.assessment.yaml', assessment('child', 2).replace('child title', 'Child title'));
+  const parent = index.get('parent.assessment.yaml');
+  assert.deepEqual(parent.references, [{
+    targetId: 'child', expectedVersion: 2,
+    path: '/assessment/evaluate/not/assessment', purpose: 'assessment'
+  }]);
+  assert.equal(index.diagnostics().length, 0);
+});

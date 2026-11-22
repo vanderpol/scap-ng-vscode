@@ -27,6 +27,9 @@ test('graphical webview contains syntactically valid JavaScript and source-safe 
   assert.match(html, /current\?\.assessment\?\.mode==='manual'/);
   assert.match(html, /YAML parse errors prevent reliable Evaluate and Test navigation/);
   assert.match(html, /revision:current\.revision,version:current\.version/);
+  assert.match(html, /Dependencies \/ Referenced Assessments/);
+  assert.match(html, /Result = NOT/);
+  assert.match(html, /type:'openExternalAssessment',uri:ref\.targetUri,mode/);
 });
 
 test('defaults are explained locally rather than by an opaque global toolbar count', () => {

@@ -43,6 +43,15 @@ function assessmentMode(value: unknown): string | undefined {
   const normalized = value.trim().toLocaleLowerCase();
   return normalized || undefined;
 }
+function collectAssessmentExpressionReferences(value: any, path: string[], references: AssessmentReference[]) {
+  if (!object(value)) return;
+  if (typeof value.assessment === 'string') {
+    references.push({ targetId: value.assessment, expectedVersion: version(value.expected_version), path: pointer(...path, 'assessment'), purpose: 'assessment' });
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) collectAssessmentExpressionReferences(child, [...path, key], references);
+}
+
 function benchmarkProfiles(value: any): BenchmarkProfile[] {
   if (!Array.isArray(value)) return [];
   return value.filter(object).map(profile => ({
@@ -90,6 +99,7 @@ export class WorkspaceIndex {
           if (object(candidate) && typeof candidate.assessment === 'string') references.push({ targetId: candidate.assessment, expectedVersion: version(candidate.expected_version), path: pointer(kind, 'dependencies', alias, 'assessment'), purpose: candidate.purpose === 'applicability' ? 'applicability' : 'assessment' });
         }
       }
+      if (kind === 'assessment' && object(body.evaluate)) collectAssessmentExpressionReferences(body.evaluate, [kind, 'evaluate'], references);
       if (kind === 'applicability' && object(body.conditions)) {
         for (const [name, candidate] of Object.entries(body.conditions)) {
           if (object(candidate) && typeof candidate.assessment === 'string') {

@@ -1019,8 +1019,55 @@ async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
   if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
 }
 type AssessmentEditorScope = { mode: 'benchmark' | 'standalone'; benchmarkLabel?: string };
+type AssessmentExternalReference = {
+  targetId: string;
+  expectedVersion?: string | number;
+  purpose: string;
+  path: string;
+  status: 'resolved' | 'missing' | 'wrong-kind' | 'version-mismatch' | 'ambiguous';
+  targetUri?: string;
+  targetTitle?: string;
+  targetVersion?: string | number;
+  detail: string;
+  negated: boolean;
+};
+
+function assessmentExternalReferenceData(index: WorkspaceIndex, uri: string): AssessmentExternalReference[] {
+  const source = index.get(uri);
+  if (!source || source.kind !== 'assessment') return [];
+  return source.references.map(reference => {
+    const candidates = index.find(reference.targetId);
+    const assessments = candidates.filter(candidate => candidate.kind === 'assessment');
+    const matching = reference.expectedVersion === undefined
+      ? assessments
+      : assessments.filter(candidate => String(candidate.version) === String(reference.expectedVersion));
+    let status: AssessmentExternalReference['status'] = 'resolved';
+    let detail = 'Resolved by logical Assessment ID and version.';
+    if (!candidates.length) { status = 'missing'; detail = 'No indexed Assessment has this logical ID. Import or refresh the containing content folder.'; }
+    else if (!assessments.length) { status = 'wrong-kind'; detail = 'The logical ID resolves, but the target is not an Assessment.'; }
+    else if (!matching.length) { status = 'version-mismatch'; detail = `No target provides expected version ${reference.expectedVersion}.`; }
+    else if (matching.length !== 1) { status = 'ambiguous'; detail = 'Multiple Assessment documents match this logical ID/version; no target was selected.'; }
+    const target = matching.length === 1 ? matching[0] : undefined;
+    return {
+      targetId: reference.targetId,
+      ...(reference.expectedVersion === undefined ? {} : { expectedVersion: reference.expectedVersion }),
+      purpose: reference.purpose ?? 'assessment',
+      path: reference.path,
+      status,
+      ...(target ? { targetUri: target.uri, targetTitle: target.title, targetVersion: target.version } : {}),
+      detail,
+      negated: /\/not\//.test(reference.path)
+    };
+  });
+}
+
+
 class AssessmentEditorProvider {
-  constructor(private readonly getPack: () => MetadataPack | undefined, private readonly getScope: (document: any) => AssessmentEditorScope = () => ({ mode: 'standalone' })) {}
+  constructor(
+    private readonly getPack: () => MetadataPack | undefined,
+    private readonly getScope: (document: any) => AssessmentEditorScope = () => ({ mode: 'standalone' }),
+    private readonly getExternalReferences: (uri: string) => AssessmentExternalReference[] = () => []
+  ) {}
   async resolveCustomTextEditor(document: any, panel: any, _token: any) {
     const api: any = vscode; panel.webview.options = { enableScripts: true }; panel.webview.html = graphicalHtml();
     let editorMode = configuredAssessmentEditor(api, document);
@@ -1030,7 +1077,7 @@ class AssessmentEditorProvider {
     const send = () => {
       try {
         const model = assessmentEditorModel(document, this.getPack());
-        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode, scope: this.getScope(document), authoringWarnings: assistedDraftWarnings(document) } });
+        void panel.webview.postMessage({ type: 'model', model: { ...model, sourceName: document.uri?.fsPath ?? document.fileName ?? 'active document', editorMode, scope: this.getScope(document), externalReferences: this.getExternalReferences(document.uri?.toString?.() ?? ''), authoringWarnings: assistedDraftWarnings(document) } });
       } catch (error) {
         // A malformed/exotic YAML document must never strand the custom editor
         // on its loading placeholder. Keep the native YAML editor available
@@ -1070,6 +1117,15 @@ class AssessmentEditorProvider {
       if (message.type === 'switchToSource') { await switchToNativeSource(api, document, panel); return; }
       if (message.type === 'openRegex') { await api.commands.executeCommand('scapNg.testRegex', { document, useFirst: true }); return; }
       if (message.type === 'openGuided') { await api.commands.executeCommand('scapNg.createGuidedAssessment'); return; }
+      if (message.type === 'openExternalAssessment' && typeof message.uri === 'string' && (message.mode === 'graphical' || message.mode === 'yaml')) {
+        const target = this.getExternalReferences(document.uri?.toString?.() ?? '').find(reference => reference.status === 'resolved' && reference.targetUri === message.uri);
+        if (!target || !api.Uri?.parse) {
+          panel.webview.postMessage({ type: 'error', message: 'That referenced Assessment is no longer resolved in the indexed workspace. Refresh content and retry.' });
+          return;
+        }
+        await openAssessmentInMode(api, api.Uri.parse(message.uri), message.mode);
+        return;
+      }
       if (message.type === 'selectPath' && Array.isArray(message.path)) {
         try { const range = new SourceBuffer(document.getText()).scalarRange(message.path); await revealNativeSource(api, document, range); } catch { await revealNativeSource(api, document); }
         return;
@@ -3130,7 +3186,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
     return { mode: 'standalone' };
   };
-  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack, scopeForAssessment), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(api.window.registerCustomEditorProvider('scapNg.assessment', new AssessmentEditorProvider(() => pack, scopeForAssessment, uri => assessmentExternalReferenceData(index, uri)), { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showPin', () => vscode.window.showInformationMessage(`SCAP-NG ${profile.schemaVersion} · ${profile.sourceCommit} · Build ${buildLabel(build)} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.showBuildInfo', () => vscode.window.showInformationMessage(`SCAP-NG build ${buildLabel(build)} · source ${build.sourceCommit} · ${yamlServiceLabel(api)}`)));
   context.subscriptions.push(api.commands.registerCommand('scapNg.showYamlStatus', async () => {
