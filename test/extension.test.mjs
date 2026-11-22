@@ -162,6 +162,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Existing automation is never replaced/);
   assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
   assert.match(extensionSource, /The batch stopped before this Rule was sent/);
+  assert.match(extensionSource, /saveApprovedRuleLink/);
+  assert.match(extensionSource, /no persisted automation linkage was confirmed/);
 });
 
 test('workspace index discovers converted suffixes and applicability catalogs', async () => {

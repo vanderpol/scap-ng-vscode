@@ -421,6 +421,7 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
       const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
       if (introduced.length) throw new Error('Pinned Rule schema rejected the Assessment link: ' + introduced.join('; '));
       await applySourceWorkspaceEdit(api, document, edit);
+      await saveApprovedRuleLink(document);
       entry.status = 'linked'; send(); state.onChange?.(); for (const refresh of state.refreshListeners) refresh();
     } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
   });
@@ -482,6 +483,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
       const introduced = afterErrors.filter((error: string) => !beforeErrors.includes(error));
       if (introduced.length) throw new Error('Pinned Rule schema rejected the Assessment link: ' + introduced.join('; '));
       await applySourceWorkspaceEdit(api, ruleDocument, edit);
+      await saveApprovedRuleLink(ruleDocument);
       onLinked?.();
       panel.webview.postMessage({ type: 'status', message: `Saved and linked ${generatedId} as the default automated Assessment. Review generated assumptions before relying on it.` });
     } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
@@ -1155,6 +1157,12 @@ async function applySourceWorkspaceEdit(api: any, document: any, edit: any) {
   const replacements = Array.isArray(edit.replacements) ? edit.replacements : [{ start: edit.range[0], end: edit.range[1], replacement: edit.replacement }];
   for (const item of replacements) workspaceEdit.replace(document.uri, new api.Range(document.positionAt(item.start), document.positionAt(item.end)), item.replacement);
   if (!await api.workspace.applyEdit(workspaceEdit)) throw new Error('VS Code declined the source edit.');
+}
+
+/** Persist an explicitly approved Rule link before refreshing the Benchmark index. */
+async function saveApprovedRuleLink(document: any): Promise<void> {
+  if (typeof document?.save !== 'function') throw new Error('The Rule document cannot be saved by this VS Code host. Save it manually before refreshing Benchmark data.');
+  if (!await document.save()) throw new Error('VS Code declined to save the Rule link; no persisted automation linkage was confirmed.');
 }
 type AssessmentEditorScope = { mode: 'benchmark' | 'standalone'; benchmarkLabel?: string };
 type AssessmentExternalReference = {
