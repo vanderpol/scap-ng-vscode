@@ -71,6 +71,8 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
   assert.doesNotMatch(welcomeSource, /Open Benchmark Assessment/);
   assert.doesNotMatch(welcomeSource, /id="openAssessmentButton"/);
   assert.doesNotMatch(welcomeSource, /id="createStandaloneButton"/);
+  assert.doesNotMatch(welcomeSource, /id="createAssessmentButton"/);
+  assert.match(welcomeSource, /manageApplicability/);
   assert.match(welcomeSource, /data-benchmark-section/);
   assert.match(welcomeSource, /scapNg\.openBenchmarkContext/);
   assert.doesNotMatch(welcomeSource, /source files/);
@@ -104,6 +106,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /likelyRuleUris/);
   assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
   assert.match(extensionSource, /Open Benchmark Applicability Assessments/);
+  assert.match(extensionSource, /Create applicability Assessment/);
+  assert.match(extensionSource, /Edit applicability catalog/);
+  assert.match(extensionSource, /Edit Benchmark platform gate/);
   assert.match(extensionSource, /benchmarkApplicabilityAssessments/);
   assert.match(extensionSource, /benchmarkApplicabilityUsage/);
   assert.match(extensionSource, /benchmarkApplicabilitySummary/);
