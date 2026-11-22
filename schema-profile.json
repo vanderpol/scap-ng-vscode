@@ -6,7 +6,7 @@
   "candidatePullRequest": null,
   "candidateStatus": "current-single-version",
   "packResourceCount": 238,
-  "packGeneratorRevision": "scap-ng-tools@f44d714 official build_v04_editor_metadata_pack.py",
+  "packGeneratorRevision": "scap-ng-tools@f44d71463d12948372747bded6834a10814fd3e7 official build_v04_editor_metadata_pack.py",
   "packResourceIdentitySha256": "6a3678f64106b1c7ea4ee18cc3b81ea3c4b2f1a96318facac41ea84131272dac",
   "schemaFamilySha256": "11b5ae735dd0a7a1db496b421e0d12f757c027f734da688c2b1d96940f4c47dc",
   "ovalCommit": "2f140ee5c5dd1ed9606fcd5afc301f6baeb48706",

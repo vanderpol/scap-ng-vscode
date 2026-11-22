@@ -10,7 +10,7 @@
     {
       "name": "scap-ng-tools",
       "repository": "https://github.com/vanderpol/scap-ng-tools.git",
-      "commit": "f44d714",
+      "commit": "f44d71463d12948372747bded6834a10814fd3e7",
       "required": true
     },
     {
