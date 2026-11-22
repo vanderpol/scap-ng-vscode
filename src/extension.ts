@@ -205,7 +205,8 @@ async function saveGeneratedAssessmentForBenchmark(api: any, document: any, cont
     return undefined;
   }
   try { await api.workspace.fs.createDirectory?.(api.Uri.file(directory)); } catch { /* The directory normally exists in a converted Benchmark; write reports any real failure. */ }
-  await api.workspace.fs.writeFile(picked, new TextEncoder().encode(document.getText()));
+  const text = typeof document === 'string' ? document : document.getText();
+  await api.workspace.fs.writeFile(picked, new TextEncoder().encode(text));
   const saved = await api.workspace.openTextDocument(picked);
   if (openAfterSave) await openGeneratedAssessment(api, saved);
   return saved;
@@ -420,8 +421,10 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
       if (!generatedId) throw new Error('The generated Assessment has no safe ID.');
       const choice = await api.window.showWarningMessage(`Approve “${entry.title}” and save/link automated Assessment “${generatedId}”?`, { modal: true }, 'Save and link');
       if (choice !== 'Save and link') return;
-      const assessmentDocument = await api.workspace.openTextDocument({ content: entry.result.yaml, language: 'yaml' });
-      const saved = await saveGeneratedAssessmentForBenchmark(api, assessmentDocument, selected, generatedId, false);
+      // Write approved batch output directly. Do not create an untitled
+      // TextDocument: batch generation must not leave an orphaned Untitled
+      // editor containing SCAP-NG provenance comments.
+      const saved = await saveGeneratedAssessmentForBenchmark(api, entry.result.yaml, selected, generatedId, false);
       if (!saved) { panel.webview.postMessage({ type: 'status', message: 'Approval canceled before saving or linking; no Rule changes were made.' }); return; }
       const source = new SourceBuffer(document.getText());
       const before = source.json();

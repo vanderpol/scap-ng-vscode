@@ -167,6 +167,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Existing automated Rules will be comparison-only/);
   assert.match(extensionSource, /Assisted generation is a draft preview only/);
   assert.match(extensionSource, /opening the draft must not mutate the content tree/);
+  assert.match(extensionSource, /Do not create an untitled/);
+  assert.match(extensionSource, /saveGeneratedAssessmentForBenchmark\(api, entry\.result\.yaml/);
   assert.match(extensionSource, /no persisted automation linkage was confirmed/);
 });
 
