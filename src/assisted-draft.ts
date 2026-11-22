@@ -372,7 +372,7 @@ function windowsSemanticCandidate(text: string): Candidate | undefined {
   if (/(?:networked systems.*OpenSSH|OpenSSH.*(?:installed|implement))/i.test(signal)) return { capability: 'windows.service', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized a Windows OpenSSH service requirement.', 'The exact service state and applicability exception still require author review.'] };
   if (/(?:virtualization-based security|Secure Boot with DMA Protection|Win32_DeviceGuard)/i.test(text)) return { capability: 'windows.cmdlet', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized a Windows DeviceGuard/VBS requirement.', 'The exact DeviceGuard properties and accepted values still require author review.'] };
   if (/(?:permissions|access control).*(?:directory|drive|Program Files|SYSVOL)/i.test(text)) return { capability: 'independent.shellcommand', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized a Windows filesystem access-control check.', 'The exact path, trustee and rights predicates still require author review.'] };
-  if (/(?:OpenSSH|sshd_config)/i.test(text)) {
+  if (/(?:OpenSSH|sshd_config)/i.test(text) && /(?:configuration|directive|daemon|authentication|host key|environment|root|password|allow|permit)/i.test(text)) {
     if (/(?:private|public) host key|configuration file.*minimum|permissions?/i.test(text)) return { capability: 'windows.fileeffectiverights', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized an OpenSSH file-permissions check.', 'The exact path, rights and key-file set still require author review.'] };
     return { capability: 'independent.textfilecontent', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized an OpenSSH configuration check.', 'The exact directive, value and configuration path still require author review.'] };
   }
@@ -470,7 +470,10 @@ function selinuxCandidate(text: string): Candidate | undefined {
 }
 
 function sshdCandidate(text: string): Candidate | undefined {
-  if (!/(?:sshd_config|\bsshd\s+-[Tt]|OpenSSH)/i.test(text)) return undefined;
+  // Do not treat an `openssh-server` package check as an sshd directive check.
+  // Package requirements often contain the token OpenSSH but provide no
+  // configuration selector or directive to parse.
+  if (!/(?:sshd_config|\bsshd\s+-[Tt]|\b(?:SSH|OpenSSH)\b[^.\n]{0,100}(?:configuration|directive|daemon|authentication|host key|environment|root|password|allow|permit))/i.test(text)) return undefined;
   if (isLinuxFamilyText(text) && !/(?:sshd_config|sshd\s+-[Tt]|SSH.*(?:configuration|directive|daemon|authentication|host key|environment|root|password|allow|permit))/i.test(text)) return undefined;
   if (isLinuxFamilyText(text)) return { capability: 'independent.textfilecontent', object: {}, presenceOnly: true, confidence: 'low', assumptions: ['Recognized a Linux SSH configuration requirement from the pasted procedure.', 'Confirm the exact sshd directive, configuration path, and expected value.'] };
   const path = text.match(/\/(?:etc|usr\/local\/etc)\/ssh\/sshd_config(?:\.[A-Za-z0-9_.-]+)?/i)?.[0] ?? '/etc/ssh/sshd_config';
@@ -744,7 +747,7 @@ function ubuntuSemanticCandidate(text: string, platform?: string): Candidate | u
   if (!aptConfig && (packageMatch || /\b(?:package|apt|dpkg)\b/i.test(signal) && /\b(?:installed|present|removed|absent)\b/i.test(signal))) {
     const packageName = packageMatch?.[1];
     const object: Record<string, Json> = packageName ? { name: { equals: packageName } } : {};
-    const absent = /\b(?:not|must\s+not|removed|absent)\b[^.\n]{0,45}\b(?:installed|present|package)\b|\b(?:installed|present)\b[^.\n]{0,45}\b(?:not|must\s+not)\b/i.test(signal);
+    const absent = packageMustBeAbsent(signal);
     return { capability: 'linux.dpkginfo', object, presenceOnly: true, itemFound: absent ? 'none' : 'one_or_more', confidence: packageName ? 'medium' : 'low', assumptions: [
       'Used the Ubuntu benchmark context to map package state wording to linux.dpkginfo.',
       ...(packageName ? [`Inferred the Debian package name '${packageName}'.`] : ['The package name was not unambiguous; fill in the exact package selector.']),
@@ -894,14 +897,22 @@ function solarisSemanticCandidate(text: string, platform?: string): Candidate | 
   return undefined;
 }
 
+/** Infer the required package state from the finding condition, not merely
+ * from the word "not" anywhere in a long procedure.  In particular,
+ * "If the package is not installed, this is a finding" requires presence;
+ * it must not be inverted into an absence Test. */
+function packageMustBeAbsent(text: string): boolean {
+  return /(?:must|should)\s+not\s+(?:be\s+)?(?:installed|present)|(?:must|should)\s+be\s+(?:absent|removed)|\b(?:not have|does not have|do not have)\b[^.\n]{0,80}\b(?:package|installed|present)|\b(?:removed|absent)\b[^.\n]{0,50}\b(?:package|installed|present)/i.test(text)
+    && !/if\s+(?:the\s+)?[^.\n]{0,100}\bnot\s+(?:be\s+)?installed\b[^.\n]{0,80}\b(?:finding|fail)/i.test(text);
+}
 function packageCandidate(text: string): Candidate | undefined {
   const packageName = text.match(/(?:dnf|yum)\s+(?:list|info)\s+(?:--installed|installed)\s+([A-Za-z0-9_.*+:-]+)/i)?.[1]
     ?? text.match(/(?:rpm\s+-q|dpkg\s+-[sl])\s+([A-Za-z0-9_.+:-]+)/i)?.[1]
     ?? text.match(/\b(?:the\s+)?([A-Za-z0-9_.+:-]+)\s+package\s+(?:is\s+)?(?:installed|present|removed)/i)?.[1];
   if (!packageName || !/(?:package|rpm|dpkg|dnf|apt)/i.test(text)) return undefined;
   const deb = /\bdpkg\b|\bapt(?:-get)?\b/i.test(text) && !/\brpm\b|\bdnf\b|\byum\b/i.test(text);
-  const absent = /(?:must\s+not|not\s+(?:be\s+)?(?:installed|present)|removed|no matching)/i.test(text);
-  return { capability: deb ? 'linux.dpkginfo' : 'linux.rpminfo', object: { [deb ? 'name' : 'package_name']: { equals: packageName }, ...(deb ? {} : { include_file_paths: false }) }, presenceOnly: true, itemFound: absent ? 'none' : 'one_or_more', confidence: 'high', assumptions: [`Inferred a ${deb ? 'Debian package' : 'Linux RPM package'} Object from the package-manager command and package name.`, absent ? 'Inferred that the package must be absent.' : 'The generated Test checks package presence; version/state requirements still need review.'] };
+  const absent = packageMustBeAbsent(text);
+  return { capability: deb ? 'linux.dpkginfo' : 'linux.rpminfo', object: { [deb ? 'name' : 'package_name']: { equals: packageName }, ...(deb ? {} : { include_file_paths: false }) }, presenceOnly: true, itemFound: absent ? 'none' : 'one_or_more', confidence: 'high', assumptions: [`Inferred a ${deb ? 'Debian package' : 'Linux RPM package'} Object from the package-manager command and package name.`, absent ? 'Inferred that the package must be absent.' : 'Inferred that the package must be installed; a missing package will fail the Test.'] };
 }
 function policyCandidate(text: string, platform?: string): Candidate | undefined {
   if (isLinuxFamilyText(`${platform ?? ''}\n${text}`) && !/(?:Windows|Win32|Local Security Policy|Domain Policy)/i.test(text)) return undefined;
@@ -1412,6 +1423,72 @@ function annotation(pack: MetadataPack, input: AssistedDraftInput, confidence: A
   ];
   for (const line of cleanText(input.checkText).split('\n')) lines.push(`# ${line}`);
   return lines.join('\n');
+}
+
+
+function hasOutcome(value: unknown, key: 'not_applicable' | 'not_evaluated'): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Object.hasOwn(value, key)) return true;
+  return Object.values(value as Record<string, unknown>).some(child => hasOutcome(child, key));
+}
+function hasDynamicPopulation(text: string): boolean {
+  return /(?:\[[A-Z][A-Z0-9 _-]{1,40}\]|\/[^\s\n]*\*[^\s\n]*|conf\.d|for each|each applicable|all local interactive|all files? and director|all files? contained|every file|per-user|whose\s+owner|of which\s+the\s+(?:user|owner)|is a member of)/i.test(text);
+}
+function hasConditionalApplicability(text: string): boolean {
+  // A finding condition such as "if the package is not installed, this is a
+  // finding" is not an applicability branch. Require explicit N/A language
+  // or a conditional state that actually leads to N/A.
+  return /not applicable|\bn\/a\b/i.test(text)
+    || /if\s+(?:the\s+)?[^.\n]{0,180}\b(?:not installed|not configured|inactive|not being used|not being utilized|absent)\b[^.\n]{0,100}\b(?:not applicable|n\/a)\b/i.test(text);
+}
+function hasConcretePredicateCue(text: string): boolean {
+  return /(?:must be|should be|set to|configured to|equals?|value\s*[:=]|mode\s+0?[0-7]{3,4}|owner(?:ship)?|group[- ]owned|active|inactive|enabled|disabled|at least|at most|no more than|or less|greater than|less than|finding)/i.test(text);
+}
+function hasComparisonOrExplicitAbsence(test: any): boolean {
+  const require = test?.require;
+  if (!require || typeof require !== 'object') return false;
+  if (require.fields && Object.keys(require.fields).length > 0) return true;
+  const found = require.item_requirement?.items_found;
+  return found === 'none' || found === 'one_or_more' || found === 'exactly_one';
+}
+export function likelyAutomationReviewReasons(result: AssistedDraftResult, checkText: string): string[] {
+  const reasons: string[] = [];
+  if (result.generatedMode !== 'automated' || result.diagnostics.length > 0) reasons.push('The offline draft is not a clean automated candidate.');
+  if (result.confidence === 'low') reasons.push('The offline draft has low confidence.');
+  const value: any = result.document;
+  const assessment = value?.assessment;
+  const tests = Object.values(assessment?.tests ?? {}) as any[];
+  if (!tests.length) reasons.push('The draft contains no Tests.');
+  if (tests.some(test => !test?.object || typeof test.object !== 'object' || Array.isArray(test.object) || Object.keys(test.object).length === 0)) reasons.push('At least one Test has no concrete Object selector.');
+  if (tests.some(test => !hasComparisonOrExplicitAbsence(test))) reasons.push('At least one Test has no explicit predicate or presence/absence requirement.');
+  if (hasConditionalApplicability(checkText)) {
+    if (!hasOutcome(assessment?.evaluate, 'not_applicable')) reasons.push('The procedure contains an applicability branch without an explicit not_applicable outcome.');
+    if (hasOutcome(assessment?.evaluate, 'not_evaluated')) reasons.push('The draft leaves an applicability branch not_evaluated instead of resolving it as a technical gate or Not Applicable result.');
+  }
+  if (hasDynamicPopulation(checkText)) {
+    const serialized = JSON.stringify(value);
+    if (!/(?:file_traversal|foreach|for_each|set_expression|variable|\[[A-Z][A-Z0-9 _-]{1,40}\]|\/[^\s\"]*\*[^\s\"]*)/i.test(serialized)) reasons.push('The source names a dynamic path/population that the draft does not preserve.');
+    if (/(?:for each|each applicable|per-user|whose\s+owner|of which\s+the\s+(?:user|owner)|is a member of)/i.test(checkText) && tests.length < 2 && !/(?:foreach|for_each|set_expression|variable)/i.test(serialized)) reasons.push('The source requires a relationship across a population that the draft does not encode.');
+  }
+  // A broad text-file collection with no field predicate is not a likely
+  // candidate when the prose clearly specifies a value. Presence-only files
+  // (for example /etc/passwd) remain eligible.
+  if (hasConcretePredicateCue(checkText) && tests.some(test => /^independent\.textfilecontent$/i.test(String(test?.capability)) && Object.keys(test?.require?.fields ?? {}).length === 0 && !/package|file\s+(?:is\s+)?(?:present|exists)|must\s+be\s+installed/i.test(checkText))) reasons.push('The procedure contains a value/state predicate but the text-file Test has no field predicate.');
+  // Shell output must either be filtered by the command/object or be an
+  // explicit no-output test. Merely collecting `systemctl status`, `cat`, or
+  // `ls` output is not automation of the requirement.
+  if (tests.some(test => test?.capability === 'independent.shellcommand' && test?.require?.item_requirement?.items_found === 'one_or_more' && !test?.object?.pattern && !/(?:grep|egrep|awk|sed|find\s+[^\n]+(?:-perm|-uid|-gid|-name|-context)|\b(?:is-active|is-enabled)\b)/i.test(String(test?.object?.command ?? '')))) reasons.push('A shellcommand Test collects output without a reliable filtering predicate.');
+  return [...new Set(reasons)];
+}
+/**
+ * Conservative, generic gate for the Home "Likely automatable" analysis.
+ * This does not author or rewrite content; it prevents a schema-valid but
+ * selectorless/partial heuristic draft from being advertised as a likely
+ * candidate. Human-approved exceptions remain eligible when the technical
+ * Test itself is concrete and preserves its normal pass/fail result.
+ */
+export function isLikelyAutomatableDraft(result: AssistedDraftResult, checkText: string): boolean {
+  return likelyAutomationReviewReasons(result, checkText).length === 0;
 }
 
 function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate | undefined {

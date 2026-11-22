@@ -3,9 +3,39 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseDocument } from 'yaml';
 import { MetadataPack } from '../dist/metadata.js';
-import { createAssistedAssessment } from '../dist/assisted-draft.js';
+import { createAssistedAssessment, isLikelyAutomatableDraft } from '../dist/assisted-draft.js';
 
 const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
+
+
+test('package finding wording keeps installed-package requirements as presence checks', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'SSH must be installed.',
+    checkText: 'Run rpm -q openssh-server and verify the package is installed. If the SSH package is not installed, this is a finding.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  const check = Object.values(result.document.assessment.tests)[0];
+  assert.equal(check.capability, 'linux.rpminfo');
+  assert.equal(check.require.item_requirement.items_found, 'one_or_more');
+});
+
+test('likely-automatable analysis rejects partial dynamic populations but keeps concrete technical checks', () => {
+  const dynamic = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'World-writable directories must be group-owned by approved groups.',
+    checkText: 'Verify world-writable directories. Run once for each local partition [PART]: find [PART] -xdev -type d -perm -0002 -gid +999 -print. If there is output, this is a finding.'
+  });
+  assert.equal(dynamic.generatedMode, 'automated');
+  assert.equal(isLikelyAutomatableDraft(dynamic, 'Verify world-writable directories. Run once for each local partition [PART]: find [PART] -xdev -type d -perm -0002 -gid +999 -print. If there is output, this is a finding.'), false);
+
+  const concrete = createAssistedAssessment(pack, {
+    platform: 'rhel',
+    title: 'SSH must be installed.',
+    checkText: 'Run rpm -q openssh-server and verify the package is installed. If the SSH package is not installed, this is a finding.'
+  });
+  assert.equal(isLikelyAutomatableDraft(concrete, 'Run rpm -q openssh-server and verify the package is installed. If the SSH package is not installed, this is a finding.'), true);
+});
 
 test('assisted registry draft is deterministic, annotated, and pinned-schema valid', () => {
   const result = createAssistedAssessment(pack, {

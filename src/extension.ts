@@ -18,7 +18,7 @@ import { AuthoringSidebarProvider } from './authoring-sidebar.js';
 import { AssessmentAuthoringPrototypePanel } from './assessment-inspector.js';
 import { graphicalHtml } from './graphical.js';
 import { assessmentCustomEditorId, isAssessmentEditorMode, isAssessmentFilePath, sameEditorAssociations, withAssessmentEditorAssociation } from './editor-preferences.js';
-import { cleanProcedureForAutomation, createAssistedAssessment } from './assisted-draft.js';
+import { cleanProcedureForAutomation, createAssistedAssessment, isLikelyAutomatableDraft } from './assisted-draft.js';
 import { automationMetadataPath, readAutomationDispositions, writeAutomationDispositions, type AutomationDisposition } from './automation-metadata.js';
 import { normalizeYamlObjectStyle, type YamlObjectStyle } from './yaml-style.js';
 import { analyzeAssessmentReferences, referencePathLabel, type ReferenceKind } from './reference-graph.js';
@@ -255,12 +255,13 @@ async function analyzeBenchmarkAutomation(api: any, index: WorkspaceIndex, state
         const assessment = new SourceBuffer(document.getText()).json() as any;
         const procedure = assessment?.assessment?.procedure;
         if (typeof procedure === 'string' && procedure.trim()) {
+          const procedureText = cleanProcedureForAutomation(procedure);
           const result = createAssistedAssessment(pack, {
             title: rule.title ?? rule.id ?? 'Untitled Rule',
-            checkText: cleanProcedureForAutomation(procedure),
+            checkText: procedureText,
             platform: benchmarkContextPlatform(selected)
           });
-          if (result.generatedMode === 'automated' && result.diagnostics.length === 0) { likelyAutomatable++; likelyRuleUris.push(rule.uri); }
+          if (isLikelyAutomatableDraft(result, procedureText)) { likelyAutomatable++; likelyRuleUris.push(rule.uri); }
         }
       }
     } catch { /* One malformed/missing manual source must not abort the batch. */ }

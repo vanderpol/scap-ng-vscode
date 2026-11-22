@@ -126,7 +126,7 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /message.type === 'webviewError'/);
   assert.match(extensionSource, /analyzeBenchmarkAutomation/);
   assert.match(extensionSource, /withProgress/);
-  assert.match(extensionSource, /generatedMode === 'automated'/);
+  assert.match(extensionSource, /isLikelyAutomatableDraft\(result/);
   assert.match(extensionSource, /item\.automationStatus==='needs-automation'/);
   assert.match(extensionSource, /canCreateAutomation=model\.automationDisposition!=='manual-only'/);
   assert.match(extensionSource, /already has automation or is marked manual-only/);
