@@ -21,6 +21,18 @@ export interface BenchmarkPlatformIdentity {
   binding?: string;
   source?: { kind?: string; id?: string; idref?: string; sha256?: string };
 }
+export interface ApplicabilityCoverageLevel {
+  kind: string;
+  sourceId?: string;
+  conditions: readonly string[];
+}
+export interface ApplicabilityCoverageRule {
+  artifactPaths: readonly string[];
+  levels: readonly ApplicabilityCoverageLevel[];
+}
+export interface ApplicabilityCoverage {
+  rules: readonly ApplicabilityCoverageRule[];
+}
 export interface ApplicabilityOption { key: string; value: string; label: string; description?: string; condition: string; assessmentId: string; expectedVersion: string | number; catalogUri: string; targetUri?: string; available: boolean; }
 export interface BenchmarkProfile { id?: string; title?: string; disabledRuleCount: number; }
 export interface IndexedDocument {
@@ -107,9 +119,20 @@ function packageRootForPath(value: string): string | undefined {
   return index >= 0 ? normalized.slice(0, index) : undefined;
 }
 
+function coveragePackagePath(value: string): string {
+  const normalized = value.replaceAll('\\', '/').replace(/\/+$/, '');
+  return normalized.replace(/\/coverage\.json$/i, '');
+}
+function coverageCondition(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (object(value) && typeof value.condition === 'string') return value.condition;
+  return undefined;
+}
+
 export class WorkspaceIndex {
   private readonly documents = new Map<string, MutableDocument>();
   private readonly byId = new Map<string, IndexedDocument[]>();
+  private readonly coverageByPackage = new Map<string, ApplicabilityCoverage>();
 
   update(uri: string, text: string, path = uri, rebuild = true): IndexedDocument {
     let record: MutableDocument;
@@ -207,7 +230,31 @@ export class WorkspaceIndex {
   }
   remove(uri: string) { this.documents.delete(uri); this.rebuildDiagnostics(); }
   /** Remove all indexed documents before switching to an exclusive content root. */
-  clear() { this.documents.clear(); this.rebuildDiagnostics(); }
+  clear() { this.documents.clear(); this.coverageByPackage.clear(); this.rebuildDiagnostics(); }
+  updateCoverage(path: string, text: string) {
+    try {
+      const value = JSON.parse(text) as Record<string, any>;
+      const rules = Array.isArray(value.rules) ? value.rules.flatMap((candidate: any) => {
+        if (!object(candidate)) return [];
+        const levels = candidate.applicability?.levels ?? candidate.unconverted_policy_context?.applicability?.levels;
+        if (!Array.isArray(levels)) return [];
+        const normalizedLevels = levels.flatMap((level: any) => {
+          if (!object(level) || typeof level.kind !== 'string') return [];
+          const conditions = Array.isArray(level.conditions) ? level.conditions.map(coverageCondition).filter(Boolean) as string[] : [];
+          return conditions.length ? [{ kind: level.kind, ...(typeof level.id === 'string' ? { sourceId: level.id } : {}), conditions }] : [];
+        });
+        if (!normalizedLevels.length) return [];
+        return [{ artifactPaths: Array.isArray(candidate.artifacts) ? candidate.artifacts.filter((item: unknown): item is string => typeof item === 'string') : [], levels: normalizedLevels }];
+      }) : [];
+      this.coverageByPackage.set(coveragePackagePath(path), { rules });
+    } catch {
+      // Coverage is diagnostic/provenance metadata. A malformed sidecar must
+      // never invalidate or replace the authoritative YAML index.
+      this.coverageByPackage.delete(coveragePackagePath(path));
+    }
+  }
+  removeCoverage(path: string) { this.coverageByPackage.delete(coveragePackagePath(path)); }
+  coverageForPackage(packagePath: string): ApplicabilityCoverage | undefined { return this.coverageByPackage.get(packagePath.replaceAll('\\', '/').replace(/\/+$/, '')); }
   get(uri: string): IndexedDocument | undefined { const document = this.documents.get(uri); return document ? this.withDiagnostics(document) : undefined; }
   all(): IndexedDocument[] { return [...this.documents.values()].sort((a, b) => a.uri.localeCompare(b.uri)).map(document => this.withDiagnostics(document)); }
   private withDiagnostics(document: MutableDocument): IndexedDocument { return { ...document, diagnostics: this.diagnosticsFor(document.uri) }; }

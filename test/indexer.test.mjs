@@ -174,3 +174,21 @@ test('indexes provenance-only applicability conditions and declared Benchmark CP
   }]);
   assert.equal(index.applicabilityOptions().length, 0);
 });
+
+test('coverage sidecars retain inherited Benchmark applicability without entering the YAML document index', () => {
+  const index = new WorkspaceIndex();
+  index.updateCoverage('/workspace/pkg/coverage.json', JSON.stringify({
+    rules: [{
+      artifacts: ['authoring/direct-slice/rules/rule.json'],
+      applicability: { levels: [{ kind: 'benchmark', id: 'source-benchmark', conditions: [{ condition: 'platform-condition' }] }] }
+    }]
+  }));
+  const coverage = index.coverageForPackage('/workspace/pkg');
+  assert.deepEqual(coverage?.rules[0], {
+    artifactPaths: ['authoring/direct-slice/rules/rule.json'],
+    levels: [{ kind: 'benchmark', sourceId: 'source-benchmark', conditions: ['platform-condition'] }]
+  });
+  assert.equal(index.all().length, 0);
+  index.clear();
+  assert.equal(index.coverageForPackage('/workspace/pkg'), undefined);
+});

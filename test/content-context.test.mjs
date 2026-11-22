@@ -209,3 +209,49 @@ test('Benchmark context exposes direct CPE metadata and source-only applicabilit
   });
   assert.deepEqual(benchmarkApplicabilityAssessments(context), []);
 });
+
+test('Benchmark context reports inherited applicability from the converter coverage sidecar', () => {
+  const index = new WorkspaceIndex();
+  const root = '/workspace/inherited/documents/pkg/authoring/direct-slice';
+  index.update(`${root}/benchmark.yaml`, `benchmark:
+  id: direct-slice
+  title: Inherited benchmark
+  platform:
+    id: fixture
+    title: Fixture
+    expected_cpe_identities:
+      - value: cpe:/o:fixture:os:1
+        binding: cpe_uri_2_2
+        source:
+          kind: cpe_platform
+          id: cpe:/o:fixture:os:1
+          sha256: ${'a'.repeat(64)}
+  applicability_catalog: catalog
+`);
+  index.update(`${root}/applicability.yaml`, `applicability:
+  id: catalog
+  conditions:
+    platform-condition:
+      source:
+        kind: cpe_platform
+        id: cpe:/o:fixture:os:1
+        sha256: ${'b'.repeat(64)}
+`);
+  index.update(`${root}/rules/rule.yaml`, `rule:
+  id: rule
+  title: Rule
+`);
+  index.updateCoverage('/workspace/inherited/documents/pkg/coverage.json', JSON.stringify({
+    rules: [{ artifacts: ['authoring/direct-slice/rules/rule.json'], applicability: { levels: [{ kind: 'benchmark', id: 'source-benchmark', conditions: [{ condition: 'platform-condition' }] }] } }]
+  }));
+  const context = benchmarkContexts(index)[0];
+  assert.equal(context.rules[0].inheritedApplicability[0].kind, 'benchmark');
+  assert.equal(context.applicabilityCount, 1);
+  assert.deepEqual(benchmarkApplicabilitySummary(context), {
+    assessmentCount: 0,
+    benchmarkConditionCount: 1,
+    ruleConditionCount: 1,
+    referencedRuleCount: 1,
+    catalogCount: 1
+  });
+});

@@ -1,4 +1,4 @@
-import type { ApplicabilityOption, BenchmarkProfile, IndexedDocument, WorkspaceIndex } from './indexer.js';
+import type { ApplicabilityCoverageLevel, ApplicabilityOption, BenchmarkProfile, IndexedDocument, WorkspaceIndex } from './indexer.js';
 
 export type RuleAutomationStatus = 'automated' | 'manual-only' | 'needs-automation' | 'unresolved';
 export interface RuleAutomationSummary {
@@ -21,6 +21,7 @@ export interface BenchmarkContextDocument {
   applicability?: readonly string[];
   benchmarkApplicability?: readonly string[];
   benchmarkPlatformIdentities?: readonly { value: string; binding?: string; source?: { kind?: string; id?: string; idref?: string; sha256?: string } }[];
+  inheritedApplicability?: readonly ApplicabilityCoverageLevel[];
 }
 
 export interface BenchmarkProfileSummary extends BenchmarkProfile {}
@@ -32,6 +33,7 @@ export interface BenchmarkContextCondition {
   path: string;
   sourceUri: string;
   sourcePath: string;
+  source?: { kind?: string; id?: string; idref?: string; sha256?: string };
 }
 
 export interface BenchmarkContextSummary {
@@ -59,8 +61,8 @@ export function packageRootForPath(value: string): string | undefined {
   return index >= 0 ? normalized.slice(0, index) : undefined;
 }
 
-function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>): BenchmarkContextDocument {
-  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, benchmarkApplicability: document.benchmarkApplicability, benchmarkPlatformIdentities: document.benchmarkPlatformIdentities, ...ruleAutomation };
+function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>, inheritedApplicability?: readonly ApplicabilityCoverageLevel[]): BenchmarkContextDocument {
+  return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, benchmarkApplicability: document.benchmarkApplicability, benchmarkPlatformIdentities: document.benchmarkPlatformIdentities, ...(inheritedApplicability?.length ? { inheritedApplicability } : {}), ...ruleAutomation };
 }
 
 function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
@@ -111,6 +113,24 @@ function packageForRecord(path: string, importedRoots: readonly string[]): strin
  * authoritative. `importedRoots` lets the Browse action index a user-selected
  * folder that does not use the canonical direct-slice directory layout.
  */
+function coverageLevelsForRule(index: WorkspaceIndex, packagePath: string, rule: IndexedDocument): readonly ApplicabilityCoverageLevel[] {
+  const coverage = index.coverageForPackage(packagePath);
+  if (!coverage) return [];
+  const basename = rule.path.replaceAll('\\', '/').split('/').pop() ?? '';
+  const jsonName = basename.replace(/\.ya?ml$/i, '.json');
+  const row = coverage.rules.find(candidate => candidate.artifactPaths.some(artifact => artifact.replaceAll('\\', '/').endsWith('/rules/' + jsonName)));
+  return row?.levels ?? [];
+}
+function applicabilityReferences(rule: BenchmarkContextDocument): string[] {
+  return [...new Set([
+    ...(rule.applicability ?? []),
+    ...(rule.inheritedApplicability ?? []).flatMap(level => level.conditions)
+  ])];
+}
+function inheritedBenchmarkConditionNames(context: BenchmarkContextSummary): Set<string> {
+  return new Set(context.rules.flatMap(rule => (rule.inheritedApplicability ?? []).filter(level => level.kind === 'benchmark').flatMap(level => level.conditions)));
+}
+
 export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly string[] = []): BenchmarkContextSummary[] {
   const records = index.all();
   const byPackage = new Map<string, IndexedDocument[]>();
@@ -127,7 +147,7 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     const packageRecords = byPackage.get(packagePath) ?? [];
     const assessmentsById = new Map<string, IndexedDocument[]>();
     for (const record of packageRecords.filter(candidate => candidate.kind === 'assessment')) if (record.id) assessmentsById.set(record.id, [...(assessmentsById.get(record.id) ?? []), record]);
-    const rules = packageRecords.filter(record => record.kind === 'rule').map(record => documentSummary(record, ruleAutomation(record, assessmentsById))).sort(byTitle);
+    const rules = packageRecords.filter(record => record.kind === 'rule').map(record => documentSummary(record, ruleAutomation(record, assessmentsById), coverageLevelsForRule(index, packagePath, record))).sort(byTitle);
     const assessments = packageRecords.filter(record => record.kind === 'assessment').map(record => documentSummary(record)).sort(byTitle);
     const automation: RuleAutomationSummary = {
       automated: rules.filter(rule => rule.automationStatus === 'automated').length,
@@ -142,20 +162,27 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
       ...(condition.targetId ? { targetId: condition.targetId } : {}),
       path: condition.path,
       sourceUri: record.uri,
-      sourcePath: record.path
+      sourcePath: record.path,
+      ...(condition.source ? { source: condition.source } : {})
     }))).sort((left, right) => left.name.localeCompare(right.name) || left.sourcePath.localeCompare(right.sourcePath));
     const catalogUris = applicability.map(document => document.uri);
     const conditionCount = conditions.length;
     const ruleAssessmentIds = new Set(rules.flatMap(rule => [rule.automationAssessmentId, rule.manualAssessmentId]).filter(Boolean));
     const benchmarkConditionKeys = new Set(benchmark.benchmarkApplicability ?? []);
+    const inheritedBenchmarkKeys = new Set(rules.flatMap(rule => (rule.inheritedApplicability ?? []).filter(level => level.kind === 'benchmark').flatMap(level => level.conditions)));
     const benchmarkApplicabilityAssessmentIds = new Set(conditions
-      .filter(condition => condition.targetId && (benchmarkConditionKeys.has(condition.name) || benchmarkConditionKeys.has(condition.targetId)))
+      .filter(condition => condition.targetId && (benchmarkConditionKeys.has(condition.name) || benchmarkConditionKeys.has(condition.targetId) || inheritedBenchmarkKeys.has(condition.name)))
       .map(condition => condition.targetId as string));
-    const benchmarkConditionNames = new Set(conditions
-      .filter(condition => benchmarkConditionKeys.has(condition.name) || (condition.targetId && benchmarkConditionKeys.has(condition.targetId)))
-      .map(condition => condition.name));
+    const benchmarkConditionNames = new Set([
+      ...conditions.filter(condition => benchmarkConditionKeys.has(condition.name) || (condition.targetId && benchmarkConditionKeys.has(condition.targetId))).map(condition => condition.name),
+      ...inheritedBenchmarkKeys
+    ]);
+    const benchmarkApplicabilityTargets = [...benchmarkConditionNames].map(name => {
+      const condition = conditions.find(candidate => candidate.name === name);
+      return condition?.source?.id ?? name;
+    });
     const benchmarkApplicabilityCount = new Set([
-      ...benchmarkConditionNames,
+      ...benchmarkApplicabilityTargets,
       ...(benchmark.benchmarkPlatformIdentities ?? []).map(identity => identity.value)
     ]).size;
     return [{
@@ -205,7 +232,7 @@ export function benchmarkContextLabels(contexts: readonly BenchmarkContextSummar
  * the applicability catalog. Rule-only catalog conditions are intentionally
  * excluded from this set and from the Benchmark applicability view. */
 export function benchmarkApplicabilityAssessmentIds(context: BenchmarkContextSummary): Set<string> {
-  const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
+  const benchmarkKeys = new Set([...context.benchmark.benchmarkApplicability ?? [], ...inheritedBenchmarkConditionNames(context)]);
   return new Set(context.conditions
     .filter(condition => condition.targetId && (benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId))))
     .map(condition => condition.targetId as string));
@@ -221,11 +248,11 @@ export function benchmarkRuleAssessments(context: BenchmarkContextSummary): Benc
 
 export function benchmarkApplicabilityUsage(context: BenchmarkContextSummary, assessmentId: string): { benchmarkConditions: BenchmarkContextCondition[]; ruleConditions: BenchmarkContextCondition[]; rules: BenchmarkContextDocument[] } {
   const conditions = context.conditions.filter(condition => condition.targetId === assessmentId);
-  const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
+  const benchmarkKeys = new Set([...context.benchmark.benchmarkApplicability ?? [], ...inheritedBenchmarkConditionNames(context)]);
   const benchmarkConditions = conditions.filter(condition => benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId)));
-  const ruleConditions = conditions.filter(condition => context.rules.some(rule => (rule.applicability ?? []).some(reference => reference === condition.name || reference === condition.targetId || reference === assessmentId)));
+  const ruleConditions = conditions.filter(condition => context.rules.some(rule => applicabilityReferences(rule).some(reference => reference === condition.name || reference === condition.targetId || reference === assessmentId)));
   const conditionKeys = new Set(ruleConditions.flatMap(condition => [condition.name, condition.targetId].filter(Boolean) as string[]));
-  const rules = context.rules.filter(rule => (rule.applicability ?? []).some(reference => conditionKeys.has(reference) || reference === assessmentId));
+  const rules = context.rules.filter(rule => applicabilityReferences(rule).some(reference => conditionKeys.has(reference) || reference === assessmentId));
   return { benchmarkConditions, ruleConditions, rules };
 }
 
@@ -240,11 +267,11 @@ export interface BenchmarkApplicabilitySummary {
 }
 export function benchmarkApplicabilitySummary(context: BenchmarkContextSummary): BenchmarkApplicabilitySummary {
   const assessments = benchmarkApplicabilityAssessments(context);
-  const benchmarkKeys = new Set(context.benchmark.benchmarkApplicability ?? []);
+  const benchmarkKeys = new Set([...context.benchmark.benchmarkApplicability ?? [], ...inheritedBenchmarkConditionNames(context)]);
   const benchmarkConditions = context.conditions.filter(condition => benchmarkKeys.has(condition.name) || Boolean(condition.targetId && benchmarkKeys.has(condition.targetId)));
-  const ruleConditions = context.conditions.filter(condition => context.rules.some(rule => (rule.applicability ?? []).some(reference => reference === condition.name || reference === condition.targetId)));
+  const ruleConditions = context.conditions.filter(condition => context.rules.some(rule => applicabilityReferences(rule).some(reference => reference === condition.name || reference === condition.targetId)));
   const conditionKeys = new Set(ruleConditions.flatMap(condition => [condition.name, condition.targetId].filter(Boolean) as string[]));
-  const rules = context.rules.filter(rule => (rule.applicability ?? []).some(reference => conditionKeys.has(reference)));
+  const rules = context.rules.filter(rule => applicabilityReferences(rule).some(reference => conditionKeys.has(reference)));
   return {
     assessmentCount: assessments.length,
     // Executable Benchmark conditions remain distinct from direct CPE

@@ -350,3 +350,11 @@ test('direct 0.4.1 applicability expressions are displayed read-only instead of 
   assert.match(extensionSource, /will not replace this expression with a legacy list/);
   assert.match(extensionSource, /Declared Benchmark OS\/App identities/);
 });
+
+test('Graphical Rule context shows inherited applicability from coverage without duplicating it into Rule YAML', () => {
+  assert.match(extensionSource, /Inherited applicability/);
+  assert.match(extensionSource, /converter coverage sidecar/);
+  assert.match(extensionSource, /not duplicated into the Rule YAML/);
+  assert.match(extensionSource, /inheritedApplicability/);
+  assert.match(extensionSource, /will not replace this expression with a legacy list/);
+});
