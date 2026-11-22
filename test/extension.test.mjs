@@ -97,6 +97,7 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(welcomeSource, /Applicability Assessments/);
   assert.doesNotMatch(welcomeSource, /Conditions/);
   assert.match(welcomeSource, /Likely automatable/);
+  assert.match(welcomeSource, /type:'ready'/);
   assert.match(welcomeSource, /likely-automatable/);
   assert.match(extensionSource, /likelyRuleUris/);
   assert.match(extensionSource, /openBenchmarkLikelyAutomation/);
