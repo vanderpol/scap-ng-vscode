@@ -3384,6 +3384,11 @@ export function activate(context: vscode.ExtensionContext) {
     return saved;
   };
   benchmarkState.onChange = () => {
+    // One notification fan-out keeps every open surface coherent after a
+    // linkage/edit: Home, the authoring sidebar, source choosers, context and
+    // usage pages, diagnostics, and the Assessment Studio tree.
+    publishIndexDiagnostics(index, indexDiagnostics, api);
+    tree.refresh();
     WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
     authoringSidebar.refreshContext();
     for (const listener of benchmarkState.refreshListeners) listener();

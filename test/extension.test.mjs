@@ -171,6 +171,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Index the Assessment first so Rule resolution is/);
   assert.match(extensionSource, /onSourceChanged\?\.\(edit\.document\.text\)/);
   assert.match(extensionSource, /Benchmark pages refreshed/);
+  assert.match(extensionSource, /One notification fan-out keeps every open surface coherent/);
+  assert.match(extensionSource, /publishIndexDiagnostics\(index, indexDiagnostics, api\);/);
+  assert.match(extensionSource, /tree\.refresh\(\);/);
   assert.match(extensionSource, /index\.update\(uri\.toString\(\), text, uri\.fsPath/);
   assert.match(extensionSource, /comparison-only/);
   assert.match(extensionSource, /Existing automated Rules will be comparison-only/);
