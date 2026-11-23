@@ -1,8 +1,12 @@
 import type { ApplicabilityCoverageLevel, ApplicabilityOption, BenchmarkProfile, IndexedDocument, WorkspaceIndex } from './indexer.js';
 
 export type RuleAutomationStatus = 'automated' | 'manual-only' | 'needs-automation' | 'unresolved';
+export type RuleAutomationClass = 'fully-automated' | 'organizational-input' | 'manual';
 export interface RuleAutomationSummary {
   automated: number;
+  fullyAutomated: number;
+  organizationalInputAutomated: number;
+  manual: number;
   manualOnly: number;
   needsAutomation: number;
   unresolved: number;
@@ -16,6 +20,7 @@ export interface BenchmarkContextDocument {
   version?: string | number;
   mode?: string;
   automationStatus?: RuleAutomationStatus;
+  automationClass?: RuleAutomationClass;
   automationAssessmentId?: string;
   manualAssessmentId?: string;
   applicability?: readonly string[];
@@ -61,14 +66,14 @@ export function packageRootForPath(value: string): string | undefined {
   return index >= 0 ? normalized.slice(0, index) : undefined;
 }
 
-function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'>, inheritedApplicability?: readonly ApplicabilityCoverageLevel[]): BenchmarkContextDocument {
+function documentSummary(document: IndexedDocument, ruleAutomation?: Pick<BenchmarkContextDocument, 'automationStatus' | 'automationClass' | 'automationAssessmentId' | 'manualAssessmentId'>, inheritedApplicability?: readonly ApplicabilityCoverageLevel[]): BenchmarkContextDocument {
   return { uri: document.uri, path: document.path, id: document.id, title: document.title, version: document.version, mode: document.mode, applicability: document.ruleApplicability, benchmarkApplicability: document.benchmarkApplicability, benchmarkPlatformIdentities: document.benchmarkPlatformIdentities, ...(inheritedApplicability?.length ? { inheritedApplicability } : {}), ...ruleAutomation };
 }
 
-function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationAssessmentId' | 'manualAssessmentId'> {
+function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, IndexedDocument[]>): Pick<BenchmarkContextDocument, 'automationStatus' | 'automationClass' | 'automationAssessmentId' | 'manualAssessmentId'> {
   const automated = document.assessmentChoices.find(choice => choice.choice === 'automated');
   const manual = document.assessmentChoices.find(choice => choice.choice === 'manual');
-  if (document.automationDisposition === 'manual-only') return { automationStatus: 'manual-only', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
+  if (document.automationDisposition === 'manual-only') return { automationStatus: 'manual-only', automationClass: 'manual', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
   const resolve = (choice: { targetId: string } | undefined) => {
     if (!choice) return undefined;
     const targets = assessmentsById.get(choice.targetId)?.filter(candidate => candidate.kind === 'assessment') ?? [];
@@ -79,7 +84,7 @@ function ruleAutomation(document: IndexedDocument, assessmentsById: Map<string, 
     return { automationStatus: 'unresolved', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
   }
   if (automatedTarget) {
-    return { automationStatus: 'automated', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
+    return { automationStatus: 'automated', automationClass: automatedTarget.organizationalInputCount ? 'organizational-input' : 'fully-automated', automationAssessmentId: automated?.targetId, manualAssessmentId: manual?.targetId };
   }
   const manualTarget = resolve(manual);
   if (manual && !manualTarget) return { automationStatus: 'unresolved', manualAssessmentId: manual.targetId };
@@ -151,6 +156,9 @@ export function benchmarkContexts(index: WorkspaceIndex, importedRoots: readonly
     const assessments = packageRecords.filter(record => record.kind === 'assessment').map(record => documentSummary(record)).sort(byTitle);
     const automation: RuleAutomationSummary = {
       automated: rules.filter(rule => rule.automationStatus === 'automated').length,
+      fullyAutomated: rules.filter(rule => rule.automationClass === 'fully-automated').length,
+      organizationalInputAutomated: rules.filter(rule => rule.automationClass === 'organizational-input').length,
+      manual: rules.filter(rule => rule.automationClass === 'manual').length,
       manualOnly: rules.filter(rule => rule.automationStatus === 'manual-only').length,
       needsAutomation: rules.filter(rule => rule.automationStatus === 'needs-automation').length,
       unresolved: rules.filter(rule => rule.automationStatus === 'unresolved').length

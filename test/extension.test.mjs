@@ -96,7 +96,13 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /automationStatus/);
   assert.match(extensionSource, /Manual-only flag/);
   assert.match(extensionSource, /automationDisposition/);
+  assert.match(extensionSource, /Organizational-input candidate/);
+  assert.match(extensionSource, /Keep Rule manual-only/);
+  assert.match(extensionSource, /automationClass/);
   assert.match(welcomeSource, /Needs automation/);
+  assert.match(welcomeSource, /Fully automated/);
+  assert.match(welcomeSource, /Org-input automated/);
+  assert.match(welcomeSource, /Manual/);
   assert.match(welcomeSource, /Rule Assessments/);
   assert.match(welcomeSource, /Benchmark OS\/App applicability/);
   assert.doesNotMatch(welcomeSource, /Conditions/);

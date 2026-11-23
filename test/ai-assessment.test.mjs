@@ -128,6 +128,7 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   }));
   assert.equal(requests.length, 1);
   assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.automationClass, 'fully-automated');
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.document.assessment.mode, 'automated');
   assert.equal(result.method, 'configured-ai');

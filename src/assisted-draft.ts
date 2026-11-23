@@ -23,6 +23,7 @@ export interface AssistedDraftResult {
   assumptions: string[];
   unresolved: string[];
   generatedMode: 'automated' | 'manual';
+  automationClass?: 'fully-automated' | 'organizational-input' | 'manual';
 }
 
 interface ConditionalBranch { label: string; object: Record<string, Json>; }
@@ -1513,7 +1514,7 @@ function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: 
     ], allow_comment: true, allow_evidence: true }
   });
   const notes = annotation(pack, { title, checkText }, confidence, assumptions, unresolved);
-  return { ...result, yaml: `${notes}\n${result.yaml}`, confidence, assumptions, unresolved, generatedMode: 'manual' };
+  return { ...result, yaml: `${notes}\n${result.yaml}`, confidence, assumptions, unresolved, generatedMode: 'manual', automationClass: 'manual' };
 }
 
 export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraftInput): AssistedDraftResult {
@@ -1603,5 +1604,5 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
   const unresolved = candidate.conditionalBranches ? [candidate.conditionalElseReason ?? `Select or create the applicability Assessments for ${candidate.conditionalBranches.map(branch => branch.label).join(' and ')}; the generated if/else-if branches are placeholders until those files are linked.`, 'Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : candidate.review ?? (candidate.testCandidates || candidate.fields ? ['Confirm the inferred capability, selectors, datatype, and expected value against the original STIG.'] : ['Add the expected field predicate(s); this draft currently checks only Item presence.']);
   const assumptions = [...titleAssumptions, ...candidate.assumptions];
   const notes = annotation(pack, { title, checkText }, candidate.confidence, assumptions, unresolved);
-  return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated' };
+  return { ...generated, yaml: `${notes}\n${generated.yaml}`, confidence: candidate.confidence, assumptions, unresolved, generatedMode: 'automated', automationClass: Object.keys((generated.document as any)?.assessment?.inputs ?? {}).length ? 'organizational-input' : 'fully-automated' };
 }

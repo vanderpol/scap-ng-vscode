@@ -23,6 +23,8 @@ test('benchmark contexts group related documents by package path and preserve ar
   assert.equal(contexts[0].ruleCount, 1);
   assert.equal(contexts[0].rules[0].automationStatus, 'automated');
   assert.equal(contexts[0].automation.automated, 1);
+  assert.equal(contexts[0].automation.fullyAutomated, 1);
+  assert.equal(contexts[0].automation.organizationalInputAutomated, 0);
   assert.equal(contexts[0].automation.needsAutomation, 0);
   assert.equal(contexts[0].assessmentCount, 1);
   assert.deepEqual(benchmarkApplicabilityAssessments(contexts[0]).map(item => item.id), ['product-applicability-assessment']);
@@ -88,6 +90,49 @@ test('multiple Benchmark documents in one root have distinct selectable context 
   assert.equal(contexts.length, 2);
   assert.notEqual(contexts[0].key, contexts[1].key);
   assert.equal(new Set(contexts.map(context => context.packagePath)).size, 1);
+});
+
+test('automation statistics distinguish fully automated and organizational-input Assessments', () => {
+  const index = new WorkspaceIndex();
+  const root = '/workspace/automation-classes/authoring/direct-slice';
+  index.update(`${root}/benchmark.yaml`, 'benchmark:\n  id: classes-benchmark\n  title: Classes Benchmark\n');
+  index.update(`${root}/rules/full-rule-rule.yaml`, `rule:
+  id: full-rule
+  title: Fully automated rule
+  assessment_choices:
+    automated:
+      assessment: full-assessment
+`);
+  index.update(`${root}/rules/input-rule-rule.yaml`, `rule:
+  id: input-rule
+  title: Organizational input rule
+  assessment_choices:
+    automated:
+      assessment: input-assessment
+`);
+  index.update(`${root}/assessments/full-assessment.yaml`, `assessment:
+  id: full-assessment
+  version: 1
+  assessment_title: Full
+  mode: automated
+`);
+  index.update(`${root}/assessments/input-assessment.yaml`, `assessment:
+  id: input-assessment
+  version: 1
+  assessment_title: Input
+  mode: automated
+  inputs:
+    approved-value-input:
+      datatype: string
+      cardinality: exactly_one
+      required: true
+`);
+  const context = benchmarkContexts(index)[0];
+  assert.equal(context.automation.fullyAutomated, 1);
+  assert.equal(context.automation.organizationalInputAutomated, 1);
+  assert.equal(context.automation.manual, 0);
+  assert.equal(context.rules.find(rule => rule.id === 'input-rule')?.automationClass, 'organizational-input');
+  assert.equal(context.rules.find(rule => rule.id === 'full-rule')?.automationClass, 'fully-automated');
 });
 
 test('manual Assessment links stay in the automation queue until explicitly flagged', () => {

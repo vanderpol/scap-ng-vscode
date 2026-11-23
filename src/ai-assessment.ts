@@ -33,6 +33,7 @@ export interface AiAssessmentCoverage {
 
 export interface AiAssessmentDraft {
   generatedMode: 'automated' | 'manual-only';
+  automationClass?: 'fully-automated' | 'organizational-input' | 'manual';
   confidence: 'high' | 'medium' | 'low';
   yaml: string;
   document?: any;
@@ -621,6 +622,13 @@ function inferProviderGeneratedMode(payload: any): { mode?: 'automated' | 'manua
   return {};
 }
 
+function automationClassForAssessment(value: any, generatedMode: 'automated' | 'manual-only'): 'fully-automated' | 'organizational-input' | 'manual' {
+  if (generatedMode === 'manual-only') return 'manual';
+  return value?.assessment?.inputs && typeof value.assessment.inputs === 'object' && !Array.isArray(value.assessment.inputs) && Object.keys(value.assessment.inputs).length
+    ? 'organizational-input'
+    : 'fully-automated';
+}
+
 function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput, raw: string): AiAssessmentDraft {
   let payload: any;
   try { payload = parseProviderJson(raw); }
@@ -633,7 +641,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   const confidence = payload?.confidence === 'high' || payload?.confidence === 'medium' ? payload.confidence : 'low';
   const generated = inferProviderGeneratedMode(payload);
   if (generated.inferred) assumptions.push(generated.inferred);
-  if (generated.mode === 'manual-only') return { generatedMode: 'manual-only', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+  if (generated.mode === 'manual-only') return { generatedMode: 'manual-only', automationClass: 'manual', confidence, yaml: '', diagnostics: [], document: undefined, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (generated.mode !== 'automated') return draftFromFailure('The AI response did not declare generated_mode as automated or manual-only.', assumptions);
   let yamlText = providerAssessmentYaml(payload);
   if (!yamlText) return draftFromFailure('The AI response did not contain assessment_yaml.', assumptions);
@@ -655,7 +663,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
   diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
-  return { generatedMode: 'automated', confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
+  return { generatedMode: 'automated', automationClass: automationClassForAssessment(value, 'automated'), confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
 }
 
 export const AI_REQUEST_TOTAL_TIMEOUT_MS = 120_000;
