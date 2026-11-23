@@ -26,6 +26,7 @@ import { assessmentSectionBeforeKey } from './assessment-order.js';
 import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 import { assessmentFileName } from './assessment-filename.js';
 import { AiConfigurationPanel } from './ai-configuration-panel.js';
+import { EditorOptionsPanel, type EditorOptions } from './editor-options-panel.js';
 import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
@@ -3426,6 +3427,27 @@ export function activate(context: vscode.ExtensionContext) {
     AiConfigurationPanel.update(saved);
     return saved;
   };
+  const readEditorOptions = (): EditorOptions => {
+    const configuration = api.workspace.getConfiguration('scapNg');
+    return {
+      assessmentEditor: isAssessmentEditorMode(configuration.get('assessmentEditor', 'yaml')) ? configuration.get('assessmentEditor', 'yaml') : 'yaml',
+      objectStyle: normalizeYamlObjectStyle(configuration.get('objectStyle', 'tree')),
+      schemaPackPath: configuration.get('schemaPackPath', '') ?? ''
+    };
+  };
+  const writeEditorOptions = async (value: EditorOptions): Promise<EditorOptions> => {
+    const configuration = api.workspace.getConfiguration('scapNg');
+    if (typeof configuration?.update !== 'function') throw new Error('Editor settings are unavailable in this VS Code session.');
+    await configuration.update('assessmentEditor', value.assessmentEditor, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('objectStyle', value.objectStyle, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('schemaPackPath', value.schemaPackPath.trim() || undefined, api.ConfigurationTarget?.Workspace ?? 2);
+    resetPack();
+    await syncEditorPreference();
+    authoringSidebar.refreshContext();
+    EditorOptionsPanel.update(value);
+    return value;
+  };
+
   benchmarkState.onChange = () => {
     // One notification fan-out keeps every open surface coherent after a
     // linkage/edit: Home, the authoring sidebar, source choosers, context and
@@ -3601,6 +3623,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
   const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openEditorOptions', () => EditorOptionsPanel.open(context, readEditorOptions, writeEditorOptions, () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions))));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testAiAuthoring', async () => { const result = await aiConfigurationActions.testAuthoring(); const message = result.message; if (/succeeded/i.test(message)) await api.window.showInformationMessage(message); else await api.window.showWarningMessage(message); return result; }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {
     const mode = normalizeAiAssistanceMode(value);

@@ -5,6 +5,7 @@ import { assessmentEditorModes, usesGraphicalEditor, usesNativeYamlEditor } from
 
 const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
 const sidebarSource = readFileSync(new URL('../src/authoring-sidebar.ts', import.meta.url), 'utf8');
+const editorOptionsSource = readFileSync(new URL('../src/editor-options-panel.ts', import.meta.url), 'utf8');
 
 test('mode switching keeps YAML and Split on the native TextDocument path', () => {
   assert.deepEqual(assessmentEditorModes, ['yaml', 'graphical', 'split']);
@@ -21,7 +22,7 @@ test('Split resolves the existing custom editor beside the same native YAML docu
   assert.match(extensionSource, /openNativeYamlBeside\(api, document\)/);
   assert.match(extensionSource, /input\?\.viewType === assessmentCustomEditorId/);
   assert.match(extensionSource, /openTextDocument\(custom\.input\.uri\)/);
-  assert.match(sidebarSource, /value="split">Graphical \+ native YAML \(Split\)/);
+  assert.match(editorOptionsSource, /value="split".*Graphical \+ native YAML \(Split\)/);
 });
 
 test('Split keeps native edits and Graphical edits on the same source document', () => {

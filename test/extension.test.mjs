@@ -7,6 +7,7 @@ const authoringSidebarSource = readFileSync(new URL('../src/authoring-sidebar.ts
 const extensionSource = readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/welcome.ts', import.meta.url), 'utf8');
 const aiConfigurationPanelSource = readFileSync(new URL('../src/ai-configuration-panel.ts', import.meta.url), 'utf8');
+const editorOptionsPanelSource = readFileSync(new URL('../src/editor-options-panel.ts', import.meta.url), 'utf8');
 test('P0 extension manifest exposes offline Assessment Studio and exact pin descriptor', () => {
   assert.equal(packageJson.main, './dist/extension.js');
   assert.equal(packageJson.publisher, 'vanderpol');
@@ -25,6 +26,7 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openWelcome'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentFile'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAiConfiguration'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openEditorOptions'));
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open an Assessment File/);
   assert.doesNotMatch(packageJson.contributes.viewsWelcome[0].contents, /Open Authoring tools/);
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open SCAP-NG Home/);
@@ -76,6 +78,7 @@ test('Home page prioritizes Assessment navigation without redundant sidebar acti
   assert.doesNotMatch(welcomeSource, /id="createAssessmentButton"/);
   assert.match(welcomeSource, /manageApplicability/);
   assert.match(welcomeSource, /data-benchmark-section/);
+  assert.match(welcomeSource, /editorOptions|openEditorOptions/);
   assert.match(welcomeSource, /scapNg\.openBenchmarkContext/);
   assert.doesNotMatch(welcomeSource, /source files/);
   assert.doesNotMatch(welcomeSource, /sourceLinks/);
@@ -215,17 +218,21 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.doesNotMatch(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /authoringSidebar\.autoReveal|maybeRevealAuthoring/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"helpContext\"|model\.editor\.fileName|model\.editor\.path\|\|/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"optionsBody\"/);
-  assert.match(authoringSidebarSource, /data-tab=\"about\"/);
-  assert.match(authoringSidebarSource, /id=\"aboutBody\"/);
-  assert.match(authoringSidebarSource, /function renderAbout\(model\)/);
-  assert.match(authoringSidebarSource, /Built at/);
-  assert.match(authoringSidebarSource, /build\?\.builtAt/);
   assert.doesNotMatch(authoringSidebarSource, /\['Default Assessment editor',/);
   assert.doesNotMatch(authoringSidebarSource, /\['Source editing',/);
   assert.match(authoringSidebarSource, /yaml-only/);
   assert.match(authoringSidebarSource, /mode-graphical/);
   assert.match(authoringSidebarSource, /viewType === 'scapNg.assessment'/);
   assert.match(authoringSidebarSource, /data-tab=\"diagnostics\"|id=\"diagnostics\"/);
+  assert.doesNotMatch(authoringSidebarSource, /data-tab="options"|id="options"|data-tab="about"|id="about"/);
+  assert.doesNotMatch(authoringSidebarSource, /openAiConfiguration/);
+  assert.match(editorOptionsPanelSource, /Editor options/);
+  assert.match(editorOptionsPanelSource, /New YAML Object presentation/);
+  assert.match(editorOptionsPanelSource, /Condensed \/ compact/);
+  assert.match(editorOptionsPanelSource, /objectStyle/);
+  assert.match(editorOptionsPanelSource, /schemaPackPath/);
+  assert.match(editorOptionsPanelSource, /Verified offline metadata pack/);
+  assert.match(editorOptionsPanelSource, /openAi/);
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);
   assert.match(authoringSidebarSource, /saveSchemaPackPath/);
@@ -242,13 +249,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /folder containing SCAP-NG Benchmarks or Assessments/);
   assert.match(extensionSource, /On every workspace activation/);
   assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
-  assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"aiMode\"/);
-  assert.match(authoringSidebarSource, /id=\"configureAi\"/);
-  assert.match(authoringSidebarSource, /Open AI configuration/);
   assert.doesNotMatch(authoringSidebarSource, /saveAiMode/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"aiDialog\"/);
-  assert.match(authoringSidebarSource, /openAiConfiguration/);
   assert.match(aiConfigurationPanelSource, /AI-assisted authoring configuration/);
   assert.match(aiConfigurationPanelSource, /createWebviewPanel/);
   assert.match(aiConfigurationPanelSource, /Safety contract/);
@@ -310,9 +313,7 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /does not make a request/);
   assert.match(extensionSource, /scapNg\.openAiConfiguration/);
   assert.match(extensionSource, /scapNg\.setAiMode/);
-  assert.match(authoringSidebarSource, /id=\"openHome\"/);
   assert.doesNotMatch(authoringSidebarSource, /Open native YAML beside sidebar/);
-  assert.match(authoringSidebarSource, /type:'saveOptions'/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /promptRequireField/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /message\.action === 'removeField'/);
   assert.match(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /removeField/);

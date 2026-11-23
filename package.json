@@ -86,6 +86,7 @@
     "onCommand:scapNg.openBenchmarkConditions",
     "onCommand:scapNg.analyzeBenchmarkAutomation",
     "onCommand:scapNg.openAiConfiguration",
+    "onCommand:scapNg.openEditorOptions",
     "onCommand:scapNg.testAiAuthoring"
   ],
   "contributes": {
@@ -105,6 +106,10 @@
       {
         "command": "scapNg.openAiConfiguration",
         "title": "SCAP-NG: Configure AI-assisted authoring"
+      },
+      {
+        "command": "scapNg.openEditorOptions",
+        "title": "SCAP-NG: Open editor options"
       },
       {
         "command": "scapNg.openWelcome",
