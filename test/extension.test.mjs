@@ -278,6 +278,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Candidate YAML returned but rejected; review only/);
   assert.match(extensionSource, /no candidate YAML accepted/);
   assert.match(extensionSource, /local validation rejected it\. It is review-only and cannot be saved or linked/);
+  assert.match(extensionSource, /AI already attempted one correction pass/);
+  assert.match(extensionSource, /still failed local validation after one automatic correction pass/);
+  assert.match(extensionSource, /AI candidate rejected after correction pass; retry AI/);
   assert.match(extensionSource, /Rejected draft — no YAML accepted/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
