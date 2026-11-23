@@ -43,6 +43,15 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.equal(knowledge.contract.runtime_execution_proof, false);
   assert.ok(knowledge.capability_catalog.some(entry => entry.capability === 'linux.systemdunitproperty'));
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
+  const organizational = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), {
+    platform: 'amazon-linux-2023',
+    checkText: 'Verify /etc/chrony.conf contains an active server directive using an organization-approved time server.'
+  }));
+  assert.ok(organizational.relevant_capability_mappings.some(entry => entry.capability === 'independent.textfilecontent'));
+  assert.deepEqual(organizational.schemas['capability-common.schema.json'].defs.input_reference.required, ['input']);
+  const inputContract = organizational.schemas['assessment.schema.json'].properties.assessment.properties.inputs;
+  assert.deepEqual(inputContract.additionalProperties.required, ['datatype', 'cardinality', 'required']);
+  assert.deepEqual(inputContract.additionalProperties.properties.cardinality.enum, ['exactly_one', 'zero_or_one', 'one_or_more', 'zero_or_more']);
   const populationKnowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), { platform: 'ubuntu', checkText: 'For each local interactive user home directory, verify file permissions and ownership from /etc/passwd.' }));
   assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.password'));
   assert.ok(populationKnowledge.relevant_capability_mappings.some(entry => entry.capability === 'unix.file'));
