@@ -3559,7 +3559,7 @@ export function activate(context: vscode.ExtensionContext) {
     },
     testCodex: async (configuration?: AiAuthoringConfiguration) => {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
-      const result = await testCodexLocal(workspace, configuration?.model, configuration?.codexReasoningEffort);
+      const result = await testCodexLocal(workspace, configuration?.codexModel, configuration?.codexReasoningEffort);
       return { message: result.message, ok: result.ok };
     },
     discoverCodexModels: async () => {

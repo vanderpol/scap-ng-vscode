@@ -284,6 +284,7 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /type:'testCodex',mode:\$\('mode'\)\.value,model:selectedModel\(\)/);
   assert.match(extensionSource, /target\.codexModel\.trim\(\) \|\| 'Codex CLI configured model'/);
   assert.match(extensionSource, /reasoningEffort: target\.codexReasoningEffort/);
+  assert.match(extensionSource, /testCodexLocal\(workspace, configuration\?\.codexModel/);
   assert.match(readFileSync(new URL('../src/codex-local.ts', import.meta.url), 'utf8'), /args\.push\('--model', model\)/);
   assert.match(extensionSource, /provider-only output may be less reliable/);
   assert.match(extensionSource, /provider-format\/content failure, not a manual-only classification/);

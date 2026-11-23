@@ -149,6 +149,7 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
     const preferred = firstAbsoluteCandidate();
     const commands = preferred ? [preferred, 'codex'] : ['codex'];
     let lastError: unknown;
+    const launchFailures: string[] = [];
     for (const executable of commands) {
       try {
         const result = await runProcess(executable, args, prompt, cwd, timeoutMs);
@@ -159,7 +160,11 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
       } catch (error) {
         lastError = error;
         if (!(error instanceof Error) || !/ENOENT|not found/i.test(error.message)) throw error;
+        launchFailures.push(`${executable}: ${error.message}`);
       }
+    }
+    if (launchFailures.length) {
+      throw new Error(`Codex CLI could not be launched from the VS Code extension host. ${launchFailures.join(' | ')}. Install/enable Codex in this same host or set SCAP_NG_CODEX_BIN to its executable path.`);
     }
     throw lastError instanceof Error ? lastError : new Error('The Codex executable was not found.');
   } finally {
