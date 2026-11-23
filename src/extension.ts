@@ -27,7 +27,7 @@ import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 import { assessmentFileName } from './assessment-filename.js';
 import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { EditorOptionsPanel, type EditorOptions } from './editor-options-panel.js';
-import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
+import { aiEndpointError, normalizeAiAssistanceMode, normalizeCodexReasoningEffort, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
 import { discoverCodexModels, runCodexLocal, testCodexLocal } from './codex-local.js';
@@ -3411,18 +3411,23 @@ export function activate(context: vscode.ExtensionContext) {
     const endpoint = configuration.get('endpoint', '') ?? '';
     const model = configuration.get('model', '') ?? '';
     const codexModel = configuration.get('codexModel', '') ?? '';
-    return { mode, endpoint, model, codexModel };
+    const codexReasoningEffort = normalizeCodexReasoningEffort(configuration.get('codexReasoningEffort', 'host'));
+    return { mode, endpoint, model, codexModel, codexReasoningEffort };
   };
   const writeAiConfiguration = async (value: AiAuthoringConfiguration): Promise<AiAuthoringConfiguration> => {
     const endpointError = aiEndpointError(value.mode, value.endpoint);
     if (endpointError) throw new Error(endpointError);
     const configuration = api.workspace.getConfiguration('scapNg.ai');
     if (typeof configuration?.update !== 'function') throw new Error('AI settings are unavailable in this VS Code session.');
-    const saved = { mode: normalizeAiAssistanceMode(value.mode), endpoint: value.endpoint.trim(), model: value.model.trim(), codexModel: value.codexModel.trim() };
+    const codexReasoningEffort = value.codexReasoningEffort === undefined
+      ? readAiConfiguration().codexReasoningEffort ?? 'host'
+      : normalizeCodexReasoningEffort(value.codexReasoningEffort);
+    const saved = { mode: normalizeAiAssistanceMode(value.mode), endpoint: value.endpoint.trim(), model: value.model.trim(), codexModel: value.codexModel.trim(), codexReasoningEffort };
     await configuration.update('mode', saved.mode, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('endpoint', saved.endpoint || undefined, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('model', saved.model || undefined, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('codexModel', saved.codexModel || undefined, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('codexReasoningEffort', saved.codexReasoningEffort, api.ConfigurationTarget?.Global ?? 1);
     authoringSidebar.refreshContext();
     AiConfigurationPanel.update(saved);
     return saved;
@@ -3554,7 +3559,7 @@ export function activate(context: vscode.ExtensionContext) {
     },
     testCodex: async (configuration?: AiAuthoringConfiguration) => {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
-      const result = await testCodexLocal(workspace, configuration?.model);
+      const result = await testCodexLocal(workspace, configuration?.model, configuration?.codexReasoningEffort);
       return { message: result.message, ok: result.ok };
     },
     discoverCodexModels: async () => {
@@ -3565,7 +3570,7 @@ export function activate(context: vscode.ExtensionContext) {
     testAuthoring: async (configuration?: AiAuthoringConfiguration) => {
       const target = configuration ?? readAiConfiguration();
       if (target.mode === 'codex-local') {
-        const result = await testCodexLocal(api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath, target.codexModel);
+        const result = await testCodexLocal(api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath, target.codexModel, target.codexReasoningEffort);
         return { message: result.message, ok: result.ok };
       }
       if (target.mode !== 'remote') return { message: 'Select Configured remote AI or Codex (local) before running the AI authoring self-test.' };
@@ -3598,7 +3603,8 @@ export function activate(context: vscode.ExtensionContext) {
     if (target.mode === 'codex-local') {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
       return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', target.codexModel.trim() || 'Codex CLI configured model', input, {
-        request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: target.codexModel })
+        request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: target.codexModel, reasoningEffort: target.codexReasoningEffort }),
+        reasoningEffort: target.codexReasoningEffort
       });
     }
     if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI or Codex (local) first.');
@@ -3623,7 +3629,8 @@ export function activate(context: vscode.ExtensionContext) {
     const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
     const configuredModel = readAiConfiguration().codexModel.trim();
     return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', configuredModel || 'Codex CLI configured model', { ...input, reviewMode: true }, {
-      request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: configuredModel })
+      request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: configuredModel, reasoningEffort: readAiConfiguration().codexReasoningEffort }),
+      reasoningEffort: readAiConfiguration().codexReasoningEffort
     });
   };
   const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;

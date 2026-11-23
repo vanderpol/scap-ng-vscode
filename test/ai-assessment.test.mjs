@@ -125,7 +125,7 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   });
   const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'secret-not-logged', 'model-a', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', platform: 'rhel', ruleYaml: 'rule: {}'
-  }));
+  }, { reasoningEffort: 'high' }));
   assert.equal(requests.length, 1);
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.automationClass, 'fully-automated');
@@ -137,6 +137,7 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   assert.match(result.yaml, /generation_method: configured-ai/);
   assert.match(result.yaml, /model: model-a/);
   assert.match(result.yaml, /tool_mode: not-requested/);
+  assert.match(result.yaml, /reasoning_effort: high/);
   assert.equal(result.toolMode, 'not-requested');
   assert.equal(typeof result.durationMs, 'number');
   assert.match(result.yaml, /duration_ms:/);

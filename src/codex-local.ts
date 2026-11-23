@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { homedir, platform, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { OpenAiChatMessage } from './ai-remote.js';
+import { normalizeCodexReasoningEffort, type CodexReasoningEffort } from './ai-configuration.js';
 
 export interface CodexLocalAvailability {
   ok: boolean;
@@ -29,6 +30,8 @@ export interface CodexLocalRunOptions {
   probe?: boolean;
   /** Optional per-request model override. Empty leaves the host Codex configuration in control. */
   model?: string;
+  /** Per-request effort; host leaves model_reasoning_effort from Codex config.toml unchanged. */
+  reasoningEffort?: CodexReasoningEffort;
 }
 
 const MAX_CAPTURED_STDERR = 24_000;
@@ -136,6 +139,8 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', cwd];
   const model = options.model?.trim();
   if (model) args.push('--model', model);
+  const reasoningEffort = normalizeCodexReasoningEffort(options.reasoningEffort);
+  if (reasoningEffort !== 'host') args.push('-c', `model_reasoning_effort=\"${reasoningEffort}\"`);
   args.push('--output-last-message', outputFile);
   const prompt = options.probe
     ? 'Reply with exactly CODEX_SMOKE_OK. Do not inspect or modify files.'
@@ -162,11 +167,11 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   }
 }
 
-export async function testCodexLocal(cwd = process.cwd(), model?: string): Promise<CodexLocalAvailability> {
+export async function testCodexLocal(cwd = process.cwd(), model?: string, reasoningEffort?: CodexReasoningEffort): Promise<CodexLocalAvailability> {
   const preferred = firstAbsoluteCandidate();
   if (!preferred && !process.env.PATH?.split(delimiter).length) return { ok: false, message: 'Codex CLI was not found on PATH or in the installed VS Code Codex extension.' };
   try {
-    const response = await runCodexLocal([], { cwd, timeoutMs: 45_000, probe: true, model });
+    const response = await runCodexLocal([], { cwd, timeoutMs: 45_000, probe: true, model, reasoningEffort });
     if (response.trim() !== 'CODEX_SMOKE_OK') return { ok: false, message: 'Codex CLI responded, but the bounded availability test returned an unexpected response.' , executable: preferred ?? 'codex' };
     return { ok: true, message: `Codex local is available through the configured CLI${preferred ? ` (${preferred})` : ''}.`, executable: preferred ?? 'codex' };
   } catch (error) {

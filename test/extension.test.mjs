@@ -48,6 +48,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.model'].default, '');
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.codexModel'].default, '');
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.codexReasoningEffort'].enum, ['host', 'low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.codexReasoningEffort'].default, 'host');
   assert.match(packageJson.contributes.configuration.properties['scapNg.ai.codexModel'].description, /host Codex CLI/i);
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
@@ -238,6 +240,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(editorOptionsPanelSource, /inline-field.*discoverCodexModels/);
   assert.match(editorOptionsPanelSource, /customCodexLabel/);
   assert.match(editorOptionsPanelSource, /Query models/);
+  assert.match(editorOptionsPanelSource, /Reasoning effort/);
+  assert.match(editorOptionsPanelSource, /codexReasoningEffort/);
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);
   assert.match(authoringSidebarSource, /saveSchemaPackPath/);
@@ -279,6 +283,7 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /model and reasoning settings from the host Codex configuration/i);
   assert.match(aiConfigurationPanelSource, /type:'testCodex',mode:\$\('mode'\)\.value,model:selectedModel\(\)/);
   assert.match(extensionSource, /target\.codexModel\.trim\(\) \|\| 'Codex CLI configured model'/);
+  assert.match(extensionSource, /reasoningEffort: target\.codexReasoningEffort/);
   assert.match(readFileSync(new URL('../src/codex-local.ts', import.meta.url), 'utf8'), /args\.push\('--model', model\)/);
   assert.match(extensionSource, /provider-only output may be less reliable/);
   assert.match(extensionSource, /provider-format\/content failure, not a manual-only classification/);

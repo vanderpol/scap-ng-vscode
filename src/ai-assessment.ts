@@ -16,6 +16,8 @@ export interface AiAssessmentOptions {
   onToolsRejected?: () => void | Promise<void>;
   /** Optional local transport. The transport owns authentication and must return provider text only. */
   request?: (messages: OpenAiChatMessage[], timeoutMs: number) => Promise<string>;
+  /** Optional provider effort recorded in display-only provenance (for example Codex high). */
+  reasoningEffort?: string;
 }
 
 export interface AiAssessmentInput {
@@ -568,12 +570,13 @@ function providerLabel(endpoint: string): string {
   catch { return 'configured endpoint'; }
 }
 
-function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', durationMs: number): string {
+function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', durationMs: number, reasoningEffort?: string): string {
   return [
     '# SCAP-NG editor provenance:',
     '#   generation_method: configured-ai',
     `#   provider_endpoint: ${providerLabel(endpoint)}`,
     `#   model: ${model.replace(/[\r\n]+/g, ' ')}`,
+    ...(reasoningEffort ? [`#   reasoning_effort: ${reasoningEffort.replace(/[\r\n]+/g, ' ')}`] : []),
     `#   tool_mode: ${toolMode}`,
     '#   tool_execution: provider-dependent; runtime qualification not established',
     `#   generated_at: ${generatedAt}`,
@@ -586,7 +589,7 @@ function provenanceComment(pack: MetadataPack, endpoint: string, model: string, 
   ].join('\n');
 }
 
-function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', toolWarning?: string, durationMs = 0): AiAssessmentDraft {
+function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested', toolWarning?: string, durationMs = 0, reasoningEffort?: string): AiAssessmentDraft {
   const generatedAt = new Date().toISOString();
   return {
     ...draft,
@@ -596,7 +599,7 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
     toolMode,
     toolWarning,
     durationMs,
-    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs) + draft.yaml : draft.yaml
+    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs, reasoningEffort) + draft.yaml : draft.yaml
   };
 }
 
@@ -686,7 +689,7 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   let useTools = modelUsesPinnedTools(model) && !previouslyRejectedTools;
   let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested' = useTools ? 'local-pinned-pack' : previouslyRejectedTools ? 'fallback-no-tools' : 'not-requested';
   let toolWarning: string | undefined = previouslyRejectedTools ? 'The gateway previously rejected tools for this endpoint/model during this VS Code session; skipped the failed tools negotiation.' : undefined;
-  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt);
+  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt, options.reasoningEffort);
   const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
   // protects the authoring host and makes the exact outbound scope predictable.

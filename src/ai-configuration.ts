@@ -11,6 +11,16 @@
 export const aiAssistanceModes = ['none', 'codex-local', 'remote', 'vscode', 'local'] as const;
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
+/** Codex reasoning effort; host delegates to the user's Codex configuration. */
+export const codexReasoningEfforts = ['host', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type CodexReasoningEffort = typeof codexReasoningEfforts[number];
+
+export function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
+  return typeof value === 'string' && (codexReasoningEfforts as readonly string[]).includes(value)
+    ? value as CodexReasoningEffort
+    : 'host';
+}
+
 export interface AiAuthoringConfiguration {
   mode: AiAssistanceMode;
   endpoint: string;
@@ -18,6 +28,8 @@ export interface AiAuthoringConfiguration {
   model: string;
   /** Optional exact Codex model override; blank means use the host Codex configuration. */
   codexModel: string;
+  /** Optional per-request Codex effort; host preserves config.toml. */
+  codexReasoningEffort?: CodexReasoningEffort;
 }
 
 export function normalizeAiAssistanceMode(value: unknown): AiAssistanceMode {
