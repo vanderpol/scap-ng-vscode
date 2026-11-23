@@ -321,7 +321,7 @@
           "type": "string",
           "default": "",
           "scope": "window",
-          "description": "Optional provider model identifier. For Codex (local), an empty value uses the host Codex configuration; a value overrides the model for editor requests only."
+          "description": "Optional model identifier for remote or local endpoint AI providers. Codex (local) uses the separate Codex model override setting."
         },
         "scapNg.ai.codexModel": {
           "type": "string",
