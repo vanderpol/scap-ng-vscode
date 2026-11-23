@@ -10,10 +10,12 @@ async function fakeCodex() {
   const file = join(root, 'codex');
   await writeFile(file, `#!/bin/sh
 out=""
+args="$*"
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output-last-message" ]; then shift; out="$1"; fi
   shift
 done
+if [ -n "$CODEX_ARGS_FILE" ]; then printf '%s' "$args" > "$CODEX_ARGS_FILE"; fi
 printf 'CODEX_SMOKE_OK' > "$out"
 `, 'utf8');
   await chmod(file, 0o755);
@@ -23,15 +25,22 @@ printf 'CODEX_SMOKE_OK' > "$out"
 test('Codex local bridge uses the host CLI without exposing credentials', async () => {
   const fake = await fakeCodex();
   const previous = process.env.SCAP_NG_CODEX_BIN;
+  const previousArgs = process.env.CODEX_ARGS_FILE;
+  const argsFile = join(fake.root, 'args.txt');
   process.env.SCAP_NG_CODEX_BIN = fake.file;
+  process.env.CODEX_ARGS_FILE = argsFile;
   try {
-    const availability = await testCodexLocal(fake.root);
+    const availability = await testCodexLocal(fake.root, 'gpt-5.6-luna');
     assert.equal(availability.ok, true);
     assert.match(availability.message, /available/i);
+    const args = await (await import('node:fs/promises')).readFile(argsFile, 'utf8');
+    assert.match(args, /--model gpt-5\.6-luna/);
     assert.equal(await runCodexLocal([{ role: 'user', content: 'bounded prompt' }], { cwd: fake.root, probe: true }), 'CODEX_SMOKE_OK');
   } finally {
     if (previous === undefined) delete process.env.SCAP_NG_CODEX_BIN;
     else process.env.SCAP_NG_CODEX_BIN = previous;
+    if (previousArgs === undefined) delete process.env.CODEX_ARGS_FILE;
+    else process.env.CODEX_ARGS_FILE = previousArgs;
     await rm(fake.root, { recursive: true, force: true });
   }
 });

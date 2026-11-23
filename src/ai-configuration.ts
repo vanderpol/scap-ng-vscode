@@ -35,7 +35,7 @@ export function aiAssistanceModeDescription(mode: AiAssistanceMode): string {
     case 'local': return 'Use a model served by a local endpoint. No internet connection is required.';
     case 'vscode': return 'Use an approved model exposed through the VS Code Language Model API when available.';
     case 'remote': return 'Use an explicitly configured enterprise or remote endpoint after reviewing the data scope.';
-    case 'codex-local': return 'Use the Codex CLI available to this VS Code host. Provider authentication and configuration remain outside the editor.';
+    case 'codex-local': return 'Use the Codex CLI available to this VS Code host. Leave the optional model override blank to use its configured model and reasoning settings, or enter an exact model ID for editor requests.';
     default: return 'Do not use AI assistance. The separate deterministic offline workflow remains available.';
   }
 }

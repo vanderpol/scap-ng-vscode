@@ -3523,15 +3523,15 @@ export function activate(context: vscode.ExtensionContext) {
       const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
       return { message: result.message, models: result.modelIds };
     },
-    testCodex: async () => {
+    testCodex: async (configuration?: AiAuthoringConfiguration) => {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
-      const result = await testCodexLocal(workspace);
+      const result = await testCodexLocal(workspace, configuration?.model);
       return { message: result.message, ok: result.ok };
     },
     testAuthoring: async (configuration?: AiAuthoringConfiguration) => {
       const target = configuration ?? readAiConfiguration();
       if (target.mode === 'codex-local') {
-        const result = await testCodexLocal(api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath);
+        const result = await testCodexLocal(api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath, target.model);
         return { message: result.message, ok: result.ok };
       }
       if (target.mode !== 'remote') return { message: 'Select Configured remote AI or Codex (local) before running the AI authoring self-test.' };
@@ -3563,9 +3563,8 @@ export function activate(context: vscode.ExtensionContext) {
     if (!activePack) throw new Error('A verified offline SCAP-NG 0.4.1 metadata pack is required for AI authoring.');
     if (target.mode === 'codex-local') {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
-      return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', 'Codex CLI configured model', input, {
-        skipTools: true,
-        request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs })
+      return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', target.model.trim() || 'Codex CLI configured model', input, {
+        request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: target.model })
       });
     }
     if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI or Codex (local) first.');
@@ -3588,9 +3587,9 @@ export function activate(context: vscode.ExtensionContext) {
     const activePack = pack;
     if (!activePack) throw new Error('A verified offline SCAP-NG 0.4.1 metadata pack is required for Codex review.');
     const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
-    return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', 'Codex CLI configured model', { ...input, reviewMode: true }, {
-      skipTools: true,
-      request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs })
+    const configuredModel = readAiConfiguration().model.trim();
+    return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', configuredModel || 'Codex CLI configured model', { ...input, reviewMode: true }, {
+      request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: configuredModel })
     });
   };
   const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;

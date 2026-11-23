@@ -22,6 +22,8 @@ export interface CodexLocalRunOptions {
   cwd?: string;
   timeoutMs?: number;
   probe?: boolean;
+  /** Optional per-request model override. Empty leaves the host Codex configuration in control. */
+  model?: string;
 }
 
 const MAX_CAPTURED_STDERR = 24_000;
@@ -111,7 +113,10 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   const timeoutMs = Math.max(5_000, options.timeoutMs ?? 120_000);
   const outputDirectory = await mkdtemp(join(tmpdir(), 'scap-ng-codex-'));
   const outputFile = join(outputDirectory, 'last-message.txt');
-  const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', cwd, '--output-last-message', outputFile];
+  const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', cwd];
+  const model = options.model?.trim();
+  if (model) args.push('--model', model);
+  args.push('--output-last-message', outputFile);
   const prompt = options.probe
     ? 'Reply with exactly CODEX_SMOKE_OK. Do not inspect or modify files.'
     : promptFor(messages);
@@ -137,11 +142,11 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   }
 }
 
-export async function testCodexLocal(cwd = process.cwd()): Promise<CodexLocalAvailability> {
+export async function testCodexLocal(cwd = process.cwd(), model?: string): Promise<CodexLocalAvailability> {
   const preferred = firstAbsoluteCandidate();
   if (!preferred && !process.env.PATH?.split(delimiter).length) return { ok: false, message: 'Codex CLI was not found on PATH or in the installed VS Code Codex extension.' };
   try {
-    const response = await runCodexLocal([], { cwd, timeoutMs: 45_000, probe: true });
+    const response = await runCodexLocal([], { cwd, timeoutMs: 45_000, probe: true, model });
     if (response.trim() !== 'CODEX_SMOKE_OK') return { ok: false, message: 'Codex CLI responded, but the bounded availability test returned an unexpected response.' , executable: preferred ?? 'codex' };
     return { ok: true, message: `Codex local is available through the configured CLI${preferred ? ` (${preferred})` : ''}.`, executable: preferred ?? 'codex' };
   } catch (error) {
