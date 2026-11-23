@@ -169,6 +169,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /updateIndexedAutomationLink\(index, document, saved, edit\.document\.text\)/);
   assert.match(extensionSource, /updateIndexedAutomationLink\(index, ruleDocument, assessmentDocument, ruleText\)/);
   assert.match(extensionSource, /Index the Assessment first so Rule resolution is/);
+  assert.match(extensionSource, /onSourceChanged\?\.\(edit\.document\.text\)/);
+  assert.match(extensionSource, /Benchmark pages refreshed/);
+  assert.match(extensionSource, /index\.update\(uri\.toString\(\), text, uri\.fsPath/);
   assert.match(extensionSource, /comparison-only/);
   assert.match(extensionSource, /Existing automated Rules will be comparison-only/);
   assert.match(extensionSource, /Assisted generation is a draft preview only/);
