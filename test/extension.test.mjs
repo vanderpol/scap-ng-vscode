@@ -262,10 +262,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Manual-only by provider logic/);
   assert.match(extensionSource, /Next step: Retry configured AI or generate the deterministic offline draft/);
   assert.match(extensionSource, /Retry configured AI/);
-  assert.match(extensionSource, /Automation was not created/);
+  assert.match(extensionSource, /No candidate YAML accepted/);
   assert.match(extensionSource, /Show technical\/provider details/);
   assert.match(extensionSource, /This is not a manual-only decision/);
-  assert.match(extensionSource, /AI provider responded, but its draft failed the pinned SCAP-NG 0\.4\.1 validation contract/);
+  assert.match(extensionSource, /no usable candidate YAML was accepted by the pinned SCAP-NG 0\.4\.1 validation contract/);
   assert.match(extensionSource, /not a token or quota failure/);
   assert.match(extensionSource, /AI provider request did not complete/);
   assert.match(extensionSource, /AI provider reported a quota or rate-limit error/);
@@ -275,6 +275,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /Candidate generated — coverage confirmation missing/);
   assert.match(extensionSource, /returned candidate YAML, but omitted the required procedure-coverage confirmation/);
   assert.match(extensionSource, /Candidate YAML — review only/);
+  assert.match(extensionSource, /Candidate YAML returned but rejected; review only/);
+  assert.match(extensionSource, /no candidate YAML accepted/);
+  assert.match(extensionSource, /local validation rejected it\. It is review-only and cannot be saved or linked/);
   assert.match(extensionSource, /Rejected draft — no YAML accepted/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
