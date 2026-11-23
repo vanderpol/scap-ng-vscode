@@ -314,6 +314,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /AI already attempted one correction pass/);
   assert.match(extensionSource, /still failed local validation after one automatic correction pass/);
   assert.match(extensionSource, /AI candidate rejected after correction pass; retry AI/);
+  assert.match(extensionSource, /AI correction did not complete; retry AI/);
+  assert.match(extensionSource, /AI correction timed out; retry AI/);
+  assert.match(extensionSource, /Starting .*Rule .* of/);
   assert.match(extensionSource, /textContent='Retry AI'/);
   assert.match(extensionSource, /message\.type === 'retry'/);
   assert.match(extensionSource, /fresh bounded AI attempt/);

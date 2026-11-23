@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { MetadataPack } from '../dist/metadata.js';
 import { createAssistedAssessment } from '../dist/assisted-draft.js';
-import { buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
+import { AI_REQUEST_TOTAL_TIMEOUT_MS, buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
 
 const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
 const validYaml = createAssistedAssessment(pack, {
   title: 'Check the passwd file',
   checkText: 'Verify that the file /etc/passwd is present on the system.'
 }).yaml;
+
+test('bounded AI authoring leaves time for a provider correction pass', () => {
+  assert.equal(AI_REQUEST_TOTAL_TIMEOUT_MS, 180_000);
+});
 
 test('withtools model token detection is explicit and does not match similarly named models', () => {
   assert.equal(modelUsesPinnedTools('gemini-3.8-flash-withtools'), true);
