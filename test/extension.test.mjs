@@ -162,9 +162,12 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Existing automation is never replaced/);
   assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
   assert.match(extensionSource, /The batch stopped before this Rule was sent/);
-  assert.match(extensionSource, /saveApprovedRuleLink\(api, document\)/);
-  assert.match(extensionSource, /updateIndexedAutomationLink\(index, document, saved\)/);
-  assert.match(extensionSource, /updateIndexedAutomationLink\(index, ruleDocument, assessmentDocument\)/);
+  assert.match(extensionSource, /saveApprovedRuleLink\(api, document, edit\.document\.text, generatedId\)/);
+  assert.match(extensionSource, /saveApprovedRuleLink\(api, ruleDocument, edit\.document\.text, generatedId\)/);
+  assert.match(extensionSource, /SourceBuffer result is authoritative here/);
+  assert.match(extensionSource, /does not link automated Assessment/);
+  assert.match(extensionSource, /updateIndexedAutomationLink\(index, document, saved, edit\.document\.text\)/);
+  assert.match(extensionSource, /updateIndexedAutomationLink\(index, ruleDocument, assessmentDocument, ruleText\)/);
   assert.match(extensionSource, /Index the Assessment first so Rule resolution is/);
   assert.match(extensionSource, /comparison-only/);
   assert.match(extensionSource, /Existing automated Rules will be comparison-only/);
