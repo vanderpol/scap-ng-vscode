@@ -58,6 +58,8 @@ export interface AiAssessmentDraft {
   /** Whether the model name opted into local pinned-pack tools for this request. */
   toolMode?: 'local-pinned-pack' | 'fallback-no-tools' | 'not-requested';
   toolWarning?: string;
+  /** Codex per-request reasoning effort, when applicable. */
+  reasoningEffort?: string;
   /** End-to-end elapsed time for this provider attempt, including bounded repair/fallback. */
   durationMs?: number;
 }
@@ -598,6 +600,7 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
     generatedAt,
     toolMode,
     toolWarning,
+    reasoningEffort,
     durationMs,
     yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs, reasoningEffort) + draft.yaml : draft.yaml
   };
