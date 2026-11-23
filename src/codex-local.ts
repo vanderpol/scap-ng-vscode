@@ -7,7 +7,7 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, platform, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { OpenAiChatMessage } from './ai-remote.js';
@@ -36,6 +36,36 @@ export interface CodexLocalRunOptions {
 
 const MAX_CAPTURED_STDERR = 24_000;
 const MAX_CAPTURED_STDOUT = 24_000;
+
+/**
+ * The final response contract used by SCAP-NG AI authoring.  This is enforced
+ * by Codex CLI before its last message is written, which prevents prose,
+ * Markdown fences, or missing coverage metadata from reaching the YAML parser.
+ * Semantic/schema validation still happens in ai-assessment.ts.
+ */
+const SCAP_NG_AI_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+  required: ['generated_mode', 'confidence', 'assessment_yaml', 'assumptions', 'unresolved_questions', 'citations', 'rationale', 'coverage'],
+  properties: {
+    generated_mode: { type: 'string', enum: ['automated', 'manual-only'] },
+    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+    assessment_yaml: { type: 'string' },
+    assumptions: { type: 'array', items: { type: 'string' } },
+    unresolved_questions: { type: 'array', items: { type: 'string' } },
+    citations: { type: 'array', items: { type: 'string' } },
+    rationale: { type: 'string' },
+    coverage: {
+      type: 'object', additionalProperties: false,
+      required: ['applicability', 'procedure_steps', 'path_patterns'],
+      properties: {
+        applicability: { type: 'string', enum: ['implemented', 'not-needed', 'not-representable'] },
+        procedure_steps: { type: 'array', items: { type: 'object', required: ['summary', 'represented'], properties: { summary: { type: 'string' }, represented: { type: 'boolean' }, tests: { type: 'array', items: { type: 'string' } } }, additionalProperties: true } },
+        path_patterns: { type: 'array', items: { type: 'object', required: ['pattern', 'represented'], properties: { pattern: { type: 'string' }, represented: { type: 'boolean' }, strategy: { type: 'string' } }, additionalProperties: true } }
+      }
+    }
+  }
+} as const;
 
 function executableCandidates(): string[] {
   const candidates: string[] = [];
@@ -136,7 +166,14 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   const timeoutMs = Math.max(5_000, options.timeoutMs ?? 120_000);
   const outputDirectory = await mkdtemp(join(tmpdir(), 'scap-ng-codex-'));
   const outputFile = join(outputDirectory, 'last-message.txt');
+  const outputSchemaFile = join(outputDirectory, 'ai-response.schema.json');
   const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', cwd];
+  if (!options.probe) {
+    // Codex CLI can enforce the outer JSON protocol itself. This removes a
+    // common first-pass failure mode before SCAP-NG semantic validation runs.
+    await writeFile(outputSchemaFile, JSON.stringify(SCAP_NG_AI_RESPONSE_SCHEMA), 'utf8');
+    args.push('--output-schema', outputSchemaFile);
+  }
   const model = options.model?.trim();
   if (model) args.push('--model', model);
   const reasoningEffort = normalizeCodexReasoningEffort(options.reasoningEffort);

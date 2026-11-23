@@ -44,6 +44,9 @@ test('Codex local bridge uses the host CLI without exposing credentials', async 
     assert.match(args, /--model gpt-5\.6-luna/);
     assert.match(args, /-c model_reasoning_effort=\"high\"/);
     assert.equal(await runCodexLocal([{ role: 'user', content: 'bounded prompt' }], { cwd: fake.root, probe: true }), 'CODEX_SMOKE_OK');
+    assert.equal(await runCodexLocal([{ role: 'user', content: 'bounded prompt' }], { cwd: fake.root }), 'CODEX_SMOKE_OK');
+    const authoringArgs = await (await import('node:fs/promises')).readFile(argsFile, 'utf8');
+    assert.match(authoringArgs, /--output-schema/);
   } finally {
     if (previous === undefined) delete process.env.SCAP_NG_CODEX_BIN;
     else process.env.SCAP_NG_CODEX_BIN = previous;
