@@ -14,6 +14,8 @@ export interface AiAssessmentOptions {
   /** Persisted per-endpoint/model capability result from the extension host. */
   skipTools?: boolean;
   onToolsRejected?: () => void | Promise<void>;
+  /** Optional local transport. The transport owns authentication and must return provider text only. */
+  request?: (messages: OpenAiChatMessage[], timeoutMs: number) => Promise<string>;
 }
 
 export interface AiAssessmentInput {
@@ -557,6 +559,7 @@ export function modelUsesPinnedTools(model: string): boolean {
 }
 
 function providerLabel(endpoint: string): string {
+  if (endpoint === 'codex-local') return 'local Codex CLI';
   try { return new URL(endpoint).hostname || 'configured endpoint'; }
   catch { return 'configured endpoint'; }
 }
@@ -717,6 +720,7 @@ Existing Benchmark applicability conditions (reference context only; do not inve
 ${JSON.stringify(input.availableConditions ?? [])}`;
   const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
   const requestDraft = async (requestMessages: OpenAiChatMessage[], timeout: number): Promise<string> => {
+    if (options.request) return options.request(requestMessages, timeout);
     if (!useTools) return requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
     try {
       return await requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout);

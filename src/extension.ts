@@ -29,6 +29,7 @@ import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
+import { runCodexLocal, testCodexLocal } from './codex-local.js';
 import { resolveStudioSearch } from './studio-search.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
@@ -3512,9 +3513,18 @@ export function activate(context: vscode.ExtensionContext) {
       const result = await testOpenAiCompatibleGateway(target.endpoint, key ?? '');
       return { message: result.message, models: result.modelIds };
     },
+    testCodex: async () => {
+      const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
+      const result = await testCodexLocal(workspace);
+      return { message: result.message, ok: result.ok };
+    },
     testAuthoring: async (configuration?: AiAuthoringConfiguration) => {
       const target = configuration ?? readAiConfiguration();
-      if (target.mode !== 'remote') return { message: 'Select Configured remote AI before running the AI authoring self-test.' };
+      if (target.mode === 'codex-local') {
+        const result = await testCodexLocal(api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath);
+        return { message: result.message, ok: result.ok };
+      }
+      if (target.mode !== 'remote') return { message: 'Select Configured remote AI or Codex (local) before running the AI authoring self-test.' };
       const secrets = (context as any).secrets;
       const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
       const activePack = pack;
@@ -3539,11 +3549,18 @@ export function activate(context: vscode.ExtensionContext) {
   };
   const aiAssessmentGenerator: AiAssessmentGenerator = async (input: AiAssessmentInput) => {
     const target = readAiConfiguration();
-    if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI first.');
-    const secrets = (context as any).secrets;
-    const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
     const activePack = pack;
     if (!activePack) throw new Error('A verified offline SCAP-NG 0.4.1 metadata pack is required for AI authoring.');
+    if (target.mode === 'codex-local') {
+      const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
+      return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', 'Codex CLI configured model', input, {
+        skipTools: true,
+        request: (messages, timeoutMs) => runCodexLocal(messages, { cwd: workspace, timeoutMs })
+      });
+    }
+    if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI or Codex (local) first.');
+    const secrets = (context as any).secrets;
+    const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
     const toolProfile = `${target.endpoint.replace(/\/$/, '')}\u0000${target.model.trim()}`;
     const globalState = (context as any).globalState;
     const rejectedProfiles = typeof globalState?.get === 'function' ? (globalState.get('scapNg.ai.rejectedToolProfiles', []) as string[] ?? []) : [];
@@ -3557,7 +3574,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
   };
-  const configuredAiGenerator = () => readAiConfiguration().mode === 'remote' ? aiAssessmentGenerator : undefined;
+  const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testAiAuthoring', async () => { const result = await aiConfigurationActions.testAuthoring(); const message = result.message; if (/succeeded/i.test(message)) await api.window.showInformationMessage(message); else await api.window.showWarningMessage(message); return result; }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {

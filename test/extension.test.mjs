@@ -40,7 +40,7 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.equal(packageJson.contributes.configuration.properties['scapNg.assessmentEditor'].default, 'yaml');
   assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.objectStyle'].enum, ['compact', 'expanded', 'tree']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.objectStyle'].default, 'tree');
-  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['none', 'local', 'vscode', 'remote']);
+  assert.deepEqual(packageJson.contributes.configuration.properties['scapNg.ai.mode'].enum, ['none', 'local', 'vscode', 'remote', 'codex-local']);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.mode'].default, 'none');
   assert.match(packageJson.contributes.configuration.properties['scapNg.ai.mode'].description, /opt-in/i);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');

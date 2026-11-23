@@ -5,7 +5,7 @@
  * not make network calls, select a model, or mutate Assessment YAML. Provider
  * requests and review-only draft validation live in ai-assessment.ts.
  */
-export const aiAssistanceModes = ['none', 'local', 'vscode', 'remote'] as const;
+export const aiAssistanceModes = ['none', 'local', 'vscode', 'remote', 'codex-local'] as const;
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
 export interface AiAuthoringConfiguration {
@@ -25,6 +25,7 @@ export function aiAssistanceModeLabel(mode: AiAssistanceMode): string {
     case 'local': return 'Local AI';
     case 'vscode': return 'VS Code AI provider';
     case 'remote': return 'Configured remote AI';
+    case 'codex-local': return 'Codex (local)';
     default: return 'None (no AI)';
   }
 }
@@ -34,6 +35,7 @@ export function aiAssistanceModeDescription(mode: AiAssistanceMode): string {
     case 'local': return 'Use a model served by a local endpoint. No internet connection is required.';
     case 'vscode': return 'Use an approved model exposed through the VS Code Language Model API when available.';
     case 'remote': return 'Use an explicitly configured enterprise or remote endpoint after reviewing the data scope.';
+    case 'codex-local': return 'Use the Codex CLI available to this VS Code host. Provider authentication and configuration remain outside the editor.';
     default: return 'Do not use AI assistance. The separate deterministic offline workflow remains available.';
   }
 }
@@ -47,7 +49,7 @@ export function aiAssistanceModeDescription(mode: AiAssistanceMode): string {
  */
 export function aiEndpointError(mode: AiAssistanceMode, endpoint: string): string | undefined {
   const value = endpoint.trim();
-  if (!value || mode === 'none' || mode === 'vscode') return undefined;
+  if (!value || mode === 'none' || mode === 'vscode' || mode === 'codex-local') return undefined;
   let parsed: URL;
   try { parsed = new URL(value); }
   catch { return 'AI endpoint must be a valid URL.'; }

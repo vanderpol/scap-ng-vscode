@@ -9,7 +9,7 @@ import {
 } from '../dist/ai-configuration.js';
 
 test('AI assistance configuration is opt-in and has stable mode labels', () => {
-  assert.deepEqual(aiAssistanceModes, ['none', 'local', 'vscode', 'remote']);
+  assert.deepEqual(aiAssistanceModes, ['none', 'local', 'vscode', 'remote', 'codex-local']);
   assert.equal(normalizeAiAssistanceMode(undefined), 'none');
   assert.equal(normalizeAiAssistanceMode('not-a-mode'), 'none');
   for (const mode of aiAssistanceModes) {
@@ -21,6 +21,7 @@ test('AI assistance configuration is opt-in and has stable mode labels', () => {
 test('AI endpoint policy fails closed before provider integration', () => {
   assert.equal(aiEndpointError('none', 'not a URL'), undefined);
   assert.equal(aiEndpointError('vscode', 'not a URL'), undefined);
+  assert.equal(aiEndpointError('codex-local', 'not a URL'), undefined);
   assert.equal(aiEndpointError('local', ''), undefined);
   assert.equal(aiEndpointError('local', 'http://127.0.0.1:11434/v1'), undefined);
   assert.equal(aiEndpointError('local', 'http://localhost:8080'), undefined);

@@ -297,13 +297,15 @@
             "none",
             "local",
             "vscode",
-            "remote"
+            "remote",
+            "codex-local"
           ],
           "enumDescriptions": [
             "Do not use AI assistance. The deterministic offline workflow remains available separately.",
             "Use a model served by a local loopback endpoint; no internet connection is required.",
             "Use an approved model exposed through the VS Code Language Model API when available.",
-            "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope."
+            "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope.",
+            "Use the locally available Codex CLI through the host environment; no token is stored by this extension."
           ],
           "default": "none",
           "scope": "window",
@@ -313,7 +315,7 @@
           "type": "string",
           "default": "",
           "scope": "window",
-          "description": "Optional AI endpoint. Local mode accepts loopback HTTP(S); remote mode requires HTTPS. Credentials are not stored in this setting."
+          "description": "Optional AI endpoint. Local mode accepts loopback HTTP(S); remote mode requires HTTPS. Codex (local) ignores this field and uses the host Codex CLI configuration. Credentials are not stored in this setting."
         },
         "scapNg.ai.model": {
           "type": "string",
