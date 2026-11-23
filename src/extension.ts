@@ -3432,20 +3432,25 @@ export function activate(context: vscode.ExtensionContext) {
     return {
       assessmentEditor: isAssessmentEditorMode(configuration.get('assessmentEditor', 'yaml')) ? configuration.get('assessmentEditor', 'yaml') : 'yaml',
       objectStyle: normalizeYamlObjectStyle(configuration.get('objectStyle', 'tree')),
-      schemaPackPath: configuration.get('schemaPackPath', '') ?? ''
+      schemaPackPath: configuration.get('schemaPackPath', '') ?? '',
+      ai: readAiConfiguration()
     };
   };
   const writeEditorOptions = async (value: EditorOptions): Promise<EditorOptions> => {
     const configuration = api.workspace.getConfiguration('scapNg');
     if (typeof configuration?.update !== 'function') throw new Error('Editor settings are unavailable in this VS Code session.');
+    const endpointError = aiEndpointError(value.ai.mode, value.ai.endpoint);
+    if (endpointError) throw new Error(endpointError);
     await configuration.update('assessmentEditor', value.assessmentEditor, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('objectStyle', value.objectStyle, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('schemaPackPath', value.schemaPackPath.trim() || undefined, api.ConfigurationTarget?.Workspace ?? 2);
     resetPack();
     await syncEditorPreference();
+    const savedAi = await writeAiConfiguration(value.ai);
+    const saved = { ...value, ai: savedAi };
     authoringSidebar.refreshContext();
-    EditorOptionsPanel.update(value);
-    return value;
+    EditorOptionsPanel.update(saved);
+    return saved;
   };
 
   benchmarkState.onChange = () => {
@@ -3622,8 +3627,8 @@ export function activate(context: vscode.ExtensionContext) {
     });
   };
   const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions)));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openEditorOptions', () => EditorOptionsPanel.open(context, readEditorOptions, writeEditorOptions, () => AiConfigurationPanel.open(context, readAiConfiguration, writeAiConfiguration, aiConfigurationActions))));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => EditorOptionsPanel.open(context, readEditorOptions, writeEditorOptions, aiConfigurationActions, 'ai')));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openEditorOptions', () => EditorOptionsPanel.open(context, readEditorOptions, writeEditorOptions, aiConfigurationActions)));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testAiAuthoring', async () => { const result = await aiConfigurationActions.testAuthoring(); const message = result.message; if (/succeeded/i.test(message)) await api.window.showInformationMessage(message); else await api.window.showWarningMessage(message); return result; }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.setAiMode', async (value: unknown) => {
     const mode = normalizeAiAssistanceMode(value);

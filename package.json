@@ -105,7 +105,7 @@
       },
       {
         "command": "scapNg.openAiConfiguration",
-        "title": "SCAP-NG: Configure AI-assisted authoring"
+        "title": "SCAP-NG: Open AI options"
       },
       {
         "command": "scapNg.openEditorOptions",
