@@ -235,6 +235,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(editorOptionsPanelSource, /AI options/);
   assert.match(editorOptionsPanelSource, /Save all options/);
   assert.match(editorOptionsPanelSource, /type:'save'.*mode/);
+  assert.match(editorOptionsPanelSource, /inline-field.*discoverCodexModels/);
+  assert.match(editorOptionsPanelSource, /customCodexLabel/);
+  assert.match(editorOptionsPanelSource, /Query models/);
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);
   assert.match(authoringSidebarSource, /saveSchemaPackPath/);
