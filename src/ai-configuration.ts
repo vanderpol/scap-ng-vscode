@@ -14,7 +14,10 @@ export type AiAssistanceMode = typeof aiAssistanceModes[number];
 export interface AiAuthoringConfiguration {
   mode: AiAssistanceMode;
   endpoint: string;
+  /** Model for remote/local providers. Kept separate from the Codex override. */
   model: string;
+  /** Optional exact Codex model override; blank means use the host Codex configuration. */
+  codexModel: string;
 }
 
 export function normalizeAiAssistanceMode(value: unknown): AiAssistanceMode {

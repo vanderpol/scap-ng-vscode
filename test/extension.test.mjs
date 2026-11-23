@@ -45,6 +45,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.match(packageJson.contributes.configuration.properties['scapNg.ai.mode'].description, /opt-in/i);
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.endpoint'].default, '');
   assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.model'].default, '');
+  assert.equal(packageJson.contributes.configuration.properties['scapNg.ai.codexModel'].default, '');
+  assert.match(packageJson.contributes.configuration.properties['scapNg.ai.codexModel'].description, /host Codex CLI/i);
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.configureYamlSchemas'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentStudio'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentAuthoringPrototype'));
@@ -263,9 +265,11 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /Query available Codex models/);
   assert.match(aiConfigurationPanelSource, /type:'discoverCodexModels'/);
   assert.match(aiConfigurationPanelSource, /Use host Codex model/);
+  assert.match(aiConfigurationPanelSource, /configuration\.codexModel/);
+  assert.ok(aiConfigurationPanelSource.indexOf('codexNotice') < aiConfigurationPanelSource.indexOf('codexModelFields'), 'Codex model controls remain inside the Codex (local) section');
   assert.match(aiConfigurationPanelSource, /model and reasoning settings from the host Codex configuration/i);
   assert.match(aiConfigurationPanelSource, /type:'testCodex',mode:\$\('mode'\)\.value,model:selectedModel\(\)/);
-  assert.match(extensionSource, /target\.model\.trim\(\) \|\| 'Codex CLI configured model'/);
+  assert.match(extensionSource, /target\.codexModel\.trim\(\) \|\| 'Codex CLI configured model'/);
   assert.match(readFileSync(new URL('../src/codex-local.ts', import.meta.url), 'utf8'), /args\.push\('--model', model\)/);
   assert.match(extensionSource, /provider-only output may be less reliable/);
   assert.match(extensionSource, /provider-format\/content failure, not a manual-only classification/);
