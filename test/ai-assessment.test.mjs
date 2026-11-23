@@ -50,6 +50,8 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.schemas['capability-common.schema.json'].defs.file_traversal);
   assert.ok(knowledge.schemas['variable-expression.schema.json'].defs.expression);
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /organization-defined value.*authorized time server/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /missing_organizational_input/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /(?:Do not|never) emit OVAL spellings such as at_least_one/i.test(item)));
