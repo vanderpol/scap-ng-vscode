@@ -9,7 +9,7 @@ import {
 } from '../dist/ai-configuration.js';
 
 test('AI assistance configuration is opt-in and has stable mode labels', () => {
-  assert.deepEqual(aiAssistanceModes, ['none', 'local', 'vscode', 'remote', 'codex-local']);
+  assert.deepEqual(aiAssistanceModes, ['none', 'codex-local', 'remote', 'vscode', 'local']);
   assert.equal(normalizeAiAssistanceMode(undefined), 'none');
   assert.equal(normalizeAiAssistanceMode('not-a-mode'), 'none');
   for (const mode of aiAssistanceModes) {

@@ -295,17 +295,17 @@
           "type": "string",
           "enum": [
             "none",
-            "local",
-            "vscode",
+            "codex-local",
             "remote",
-            "codex-local"
+            "vscode",
+            "local"
           ],
           "enumDescriptions": [
             "Do not use AI assistance. The deterministic offline workflow remains available separately.",
-            "Use a model served by a local loopback endpoint; no internet connection is required.",
-            "Use an approved model exposed through the VS Code Language Model API when available.",
+            "Use the locally available Codex CLI through the host environment; optionally override its model for editor requests. No token is stored by this extension.",
             "Use an explicitly configured enterprise or remote HTTPS endpoint after reviewing data scope.",
-            "Use the locally available Codex CLI through the host environment; optionally override its model for editor requests. No token is stored by this extension."
+            "Use an approved model exposed through the VS Code Language Model API when available.",
+            "Use a model served by a local loopback endpoint; no internet connection is required."
           ],
           "default": "none",
           "scope": "window",

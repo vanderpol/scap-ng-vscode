@@ -5,7 +5,10 @@
  * not make network calls, select a model, or mutate Assessment YAML. Provider
  * requests and review-only draft validation live in ai-assessment.ts.
  */
-export const aiAssistanceModes = ['none', 'local', 'vscode', 'remote', 'codex-local'] as const;
+// Keep the opt-in choice first, then the providers most likely to be available
+// to this editor audience. Local loopback AI is deliberately last until it is
+// a more common deployment target.
+export const aiAssistanceModes = ['none', 'codex-local', 'remote', 'vscode', 'local'] as const;
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
 export interface AiAuthoringConfiguration {
