@@ -243,10 +243,11 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /On every workspace activation/);
   assert.doesNotMatch(extensionSource, /scapNg\.welcomeShown/);
   assert.match(authoringSidebarSource, /id=\"assessmentEditor\"/);
-  assert.match(authoringSidebarSource, /id=\"aiMode\"/);
+  assert.doesNotMatch(authoringSidebarSource, /id=\"aiMode\"/);
   assert.match(authoringSidebarSource, /id=\"configureAi\"/);
+  assert.match(authoringSidebarSource, /Open AI configuration/);
+  assert.doesNotMatch(authoringSidebarSource, /saveAiMode/);
   assert.doesNotMatch(authoringSidebarSource, /id=\"aiDialog\"/);
-  assert.match(authoringSidebarSource, /\$\('configureAi'\)\.hidden=mode===\'none\'/);
   assert.match(authoringSidebarSource, /openAiConfiguration/);
   assert.match(aiConfigurationPanelSource, /AI-assisted authoring configuration/);
   assert.match(aiConfigurationPanelSource, /createWebviewPanel/);
@@ -306,9 +307,6 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);
   assert.match(aiConfigurationPanelSource, /OpenAI-compatible gateway/);
-  assert.match(authoringSidebarSource, /None \(no AI\)/);
-  assert.match(authoringSidebarSource, /VS Code AI provider/);
-  assert.match(authoringSidebarSource, /Configured remote AI/);
   assert.match(aiConfigurationPanelSource, /does not make a request/);
   assert.match(extensionSource, /scapNg\.openAiConfiguration/);
   assert.match(extensionSource, /scapNg\.setAiMode/);
