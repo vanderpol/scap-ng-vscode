@@ -29,7 +29,7 @@ import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { aiEndpointError, normalizeAiAssistanceMode, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput } from './ai-assessment.js';
-import { runCodexLocal, testCodexLocal } from './codex-local.js';
+import { discoverCodexModels, runCodexLocal, testCodexLocal } from './codex-local.js';
 import { resolveStudioSearch } from './studio-search.js';
 
 import { SCHEMA_BASE, SCHEMA_VERSION } from './schema-contract.js';
@@ -3527,6 +3527,11 @@ export function activate(context: vscode.ExtensionContext) {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
       const result = await testCodexLocal(workspace, configuration?.model);
       return { message: result.message, ok: result.ok };
+    },
+    discoverCodexModels: async () => {
+      const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
+      const result = await discoverCodexModels(workspace);
+      return { message: result.message, models: result.models };
     },
     testAuthoring: async (configuration?: AiAuthoringConfiguration) => {
       const target = configuration ?? readAiConfiguration();

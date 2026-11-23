@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runCodexLocal, testCodexLocal } from '../dist/codex-local.js';
+import { discoverCodexModels, runCodexLocal, testCodexLocal } from '../dist/codex-local.js';
 
 async function fakeCodex() {
   const root = await mkdtemp(join(tmpdir(), 'scap-ng-fake-codex-'));
@@ -11,6 +11,10 @@ async function fakeCodex() {
   await writeFile(file, `#!/bin/sh
 out=""
 args="$*"
+if [ "$1" = "debug" ] && [ "$2" = "models" ]; then
+  printf '{"models":[{"slug":"gpt-test","visibility":"list","supported_in_api":true},{"slug":"hidden-test","visibility":"hidden"},{"slug":"unsupported-test","visibility":"list","supported_in_api":false}]}'
+  exit 0
+fi
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output-last-message" ]; then shift; out="$1"; fi
   shift
@@ -30,6 +34,9 @@ test('Codex local bridge uses the host CLI without exposing credentials', async 
   process.env.SCAP_NG_CODEX_BIN = fake.file;
   process.env.CODEX_ARGS_FILE = argsFile;
   try {
+    const catalog = await discoverCodexModels(fake.root);
+    assert.deepEqual(catalog.models, ['gpt-test']);
+    assert.match(catalog.message, /1 selectable model/);
     const availability = await testCodexLocal(fake.root, 'gpt-5.6-luna');
     assert.equal(availability.ok, true);
     assert.match(availability.message, /available/i);

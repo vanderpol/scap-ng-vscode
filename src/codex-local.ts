@@ -18,6 +18,11 @@ export interface CodexLocalAvailability {
   executable?: string;
 }
 
+export interface CodexModelCatalog {
+  models: string[];
+  message: string;
+}
+
 export interface CodexLocalRunOptions {
   cwd?: string;
   timeoutMs?: number;
@@ -108,6 +113,21 @@ function processFailure(result: { code: number; stderr: string; stdout: string }
   return `Local Codex provider exited with status ${result.code}${details ? `: ${details}` : '.'}`;
 }
 
+
+function parseModelCatalog(stdout: string): string[] {
+  const start = stdout.indexOf('{');
+  const end = stdout.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('Codex model catalog did not return JSON.');
+  let payload: any;
+  try { payload = JSON.parse(stdout.slice(start, end + 1)); }
+  catch { throw new Error('Codex model catalog returned invalid JSON.'); }
+  const models = Array.isArray(payload?.models) ? payload.models : [];
+  const ids = models
+    .filter((model: any) => model && typeof model.slug === 'string' && model.slug.trim() && model.visibility !== 'hidden' && model.supported_in_api !== false)
+    .map((model: any) => String(model.slug).trim()) as string[];
+  return [...new Set<string>(ids)].sort((a, b) => a.localeCompare(b));
+}
+
 export async function runCodexLocal(messages: OpenAiChatMessage[], options: CodexLocalRunOptions = {}): Promise<string> {
   const cwd = options.cwd || process.cwd();
   const timeoutMs = Math.max(5_000, options.timeoutMs ?? 120_000);
@@ -152,4 +172,29 @@ export async function testCodexLocal(cwd = process.cwd(), model?: string): Promi
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error), executable: preferred ?? 'codex' };
   }
+}
+
+/**
+ * Ask the host Codex CLI for its configured provider model catalog. This is a
+ * metadata request, not an Assessment request; credentials and endpoint
+ * configuration remain owned by Codex. The catalog may be refreshed by the
+ * CLI and can therefore fail when the host is unauthenticated or offline.
+ */
+export async function discoverCodexModels(cwd = process.cwd()): Promise<CodexModelCatalog> {
+  const preferred = firstAbsoluteCandidate();
+  const commands = preferred ? [preferred, 'codex'] : ['codex'];
+  let lastError: unknown;
+  for (const executable of commands) {
+    try {
+      const result = await runProcess(executable, ['debug', 'models'], '', cwd, 30_000);
+      if (result.code !== 0) throw new Error(processFailure(result));
+      const models = parseModelCatalog(result.stdout);
+      if (!models.length) throw new Error('Codex returned no selectable models from its configured catalog.');
+      return { models, message: `Codex CLI returned ${models.length} selectable model${models.length === 1 ? '' : 's'} from its configured catalog.` };
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !/ENOENT|not found/i.test(error.message)) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('The Codex executable was not found.');
 }

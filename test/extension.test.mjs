@@ -260,6 +260,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(aiConfigurationPanelSource, /provider-only.*may fail structured authoring/);
   assert.match(aiConfigurationPanelSource, /pinned local SCAP-NG capability\/search\/validation tools/);
   assert.match(aiConfigurationPanelSource, /Codex model override \(optional\)/);
+  assert.match(aiConfigurationPanelSource, /Query available Codex models/);
+  assert.match(aiConfigurationPanelSource, /type:'discoverCodexModels'/);
+  assert.match(aiConfigurationPanelSource, /Use host Codex model/);
   assert.match(aiConfigurationPanelSource, /model and reasoning settings from the host Codex configuration/i);
   assert.match(aiConfigurationPanelSource, /type:'testCodex',mode:\$\('mode'\)\.value,model:selectedModel\(\)/);
   assert.match(extensionSource, /target\.model\.trim\(\) \|\| 'Codex CLI configured model'/);
