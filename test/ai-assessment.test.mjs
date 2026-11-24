@@ -121,6 +121,23 @@ test('AI response can recover an omitted generated_mode from an explicit automat
   assert.ok(result.assumptions.some(message => /omitted generated_mode.*assessment\.mode: automated/i.test(message)));
 });
 
+test('AI parser normalizes one-item reported_elements enum arrays generically', async () => {
+  const value = parseDocument(validYaml).toJS();
+  value.assessment.tests['check-the-passwd-file-test'].reported_elements = ['all'];
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Complete.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-reported-elements', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(result.generatedMode, 'automated');
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.document.assessment.tests['check-the-passwd-file-test'].reported_elements, 'all');
+  assert.ok(result.assumptions.some(message => /reported_elements enum/i.test(message)));
+});
+
 test('AI parser removes manual-only metadata copied into an automated candidate', async () => {
   const value = parseDocument(validYaml).toJS();
   value.assessment.procedure = 'Manual source procedure copied by the provider.';

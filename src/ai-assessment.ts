@@ -638,6 +638,29 @@ function normalizeProviderAssessmentEnvelope(value: any): { value: any; yamlChan
   return { value: next, yamlChanged: true, note: `The provider placed the Assessment specification beside the document root; normalized it into assessment.specification before pinned-schema validation.${scalarNote}` };
 }
 
+function normalizeProviderReportedElements(value: any): { value: any; yamlChanged: boolean; note?: string } {
+  const tests = value?.assessment?.tests;
+  if (!tests || typeof tests !== 'object' || Array.isArray(tests)) return { value, yamlChanged: false };
+  const changed: string[] = [];
+  const nextTests: Record<string, any> = { ...tests };
+  for (const [testId, test] of Object.entries(tests) as Array<[string, any]>) {
+    if (!test || typeof test !== 'object' || !Array.isArray(test.reported_elements) || test.reported_elements.length !== 1) continue;
+    const token = test.reported_elements[0];
+    // The canonical schema permits scalar `all`/`compared`; some providers
+    // mechanically turn the enum into `[all]`/`[compared]`. This is an
+    // unambiguous shape correction and does not invent a field selection.
+    if (token !== 'all' && token !== 'compared') continue;
+    nextTests[testId] = { ...test, reported_elements: token };
+    changed.push(testId);
+  }
+  if (!changed.length) return { value, yamlChanged: false };
+  return {
+    value: { ...value, assessment: { ...value.assessment, tests: nextTests } },
+    yamlChanged: true,
+    note: `Normalized scalar reported_elements enum(s) accidentally returned as one-item arrays for ${changed.length} Test${changed.length === 1 ? '' : 's'} before pinned-schema validation.`
+  };
+}
+
 function normalizeProviderAutomatedMetadata(value: any): { value: any; yamlChanged: boolean; note?: string } {
   const assessment = value?.assessment;
   if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment) || assessment.mode !== 'automated') {
@@ -889,6 +912,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
     value = normalizedAutomatedMetadata.value;
     yamlText = stringify(value);
   }
+  const normalizedReportedElements = normalizeProviderReportedElements(value);
+  if (normalizedReportedElements.yamlChanged) {
+    value = normalizedReportedElements.value;
+    yamlText = stringify(value);
+  }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
@@ -898,6 +926,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   if (identity.note) assumptions.push(identity.note);
   if (normalizedInputs.note) assumptions.push(normalizedInputs.note);
   if (normalizedAutomatedMetadata.note) assumptions.push(normalizedAutomatedMetadata.note);
+  if (normalizedReportedElements.note) assumptions.push(normalizedReportedElements.note);
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
   diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
