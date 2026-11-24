@@ -192,6 +192,18 @@ test('manual-only AI response is preserved as a non-linkable review result', asy
   assert.ok(result.unresolved.length > 0);
 });
 
+test('AI authoring cancellation stops before sending a provider request', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let called = false;
+  const result = await createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'cancel-rule', title: 'Canceled', checkText: 'Verify /etc/passwd is present.'
+  }, { signal: controller.signal, request: async () => { called = true; return ''; } });
+  assert.equal(called, false);
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.match(result.diagnostics[0], /canceled/i);
+});
+
 test('AI generation fails closed before network use when no key or model is configured', async () => {
   let called = false;
   const original = globalThis.fetch;
