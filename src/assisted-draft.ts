@@ -1468,6 +1468,10 @@ function hasOutcome(value: unknown, key: 'not_applicable' | 'not_evaluated'): bo
 function hasDynamicPopulation(text: string): boolean {
   return /(?:\[[A-Z][A-Z0-9 _-]{1,40}\]|\/[^\s\n]*\*[^\s\n]*|conf\.d|for each|each applicable|all local interactive|all files? and director|all files? contained|every file|per-user|whose\s+owner|of which\s+the\s+(?:user|owner)|is a member of)/i.test(text);
 }
+function hasAlternativeNotification(text: string): boolean {
+  return /\b(?:email|mail)\b[\s\S]{0,220}\b(?:and\/or|or)\b[\s\S]{0,220}\b(?:monitoring system trap|trap|local (?:computer )?console|hardware indication|lights?)\b/i.test(text)
+    || /\b(?:monitoring system trap|local (?:computer )?console|hardware indication|lights?)\b[\s\S]{0,220}\b(?:and\/or|or)\b[\s\S]{0,220}\b(?:email|mail)\b/i.test(text);
+}
 function hasConditionalApplicability(text: string): boolean {
   // A finding condition such as "if the package is not installed, this is a
   // finding" is not an applicability branch. Require explicit N/A language
@@ -1489,6 +1493,7 @@ export function likelyAutomationReviewReasons(result: AssistedDraftResult, check
   const reasons: string[] = [];
   if (result.generatedMode !== 'automated' || result.diagnostics.length > 0) reasons.push('The offline draft is not a clean automated candidate.');
   if (result.confidence === 'low') reasons.push('The offline draft has low confidence.');
+  if (hasAlternativeNotification(checkText)) reasons.push('The source permits multiple notification channels and requires a human policy choice before a complete automated candidate can be advertised.');
   const value: any = result.document;
   const assessment = value?.assessment;
   const tests = Object.values(assessment?.tests ?? {}) as any[];

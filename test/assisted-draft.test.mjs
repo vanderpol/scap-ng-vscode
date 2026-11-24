@@ -43,6 +43,15 @@ test('package finding wording keeps installed-package requirements as presence c
   assert.equal(check.require.item_requirement.items_found, 'one_or_more');
 });
 
+test('likely-automatable analysis rejects notification alternatives that need policy selection', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'amazon-linux-2023',
+    title: 'AIDE must notify personnel of integrity anomalies.',
+    checkText: 'Verify AIDE notifies personnel by email and/or monitoring system trap. Notifications may also be sent to local consoles or hardware indications.'
+  });
+  assert.equal(isLikelyAutomatableDraft(result, 'Verify AIDE notifies personnel by email and/or monitoring system trap. Notifications may also be sent to local consoles or hardware indications.'), false);
+});
+
 test('likely-automatable analysis rejects partial dynamic populations but keeps concrete technical checks', () => {
   const dynamic = createAssistedAssessment(pack, {
     platform: 'rhel',
