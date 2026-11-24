@@ -402,9 +402,14 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
   const aiGenerator = getAiGenerator();
   if (mode === 'ai' && !aiGenerator) throw new Error('Configured AI assistance is not enabled. Configure an AI provider before starting an AI batch.');
   const likely = filter === 'likely-automatable' ? new Set(analysis?.likelyRuleUris ?? []) : undefined;
+  // A filtered Needs automation page is an explicit scope boundary. Do not
+  // re-add already automated Rules merely because AI can compare them: that
+  // made a page showing 82 gaps launch a 164-entry batch. Existing automation
+  // remains comparison-only only in the unfiltered AI review scope.
+  const includeExistingAutomationForComparison = mode === 'ai' && filter !== 'needs-automation';
   const rules = selected.rules.filter(rule => {
     if (likely && !likely.has(rule.uri)) return false;
-    if (mode === 'ai') return rule.automationStatus === 'needs-automation' || rule.automationStatus === 'automated';
+    if (mode === 'ai' && includeExistingAutomationForComparison) return rule.automationStatus === 'needs-automation' || rule.automationStatus === 'automated';
     return rule.automationStatus === 'needs-automation';
   });
   if (!rules.length) { await api.window.showInformationMessage(filter === 'likely-automatable' ? 'No eligible Rules are currently available in this page scope.' : mode === 'ai' ? 'No Rules are available for AI review in this page scope.' : 'No currently unautomated Rules are in this page scope.'); return false; }

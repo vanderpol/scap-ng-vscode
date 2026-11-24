@@ -172,6 +172,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Only currently unautomated Rules in this page scope are included/);
   assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);
   assert.match(extensionSource, /openBenchmarkBatchAutomationPanel/);
+  assert.match(extensionSource, /includeExistingAutomationForComparison = mode === 'ai' && filter !== 'needs-automation'/);
+  assert.match(extensionSource, /A filtered Needs automation page is an explicit scope boundary/);
   assert.match(extensionSource, /Existing automation is never replaced/);
   assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
   assert.match(extensionSource, /Automatic effort estimates are local preflight guidance/);
