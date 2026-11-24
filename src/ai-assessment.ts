@@ -25,7 +25,9 @@ export interface AiAssessmentOptions {
   skipTools?: boolean;
   onToolsRejected?: () => void | Promise<void>;
   /** Optional local transport. The transport owns authentication and must return provider text only. */
-  request?: (messages: OpenAiChatMessage[], timeoutMs: number) => Promise<string>;
+  request?: (messages: OpenAiChatMessage[], timeoutMs: number, signal?: AbortSignal) => Promise<string>;
+  /** Cancel an in-flight provider request without accepting partial output. */
+  signal?: AbortSignal;
   /** The actual effort sent to Codex (automatic resolves to a concrete level first). */
   reasoningEffort?: string;
   /** Whether the actual effort was configured or selected by the local heuristic. */
@@ -45,6 +47,8 @@ export interface AiAssessmentInput {
   reviewMode?: boolean;
   /** Host/UI lifecycle callback; never serialized into the provider prompt. */
   progress?: (phase: AiAuthoringProgress) => void;
+  /** Host cancellation signal; never serialized into the provider prompt. */
+  signal?: AbortSignal;
 }
 
 export interface AiAssessmentCoverage {
@@ -821,9 +825,9 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
     try { input.progress?.(phase); } catch { /* UI progress must never affect authoring. */ }
   };
   const requestWithTools = async (requestMessages: OpenAiChatMessage[], timeout: number): Promise<string> => {
-    if (!useTools) return requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
+    if (!useTools) return requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout, options.signal);
     try {
-      return await requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout);
+      return await requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout, options.signal);
     } catch (error) {
       // Some OpenAI-compatible gateways expose a model whose name contains
       // `withtools` but reject the standard tools fields at the gateway. Keep
@@ -837,18 +841,20 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
       toolMode = 'fallback-no-tools';
       toolWarning = `${firstError}; retried once without tools because the gateway rejected the tool request.`;
       try {
-        return await requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
+        return await requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout, options.signal);
       } catch (fallbackError) {
         throw new Error(`${firstError}; retry without tools also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
       }
     }
   };
   const requestDraft = async (requestMessages: OpenAiChatMessage[], timeout: number, correction = false): Promise<string> => {
+    if (options.signal?.aborted) throw new Error('AI authoring was canceled.');
     reportProgress(correction ? 'sending-correction' : 'sending-request');
     reportProgress(correction ? 'waiting-correction' : 'waiting-provider');
     const response = options.request
-      ? await options.request(requestMessages, timeout)
+      ? await options.request(requestMessages, timeout, options.signal)
       : await requestWithTools(requestMessages, timeout);
+    if (options.signal?.aborted) throw new Error('AI authoring was canceled.');
     reportProgress(correction ? 'received-correction' : 'received-response');
     return response;
   };

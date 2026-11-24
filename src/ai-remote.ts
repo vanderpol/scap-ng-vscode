@@ -136,8 +136,16 @@ function parseChatCompletionBody(body: string): { content: string; toolCalls: Pa
   return { content: content.join(''), toolCalls: toolCalls.filter(call => call.id || call.function.name) };
 }
 
+function linkAbortSignal(controller: AbortController, signal?: AbortSignal): () => void {
+  if (!signal) return () => undefined;
+  const abort = () => controller.abort();
+  if (signal.aborted) controller.abort();
+  else signal.addEventListener('abort', abort, { once: true });
+  return () => signal.removeEventListener('abort', abort);
+}
+
 /** Send an explicit, user-approved prompt to an OpenAI-compatible gateway. */
-export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: string, model: string, messages: OpenAiChatMessage[], timeoutMs = 120000): Promise<string> {
+export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: string, model: string, messages: OpenAiChatMessage[], timeoutMs = 120000, signal?: AbortSignal): Promise<string> {
   if (!apiKey.trim()) throw new Error('No stored remote API key is available.');
   if (!model.trim()) throw new Error('Select or enter a model before generating AI content.');
   let base: URL;
@@ -152,6 +160,7 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error('The AI request timed out.');
     const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(controller, signal);
     const timer = setTimeout(() => controller.abort(), remaining);
     try {
       const body = { model, messages, temperature: 0.1, max_tokens: AI_MAX_OUTPUT_TOKENS, stream: true, ...(requestJsonMode ? { response_format: { type: 'json_object' } } : {}) };
@@ -172,9 +181,9 @@ export async function requestOpenAiCompatibleChat(endpoint: string, apiKey: stri
       if (parsed.content.trim()) return parsed.content;
       throw new Error('Gateway response did not contain choices[0].message.content.');
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
+      if (error instanceof Error && error.name === 'AbortError') throw new Error(signal?.aborted ? 'The AI request was canceled.' : 'The AI request timed out.');
       throw error;
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); unlinkAbort(); }
   }
   throw new Error('The AI request did not produce a response.');
 }
@@ -194,7 +203,8 @@ export async function requestOpenAiCompatibleChatWithTools(
   initialMessages: OpenAiChatMessage[],
   tools: OpenAiToolDefinition[],
   handler: OpenAiToolHandler,
-  timeoutMs = 120000
+  timeoutMs = 120000,
+  signal?: AbortSignal
 ): Promise<string> {
   if (!apiKey.trim()) throw new Error('No stored remote API key is available.');
   if (!model.trim()) throw new Error('Select or enter a model before generating AI content.');
@@ -222,6 +232,7 @@ export async function requestOpenAiCompatibleChatWithTools(
       if (remaining <= 0) throw new Error('The AI request timed out.');
       const profile = wireProfiles[wireProfileIndex];
       const controller = new AbortController();
+      const unlinkAbort = linkAbortSignal(controller, signal);
       const timer = setTimeout(() => controller.abort(), remaining);
       try {
         const response = await fetch(completionUrl, {
@@ -244,9 +255,9 @@ export async function requestOpenAiCompatibleChatWithTools(
         }
         break;
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') throw new Error('The AI request timed out.');
+        if (error instanceof Error && error.name === 'AbortError') throw new Error(signal?.aborted ? 'The AI request was canceled.' : 'The AI request timed out.');
         throw error;
-      } finally { clearTimeout(timer); }
+      } finally { clearTimeout(timer); unlinkAbort(); }
     }
     const parsed = parseChatCompletionBody(body);
     const message = { content: parsed.content };

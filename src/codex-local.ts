@@ -32,6 +32,8 @@ export interface CodexLocalRunOptions {
   model?: string;
   /** Per-request effort; host leaves model_reasoning_effort from Codex config.toml unchanged. */
   reasoningEffort?: CodexReasoningEffort;
+  /** Abort an in-flight provider process when the author cancels generation. */
+  signal?: AbortSignal;
 }
 
 const MAX_CAPTURED_STDERR = 24_000;
@@ -105,26 +107,45 @@ function promptFor(messages: OpenAiChatMessage[]): string {
   }).join('\n\n');
 }
 
-async function runProcess(executable: string, args: string[], input: string, cwd: string, timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
+async function runProcess(executable: string, args: string[], input: string, cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<{ code: number; stdout: string; stderr: string }> {
   return await new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let settled = false;
+    const killChild = () => {
+      try { child.kill('SIGTERM'); } catch { /* already exited */ }
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already exited */ } }, 500);
+    };
+    let removeAbortListener: () => void = () => undefined;
     const finish = (result: { code: number; stdout: string; stderr: string }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      removeAbortListener();
       resolve(result);
     };
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        child.kill('SIGTERM');
-        setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already exited */ } }, 500);
+        removeAbortListener();
+        killChild();
         reject(new Error('The local Codex request timed out.'));
       }
     }, timeoutMs);
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      removeAbortListener();
+      killChild();
+      reject(new Error('The local Codex request was canceled.'));
+    };
+    if (signal) {
+      if (signal.aborted) { cancel(); return; }
+      signal.addEventListener('abort', cancel, { once: true });
+      removeAbortListener = () => signal.removeEventListener('abort', cancel);
+    }
     child.stdout.on('data', chunk => { stdout = trimCapture(stdout + String(chunk), MAX_CAPTURED_STDOUT); });
     child.stderr.on('data', chunk => { stderr = trimCapture(stderr + String(chunk), MAX_CAPTURED_STDERR); });
     child.stdin.on('error', () => { /* A short-lived probe may exit before stdin drains. */ });
@@ -189,7 +210,7 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
     const launchFailures: string[] = [];
     for (const executable of commands) {
       try {
-        const result = await runProcess(executable, args, prompt, cwd, timeoutMs);
+        const result = await runProcess(executable, args, prompt, cwd, timeoutMs, options.signal);
         if (result.code !== 0) throw new Error(processFailure(result));
         const response = (await readFile(outputFile, 'utf8').catch(() => '')).trim() || result.stdout.trim();
         if (!response) throw new Error('Local Codex completed without a final response.');
