@@ -145,6 +145,8 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
   assert.equal(result.model, 'model-a');
   assert.match(result.yaml, /generation_method: configured-ai/);
   assert.match(result.yaml, /model: model-a/);
+  assert.match(result.yaml, /editor_version: 0\.0\.1/);
+  assert.match(result.yaml, /editor_build: [a-f0-9]{7,40}/);
   assert.match(result.yaml, /tool_mode: not-requested/);
   assert.match(result.yaml, /reasoning_effort: high/);
   assert.equal(result.toolMode, 'not-requested');
@@ -222,6 +224,31 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
   assert.equal(result.confidence, 'low');
   assert.ok(result.diagnostics.some(item => /Not Applicable|conditional branch/i.test(item)));
   assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
+});
+
+test('AI candidates cannot silently narrow explicit notification alternatives to email only', async () => {
+  const payload = {
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: {
+      applicability: 'not-needed',
+      procedure_steps: [{ summary: 'Verify integrity checking and notification', represented: true, tests: ['check-file-test'] }],
+      path_patterns: []
+    }
+  };
+  const responses = [response(JSON.stringify(payload)), response(JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'medium', assessment_yaml: '',
+    assumptions: ['The source permits notification channels that require an organizational policy choice.'],
+    unresolved_questions: ['Select and qualify the authorized notification mechanism.'], citations: []
+  }))];
+  let index = 0;
+  const { result, requests } = await withFetch(() => responses[index++], () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'aide-notification-rule', title: 'AIDE must notify personnel',
+    checkText: 'Verify AIDE notifies personnel by email and/or monitoring system trap. Notifications may also be sent to local consoles or hardware indications.'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.automationClass, 'manual');
 });
 
 test('AI generation performs one bounded correction pass after local rejection', async () => {
