@@ -235,7 +235,9 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(authoringSidebarSource, /mode-graphical/);
   assert.match(authoringSidebarSource, /viewType === 'scapNg.assessment'/);
   assert.match(authoringSidebarSource, /data-tab=\"diagnostics\"|id=\"diagnostics\"/);
-  assert.doesNotMatch(authoringSidebarSource, /data-tab="options"|id="options"|data-tab="about"|id="about"/);
+  assert.match(authoringSidebarSource, /data-tab="about"|id="about"/);
+  assert.match(authoringSidebarSource, /Canonical source commit/);
+  assert.match(authoringSidebarSource, /Pack manifest SHA-256/);
   assert.doesNotMatch(authoringSidebarSource, /openAiConfiguration/);
   assert.match(editorOptionsPanelSource, /Editor options/);
   assert.match(editorOptionsPanelSource, /New YAML Object presentation/);
