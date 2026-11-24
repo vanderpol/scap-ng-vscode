@@ -3805,18 +3805,13 @@ export function activate(context: vscode.ExtensionContext) {
     if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI or Codex (local) first.');
     const secrets = (context as any).secrets;
     const key = typeof secrets?.get === 'function' ? await secrets.get(remoteApiKeySecret) : undefined;
-    const toolProfile = `${target.endpoint.replace(/\/$/, '')}\u0000${target.model.trim()}`;
-    const globalState = (context as any).globalState;
-    const rejectedProfiles = typeof globalState?.get === 'function' ? (globalState.get('scapNg.ai.rejectedToolProfiles', []) as string[] ?? []) : [];
+    // Tool support is deliberately cached only in this extension-host
+    // session by ai-assessment.ts. Do not persist a transient 400 across
+    // reloads: provider model aliases/backends can change, and a stale cache
+    // would silently force a withtools model onto the less reliable provider-
+    // only path forever. A new session must renegotiate tools once.
     return runWithSharedAiBatchLimit(() => createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, input, {
-      signal: input.signal,
-      skipTools: rejectedProfiles.includes(toolProfile),
-      onToolsRejected: () => {
-        const next = [...new Set([...rejectedProfiles, toolProfile])].slice(-32);
-        // Await the cache write before the fallback request completes so an
-        // immediate VS Code reload does not repeat the known-bad negotiation.
-        return typeof globalState?.update === 'function' ? globalState.update('scapNg.ai.rejectedToolProfiles', next) : undefined;
-      }
+      signal: input.signal
     }), input.signal);
   };
   const codexReviewGenerator: AiAssessmentGenerator = async (input: AiAssessmentInput) => {

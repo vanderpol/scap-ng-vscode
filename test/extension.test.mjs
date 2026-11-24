@@ -218,6 +218,12 @@ test('offline VSIX runtime dependency closure is present for cold activation', (
   }
 });
 
+test('remote tool negotiation is retried after an extension-host reload', () => {
+  assert.match(extensionSource, /Tool support is deliberately cached only in this extension-host/);
+  assert.match(extensionSource, /provider model aliases\/backends can change/);
+  assert.doesNotMatch(extensionSource, /scapNg\.ai\.rejectedToolProfiles/);
+});
+
 test('Authoring sidebar does not alter the workbench layout or expose absolute paths in help context', () => {
   assert.doesNotMatch(authoringSidebarSource, /id=\"minimize\"|id=\"maximize\"|toggleMaximizedAuxiliaryBar|toggleMaximize/);
   assert.doesNotMatch(readFileSync(new URL('../src/extension.ts', import.meta.url), 'utf8'), /authoringSidebar\.autoReveal|maybeRevealAuthoring/);
