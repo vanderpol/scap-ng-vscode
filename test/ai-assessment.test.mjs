@@ -444,6 +444,33 @@ test('provider Assessment IDs are normalized generically before correction when 
   assert.ok(result.assumptions.some(item => /normalized.*identity limit/i.test(item)));
 });
 
+test('provider Assessment Input names are normalized generically before schema validation', async () => {
+  const inputYaml = validYaml
+    .replace('  evaluate:', `  inputs:
+    organization-approved-value:
+      datatype: string
+      cardinality: one_or_more
+      required: true
+  evaluate:`)
+    .replace('          items_found: one_or_more', `          items_found: one_or_more
+          items_satisfying: every
+        field_requirement:
+          values_found: one_or_more
+          values_matching: every
+        fields:
+          full_path:
+            equals: {input: organization-approved-value}
+            value_match: one_or_more`);
+  const payload = { generated_mode: 'automated', confidence: 'high', assessment_yaml: inputYaml, assumptions: [], unresolved_questions: [], citations: [], coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check input-backed path', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] } };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Approved endpoint', checkText: 'Verify the system uses <organization-approved endpoint> as the authorized endpoint value.'
+  }));
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.document.assessment.inputs['organization-approved-value-input']);
+  assert.equal(result.document.assessment.tests['check-the-passwd-file-test'].require.fields.full_path.equals.input, 'organization-approved-value-input');
+  assert.ok(result.assumptions.some(item => /Input name.*normalized/i.test(item)));
+});
+
 test('AI candidates cannot be reported fully automated when source contains an unresolved organizational value', async () => {
   const payload = {
     generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,

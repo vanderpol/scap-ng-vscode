@@ -249,6 +249,8 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(editorOptionsPanelSource, /Automatic analyzes the immutable check text locally/);
   assert.match(extensionSource, /recommendCodexReasoningEffort/);
   assert.match(extensionSource, /planning window up to/);
+  assert.match(extensionSource, /locally clean and independently reviewed/);
+  assert.match(extensionSource, /result\.linkable === false/);
   assert.match(extensionSource, /reasoningEffortSelection/);
   assert.match(authoringSidebarSource, /Assessment execution/);
   assert.match(authoringSidebarSource, /Verified offline pack loaded/);

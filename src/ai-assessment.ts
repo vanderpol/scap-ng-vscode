@@ -609,6 +609,40 @@ function normalizeProviderAssessmentIdentity(value: any, input: AiAssessmentInpu
   return { value: next, yamlChanged: true, note: `The provider Assessment ID '${id || '(missing)'}' was normalized to '${replacement}' to satisfy the pinned 0.4.1 identity limit.` };
 }
 
+function normalizeProviderAssessmentInputs(value: any): { value: any; yamlChanged: boolean; note?: string } {
+  const inputs = value?.assessment?.inputs;
+  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return { value, yamlChanged: false };
+  const names = Object.keys(inputs);
+  const renames = new Map<string, string>();
+  const used = new Set<string>();
+  for (const original of names) {
+    if (/^[a-z0-9]+(?:-[a-z0-9]+)*-input$/.test(original)) { used.add(original); continue; }
+    let normalized = original.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+    if (!normalized) normalized = 'organization';
+    if (!normalized.endsWith('-input')) normalized += '-input';
+    const base = normalized;
+    let suffix = 2;
+    while (used.has(normalized)) normalized = `${base.replace(/-input$/, '')}-${suffix++}-input`;
+    used.add(normalized);
+    renames.set(original, normalized);
+  }
+  if (!renames.size) return { value, yamlChanged: false };
+  const nextInputs: Record<string, unknown> = {};
+  for (const [original, definition] of Object.entries(inputs)) nextInputs[renames.get(original) ?? original] = definition;
+  const visit = (node: any): void => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const key of ['input', 'input_provided']) {
+      if (typeof node[key] === 'string' && renames.has(node[key])) node[key] = renames.get(node[key]);
+    }
+    Object.values(node).forEach(visit);
+  };
+  value.assessment.inputs = nextInputs;
+  visit(value.assessment);
+  const changes = [...renames.entries()].map(([from, to]) => `'${from}' → '${to}'`).join(', ');
+  return { value, yamlChanged: true, note: `The provider used Assessment Input name(s) that do not satisfy the pinned 0.4.1 input-name pattern; normalized ${changes} and updated their references.` };
+}
+
 function schemaValidationDiagnostics(pack: MetadataPack, schemaUri: string, value: any): string[] {
   const errors = pack.validateDetailed(schemaUri, value) as Array<{ instancePath?: string; keyword?: string; params?: Record<string, any>; message?: string }>;
   const diagnostics: string[] = [];
@@ -787,12 +821,18 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
     value = identity.value;
     yamlText = stringify(value);
   }
+  const normalizedInputs = normalizeProviderAssessmentInputs(value);
+  if (normalizedInputs.yamlChanged) {
+    value = normalizedInputs.value;
+    yamlText = stringify(value);
+  }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
   if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [...diagnostics, ...semanticDiagnostics], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');
   if (identity.note) assumptions.push(identity.note);
+  if (normalizedInputs.note) assumptions.push(normalizedInputs.note);
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
   diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
