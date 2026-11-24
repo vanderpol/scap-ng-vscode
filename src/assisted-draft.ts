@@ -236,7 +236,16 @@ function registryCandidate(text: string): Candidate | undefined {
     else if (type === 'REG_SZ') fields.type = { equals: 'string' };
     else if (typeof parsed === 'number') fields.type = { equals: Number.isInteger(parsed) ? 'dword' : 'string' };
   }
-  const objectFor = (key: string): Record<string, Json> => ({ hive: { equals: selectedHive }, key: { equals: key }, name: { equals: name } });
+  // HKEY_CURRENT_USER is backed by per-profile NTUSER.DAT hives. The
+  // single-user registry collector only observes the currently logged-in
+  // profile, so never use it for an explicit HKCU source. Use the native
+  // windows.ntuser collector and acquire every logged-in profile; the Default
+  // profile is excluded unless the source explicitly asks for it.
+  const perUserHive = selectedHive === 'current_user';
+  const capability = perUserHive ? 'windows.ntuser' : 'windows.registry';
+  const objectFor = (key: string): Record<string, Json> => perUserHive
+    ? { include_default: false, item_creation: 'every_ntuser', key: { equals: key }, name: { equals: name } }
+    : { hive: { equals: selectedHive }, key: { equals: key }, name: { equals: name } };
   const labeled = Boolean(labeledHive && labeledPaths.length && labeledName);
   const alternatePaths = keys.length > 1;
   const conditionalBranches = alternatePaths ? keys.map((key, index) => ({
@@ -251,7 +260,7 @@ function registryCandidate(text: string): Candidate | undefined {
     ...(fields.value ? [minimumFieldAssumption(fields.value)] : ['No unambiguous expected registry value was found; the generated Test is presence-only.'])
   ];
   const confidence: AssistedConfidence = fields.value && labeled && !alternatePaths && !keys.some(key => /\[[^\]]+\]/.test(key)) ? 'high' : 'medium';
-  return { capability: 'windows.registry', object: objectFor(keys[0]), testCandidates, conditionalBranches, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !fields.value, confidence, assumptions };
+  return { capability, object: objectFor(keys[0]), testCandidates, conditionalBranches, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !fields.value, confidence, assumptions };
 }
 function minimumFieldAssumption(value: Json): string {
   const predicate = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, Json> : {};
@@ -1536,6 +1545,14 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
+  // HKEY_CURRENT_USER is a hard capability boundary: do this before broad
+  // benchmark-family candidates so an earlier generic Windows branch cannot
+  // select the single-user registry collector for a per-profile source.
+  const explicitCurrentUser = /\b(?:HKEY_CURRENT_USER|HKCU)\b/i.test(text);
+  if (explicitCurrentUser && /registry|registry\s+hive|registry\s+path|value\s+name/i.test(text)) {
+    const perUser = registryCandidate(text);
+    if (perUser) return perUser;
+  }
   return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? sshBannerCandidate(text) ?? chronyTimeSourceCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 

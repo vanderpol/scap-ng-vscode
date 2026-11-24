@@ -245,6 +245,32 @@ test('package-manager checks take precedence over generic Unix path matching', (
   assert.equal(test.object.package_name.equals, 'gpg-pubkey');
 });
 
+test('explicit HKEY_CURRENT_USER checks use every-profile windows.ntuser collection', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'A screen saver must be enabled on the system.',
+    platform: 'Windows Server 2012 R2',
+    checkText: [
+      'If the following registry value does not exist or is not configured as specified, this is a finding:',
+      '',
+      'Registry Hive: HKEY_CURRENT_USER',
+      'Registry Path: \\Software\\Policies\\Microsoft\\Windows\\Control Panel\\Desktop\\',
+      'Value Name: ScreenSaveActive',
+      'Type: REG_SZ',
+      'Value: 1'
+    ].join('\n')
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.ntuser');
+  assert.equal(test.object.include_default, false);
+  assert.equal(test.object.item_creation, 'every_ntuser');
+  assert.equal(test.object.key.equals, 'Software\\Policies\\Microsoft\\Windows\\Control Panel\\Desktop');
+  assert.equal(test.object.name.equals, 'ScreenSaveActive');
+  assert.equal(test.require.fields.value.equals, 1);
+});
+
 test('registry presence-only checks serialize a valid Item requirement', () => {
   const result = createAssistedAssessment(pack, {
     title: 'The browser policy registry value must be present.',

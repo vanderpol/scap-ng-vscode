@@ -67,7 +67,7 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /organization-defined value or policy parameter.*input reference/i.test(item)));
   assert.ok(knowledge.current_authoring_examples.organizational_input.includes('organization-approved-value-input'));
-  assert.doesNotMatch(JSON.stringify(knowledge.authoring_invariants), /USNO|DoW|chrony|device_t|unlabeled_t|vmci/i);
+  assert.doesNotMatch(JSON.stringify(knowledge.authoring_invariants), /\b(?:USNO|DoW|chrony|device_t|unlabeled_t|vmci)\b/i);
   assert.ok(knowledge.authoring_invariants.some(item => /missing_organizational_input/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
@@ -157,6 +157,26 @@ test('AI parser removes manual-only metadata copied into an automated candidate'
   assert.deepEqual(result.diagnostics, []);
   assert.doesNotMatch(result.yaml, /ocil-manual|Manual source procedure|Manual evidence guidance/);
   assert.ok(result.assumptions.some(message => /Removed manual-only Assessment metadata/i.test(message)));
+});
+
+test('AI parser rejects windows.registry for an explicit HKEY_CURRENT_USER source', async () => {
+  const source = createAssistedAssessment(pack, {
+    title: 'Per-user setting',
+    checkText: 'Registry Hive: HKEY_CURRENT_USER\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nValue: 1'
+  });
+  const value = parseDocument(source.yaml).toJS();
+  const candidate = Object.values(value.assessment.tests)[0];
+  candidate.capability = 'windows.registry';
+  candidate.object = { hive: { equals: 'current_user' }, key: { equals: 'Software\\Policies\\Example' }, name: { equals: 'Setting' } };
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Candidate.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check per-user setting', represented: true, tests: [Object.keys(value.assessment.tests)[0]] }], path_patterns: [] }
+  };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-hkcu', {
+    ruleId: 'per-user-rule', title: 'Per-user setting', checkText: 'Registry Hive: HKEY_CURRENT_USER\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nValue: 1'
+  }));
+  assert.ok(result.diagnostics.some(message => /HKEY_CURRENT_USER.*windows\.registry.*windows\.ntuser/i.test(message)));
 });
 
 test('AI response is parsed, pinned-schema validated, and remains review-only', async () => {
