@@ -44,8 +44,6 @@ export interface AiAssessmentInput {
   availableConditions?: Array<{ name: string; assessment: string; title?: string; version?: string | number }>;
   /** When present, the provider independently reviews this candidate instead of starting from nothing. */
   candidateYaml?: string;
-  /** Optional deterministic preflight candidate; advisory only, never a validation bypass. */
-  offlineCandidateYaml?: string;
   reviewMode?: boolean;
   /** Host/UI lifecycle callback; never serialized into the provider prompt. */
   progress?: (phase: AiAuthoringProgress) => void;
@@ -861,11 +859,6 @@ ${input.candidateYaml ? `Candidate Assessment for independent review (review-onl
 ${input.candidateYaml.slice(0, 50000)}
 --- END CANDIDATE ASSESSMENT ---
 Review mode: ${input.reviewMode ? 'true' : 'false'}. Return the same structured JSON contract with a complete corrected Assessment when needed.` : ''}
-${input.offlineCandidateYaml ? `Deterministic offline preflight candidate (advisory starting point only; do not copy it blindly and do not treat it as proof):
---- BEGIN OFFLINE PREFLIGHT ---
-${input.offlineCandidateYaml.slice(0, 30000)}
---- END OFFLINE PREFLIGHT ---
-Use it only to avoid losing concrete selectors/predicates already recoverable from the source. Re-check every field against the procedure and pinned mappings; replace or return manual-only when it is incomplete.` : ''}
 
 Existing Benchmark applicability conditions (reference context only; do not invent IDs):
 ${JSON.stringify(input.availableConditions ?? [])}`;
