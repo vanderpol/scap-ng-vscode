@@ -368,6 +368,33 @@ test('technical not_evaluated branches remain valid when an ISSO exception also 
   assert.equal(result.diagnostics.length, 0);
 });
 
+test('device-label generation keeps both source find obligations and falls back to manual review', async () => {
+  const responses = [
+    JSON.stringify({
+      generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+      assumptions: [], unresolved_questions: [], citations: [],
+      coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check device labels', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    }),
+    JSON.stringify({
+      generated_mode: 'manual-only', confidence: 'high', assessment_yaml: '',
+      assumptions: ['The approved exception set and complete filesystem collector require human qualification.'],
+      unresolved_questions: ['Confirm the organization-approved device-file exception paths.'], citations: []
+    })
+  ];
+  let index = 0;
+  const { result, requests } = await withFetch(() => response(responses[index++]), () => createAiAssessmentDraft(
+    pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+      ruleId: 'rhel-10-device-label-rule', title: 'RHEL device files must be correctly labeled',
+      checkText: 'Verify all system device files are correctly labeled. Use find for device_t and unlabeled_t. /dev/vmci is an approved exception.',
+      platform: 'rhel-10'
+    }
+  ));
+  assert.equal(requests.length, 2);
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.unresolved.some(value => /exception/i.test(value)));
+});
+
 test('AI generation performs one bounded correction pass after local rejection', async () => {
   let calls = 0;
   const phases = [];
