@@ -103,7 +103,8 @@ export class EditorOptionsPanel {
         endpoint: typeof message.endpoint === 'string' ? message.endpoint.trim() : '',
         model: typeof message.model === 'string' ? message.model.trim() : '',
         codexModel: typeof message.codexModel === 'string' ? message.codexModel.trim() : '',
-        codexReasoningEffort: normalizeCodexReasoningEffort(message.codexReasoningEffort)
+        codexReasoningEffort: normalizeCodexReasoningEffort(message.codexReasoningEffort),
+        batchConcurrency: normalizeAiBatchConcurrency(message.batchConcurrency)
       };
       const options: EditorOptions = {
         assessmentEditor: isAssessmentEditorMode(message.assessmentEditor) ? message.assessmentEditor : 'yaml',
