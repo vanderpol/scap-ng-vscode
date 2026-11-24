@@ -12,13 +12,14 @@ export const aiAssistanceModes = ['none', 'codex-local', 'remote', 'vscode', 'lo
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
 /** Codex reasoning effort; host delegates to the user's Codex configuration. */
-export const codexReasoningEfforts = ['host', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export const codexReasoningEfforts = ['auto', 'host', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type CodexReasoningEffort = typeof codexReasoningEfforts[number];
+export type CodexResolvedReasoningEffort = Exclude<CodexReasoningEffort, 'auto'>;
 
 export function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
   return typeof value === 'string' && (codexReasoningEfforts as readonly string[]).includes(value)
     ? value as CodexReasoningEffort
-    : 'host';
+    : 'auto';
 }
 
 export interface AiAuthoringConfiguration {
@@ -28,7 +29,7 @@ export interface AiAuthoringConfiguration {
   model: string;
   /** Optional exact Codex model override; blank means use the host Codex configuration. */
   codexModel: string;
-  /** Optional per-request Codex effort; host preserves config.toml. */
+  /** Optional per-request Codex effort; auto selects from bounded procedure complexity, host preserves config.toml. */
   codexReasoningEffort?: CodexReasoningEffort;
 }
 

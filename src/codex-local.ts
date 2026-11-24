@@ -177,7 +177,7 @@ export async function runCodexLocal(messages: OpenAiChatMessage[], options: Code
   const model = options.model?.trim();
   if (model) args.push('--model', model);
   const reasoningEffort = normalizeCodexReasoningEffort(options.reasoningEffort);
-  if (reasoningEffort !== 'host') args.push('-c', `model_reasoning_effort=\"${reasoningEffort}\"`);
+  if (reasoningEffort !== 'host' && reasoningEffort !== 'auto') args.push('-c', `model_reasoning_effort=\"${reasoningEffort}\"`);
   args.push('--output-last-message', outputFile);
   const prompt = options.probe
     ? 'Reply with exactly CODEX_SMOKE_OK. Do not inspect or modify files.'

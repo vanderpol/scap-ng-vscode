@@ -337,6 +337,7 @@
         "scapNg.ai.codexReasoningEffort": {
           "type": "string",
           "enum": [
+            "auto",
             "host",
             "low",
             "medium",
@@ -345,6 +346,7 @@
             "max"
           ],
           "enumDescriptions": [
+            "Automatically choose Low, Medium, or High from the immutable procedure text; recommended for most authoring.",
             "Use the reasoning effort from the host Codex config.toml.",
             "Fast option for simple, single-check procedures; use when latency matters.",
             "Recommended default for most SCAP-NG authoring; usually balances speed and accuracy.",
@@ -352,9 +354,9 @@
             "Use only for exceptionally difficult authoring cases; may be substantially slower.",
             "Use only for exceptionally difficult authoring cases; may be substantially slower."
           ],
-          "default": "host",
+          "default": "auto",
           "scope": "window",
-          "description": "Per-request Codex reasoning effort. Medium is the recommended default for most authoring; High is for complex or ambiguous procedures. Host preserves the Codex CLI setting; unsupported model/effort combinations may be rejected by Codex."
+          "description": "Per-request Codex reasoning effort. Automatic analyzes each procedure locally and chooses Low, Medium, or High; Medium is the usual choice and High is reserved for complex/ambiguous procedures. The total authoring deadline is 240 seconds. Host preserves the Codex CLI setting; unsupported model/effort combinations may be rejected by Codex."
         }
       }
     },

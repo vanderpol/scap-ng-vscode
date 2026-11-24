@@ -45,6 +45,8 @@ test('Codex local bridge uses the host CLI without exposing credentials', async 
     assert.match(args, /-c model_reasoning_effort=\"high\"/);
     assert.equal(await runCodexLocal([{ role: 'user', content: 'bounded prompt' }], { cwd: fake.root, probe: true }), 'CODEX_SMOKE_OK');
     assert.equal(await runCodexLocal([{ role: 'user', content: 'bounded prompt' }], { cwd: fake.root }), 'CODEX_SMOKE_OK');
+    const automaticArgs = await (await import('node:fs/promises')).readFile(argsFile, 'utf8');
+    assert.doesNotMatch(automaticArgs, /model_reasoning_effort=\"auto\"/);
     const authoringArgs = await (await import('node:fs/promises')).readFile(argsFile, 'utf8');
     assert.match(authoringArgs, /--output-schema/);
   } finally {

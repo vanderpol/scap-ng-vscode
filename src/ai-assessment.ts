@@ -26,8 +26,11 @@ export interface AiAssessmentOptions {
   onToolsRejected?: () => void | Promise<void>;
   /** Optional local transport. The transport owns authentication and must return provider text only. */
   request?: (messages: OpenAiChatMessage[], timeoutMs: number) => Promise<string>;
-  /** Optional provider effort recorded in display-only provenance (for example Codex high). */
+  /** The actual effort sent to Codex (automatic resolves to a concrete level first). */
   reasoningEffort?: string;
+  /** Whether the actual effort was configured or selected by the local heuristic. */
+  reasoningEffortSelection?: 'configured' | 'automatic';
+  reasoningEffortReason?: string;
 }
 
 export interface AiAssessmentInput {
@@ -72,6 +75,8 @@ export interface AiAssessmentDraft {
   toolWarning?: string;
   /** Codex per-request reasoning effort, when applicable. */
   reasoningEffort?: string;
+  reasoningEffortSelection?: 'configured' | 'automatic';
+  reasoningEffortReason?: string;
   /** End-to-end elapsed time for this provider attempt, including bounded repair/fallback. */
   durationMs?: number;
 }
@@ -581,13 +586,15 @@ function providerLabel(endpoint: string): string {
   catch { return 'configured endpoint'; }
 }
 
-function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'local-cli-readonly' | 'not-requested', durationMs: number, reasoningEffort?: string): string {
+function provenanceComment(pack: MetadataPack, endpoint: string, model: string, generatedAt: string, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'local-cli-readonly' | 'not-requested', durationMs: number, reasoningEffort?: string, reasoningEffortSelection?: 'configured' | 'automatic', reasoningEffortReason?: string): string {
   return [
     '# SCAP-NG editor provenance:',
     '#   generation_method: configured-ai',
     `#   provider_endpoint: ${providerLabel(endpoint)}`,
     `#   model: ${model.replace(/[\r\n]+/g, ' ')}`,
     ...(reasoningEffort ? [`#   reasoning_effort: ${reasoningEffort.replace(/[\r\n]+/g, ' ')}`] : []),
+    ...(reasoningEffortSelection ? [`#   reasoning_effort_selection: ${reasoningEffortSelection}`] : []),
+    ...(reasoningEffortReason ? [`#   reasoning_effort_reason: ${reasoningEffortReason.replace(/[\r\n]+/g, ' ')}`] : []),
     `#   tool_mode: ${toolMode}`,
     '#   tool_execution: provider-dependent; runtime qualification not established',
     `#   generated_at: ${generatedAt}`,
@@ -600,7 +607,7 @@ function provenanceComment(pack: MetadataPack, endpoint: string, model: string, 
   ].join('\n');
 }
 
-function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'local-cli-readonly' | 'not-requested', toolWarning?: string, durationMs = 0, reasoningEffort?: string): AiAssessmentDraft {
+function withProviderProvenance(pack: MetadataPack, endpoint: string, model: string, draft: AiAssessmentDraft, toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'local-cli-readonly' | 'not-requested', toolWarning?: string, durationMs = 0, reasoningEffort?: string, reasoningEffortSelection?: 'configured' | 'automatic', reasoningEffortReason?: string): AiAssessmentDraft {
   const generatedAt = new Date().toISOString();
   return {
     ...draft,
@@ -610,8 +617,10 @@ function withProviderProvenance(pack: MetadataPack, endpoint: string, model: str
     toolMode,
     toolWarning,
     reasoningEffort,
+    reasoningEffortSelection,
+    reasoningEffortReason,
     durationMs,
-    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs, reasoningEffort) + draft.yaml : draft.yaml
+    yaml: draft.yaml ? provenanceComment(pack, endpoint, model, generatedAt, toolMode, durationMs, reasoningEffort, reasoningEffortSelection, reasoningEffortReason) + draft.yaml : draft.yaml
   };
 }
 
@@ -691,10 +700,10 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   return { generatedMode: 'automated', automationClass: automationClassForAssessment(value, 'automated'), confidence: effectiveConfidence, yaml: yamlText, document: value, diagnostics, assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
 }
 
-// Codex high-effort requests commonly take 60–80 seconds. Reserve enough
-// bounded time for the provider's required correction pass instead of
+// Codex high-effort requests can take several minutes. Reserve a 240-second
+// total deadline for the provider's required correction pass instead of
 // returning the first invalid candidate at the deadline.
-export const AI_REQUEST_TOTAL_TIMEOUT_MS = 180_000;
+export const AI_REQUEST_TOTAL_TIMEOUT_MS = 240_000;
 
 export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot: string, endpoint: string, apiKey: string, model: string, input: AiAssessmentInput, options: AiAssessmentOptions = {}): Promise<AiAssessmentDraft> {
   const startedAt = Date.now();
@@ -704,7 +713,7 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   let useTools = modelUsesPinnedTools(model) && !previouslyRejectedTools;
   let toolMode: 'local-pinned-pack' | 'fallback-no-tools' | 'local-cli-readonly' | 'not-requested' = endpoint === 'codex-local' ? 'local-cli-readonly' : useTools ? 'local-pinned-pack' : previouslyRejectedTools ? 'fallback-no-tools' : 'not-requested';
   let toolWarning: string | undefined = previouslyRejectedTools ? 'The gateway previously rejected tools for this endpoint/model during this VS Code session; skipped the failed tools negotiation.' : undefined;
-  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt, options.reasoningEffort);
+  const finalize = (draft: AiAssessmentDraft) => withProviderProvenance(pack, endpoint, model, draft, toolMode, toolWarning, Date.now() - startedAt, options.reasoningEffort, options.reasoningEffortSelection, options.reasoningEffortReason);
   const remainingTimeout = () => Math.max(0, deadline - Date.now());
   // Bound user-controlled source before constructing a provider request. This
   // protects the authoring host and makes the exact outbound scope predictable.

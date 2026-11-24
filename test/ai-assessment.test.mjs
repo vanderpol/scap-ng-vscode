@@ -12,7 +12,7 @@ const validYaml = createAssistedAssessment(pack, {
 }).yaml;
 
 test('bounded AI authoring leaves time for a provider correction pass', () => {
-  assert.equal(AI_REQUEST_TOTAL_TIMEOUT_MS, 180_000);
+  assert.equal(AI_REQUEST_TOTAL_TIMEOUT_MS, 240_000);
 });
 
 test('withtools model token detection is explicit and does not match similarly named models', () => {
