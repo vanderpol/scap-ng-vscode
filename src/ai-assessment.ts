@@ -10,6 +10,16 @@ import { OpenAiCompatibleHttpError, requestOpenAiCompatibleChat, requestOpenAiCo
 const unsupportedToolProfiles = new Set<string>();
 function toolProfileKey(endpoint: string, model: string): string { return `${endpoint.replace(/\/$/, '')}\u0000${model.trim()}`; }
 
+export type AiAuthoringProgress =
+  | 'sending-request'
+  | 'waiting-provider'
+  | 'received-response'
+  | 'validating-response'
+  | 'sending-correction'
+  | 'waiting-correction'
+  | 'received-correction'
+  | 'validating-correction';
+
 export interface AiAssessmentOptions {
   /** Persisted per-endpoint/model capability result from the extension host. */
   skipTools?: boolean;
@@ -30,6 +40,8 @@ export interface AiAssessmentInput {
   /** When present, the provider independently reviews this candidate instead of starting from nothing. */
   candidateYaml?: string;
   reviewMode?: boolean;
+  /** Host/UI lifecycle callback; never serialized into the provider prompt. */
+  progress?: (phase: AiAuthoringProgress) => void;
 }
 
 export interface AiAssessmentCoverage {
@@ -743,8 +755,10 @@ Review mode: ${input.reviewMode ? 'true' : 'false'}. Return the same structured 
 Existing Benchmark applicability conditions (reference context only; do not invent IDs):
 ${JSON.stringify(input.availableConditions ?? [])}`;
   const messages: OpenAiChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
-  const requestDraft = async (requestMessages: OpenAiChatMessage[], timeout: number): Promise<string> => {
-    if (options.request) return options.request(requestMessages, timeout);
+  const reportProgress = (phase: AiAuthoringProgress) => {
+    try { input.progress?.(phase); } catch { /* UI progress must never affect authoring. */ }
+  };
+  const requestWithTools = async (requestMessages: OpenAiChatMessage[], timeout: number): Promise<string> => {
     if (!useTools) return requestOpenAiCompatibleChat(endpoint, apiKey, model, requestMessages, timeout);
     try {
       return await requestOpenAiCompatibleChatWithTools(endpoint, apiKey, model, requestMessages, aiToolDefinitions(), aiToolHandler(pack), timeout);
@@ -767,6 +781,15 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
       }
     }
   };
+  const requestDraft = async (requestMessages: OpenAiChatMessage[], timeout: number, correction = false): Promise<string> => {
+    reportProgress(correction ? 'sending-correction' : 'sending-request');
+    reportProgress(correction ? 'waiting-correction' : 'waiting-provider');
+    const response = options.request
+      ? await options.request(requestMessages, timeout)
+      : await requestWithTools(requestMessages, timeout);
+    reportProgress(correction ? 'received-correction' : 'received-response');
+    return response;
+  };
   let raw: string;
   try {
     const timeout = remainingTimeout();
@@ -774,6 +797,7 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
     raw = await requestDraft(messages, timeout);
   }
   catch (error) { return finalize(draftFromFailure(error instanceof Error ? error.message : String(error))); }
+  reportProgress('validating-response');
   const draft = parseAiAssessmentResponse(pack, input, raw);
   if (!draft.diagnostics.length) return finalize(draft);
 
@@ -790,7 +814,8 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
   }
   const repairUser = `${user}\n\nThe previous candidate was rejected by the local 0.4.1 validator. Diagnostics:\n${draft.diagnostics.slice(0, 30).join('\\n')}\n\nPrevious candidate (for correction only):\n${raw.slice(0, 30000)}`;
   try {
-    const repairedRaw = await requestDraft([{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }], repairTimeout);
+    const repairedRaw = await requestDraft([{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }], repairTimeout, true);
+    reportProgress('validating-correction');
     const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
     if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
     return finalize(repaired);

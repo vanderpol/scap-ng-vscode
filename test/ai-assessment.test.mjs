@@ -226,6 +226,7 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
 
 test('AI generation performs one bounded correction pass after local rejection', async () => {
   let calls = 0;
+  const phases = [];
   const repaired = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Corrected draft',
@@ -235,11 +236,26 @@ test('AI generation performs one bounded correction pass after local rejection',
     calls++;
     return response(calls === 1 ? JSON.stringify({ generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml, assumptions: [], unresolved_questions: [], citations: [] }) : repaired);
   }, () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
-    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', progress: phase => phases.push(phase)
   }));
   assert.equal(requests.length, 2);
+  assert.deepEqual(phases, ['sending-request', 'waiting-provider', 'received-response', 'validating-response', 'sending-correction', 'waiting-correction', 'received-correction', 'validating-correction']);
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.rationale, 'Corrected draft');
+});
+
+test('AI authoring reports first-response and correction lifecycle phases', async () => {
+  const phases = [];
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Lifecycle test',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  });
+  const result = await createAiAssessmentDraft(pack, process.cwd(), 'codex-local', '', 'gpt-5.6-luna', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', progress: phase => phases.push(phase)
+  }, { request: async () => payload });
+  assert.equal(result.diagnostics.length, 0);
+  assert.deepEqual(phases, ['sending-request', 'waiting-provider', 'received-response', 'validating-response']);
 });
 
 test('AI manual-only output remains provider-authored review state without offline content injection', async () => {
