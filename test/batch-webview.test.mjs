@@ -24,4 +24,6 @@ test('batch automation webview script is executable with source text containing 
   assert.doesNotThrow(() => new Function(match[1]));
   assert.match(match[1], /Immutable procedure\/check text sent to the generator/);
   assert.match(match[1], /auditText\.textContent/);
+  assert.match(match[1], /Automatic effort/);
+  assert.match(match[1], /not a final manual-only decision/);
 });
