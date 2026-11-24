@@ -346,15 +346,15 @@
           ],
           "enumDescriptions": [
             "Use the reasoning effort from the host Codex config.toml.",
-            "Override Codex reasoning effort to low for editor requests.",
-            "Override Codex reasoning effort to medium for editor requests.",
-            "Override Codex reasoning effort to high for editor requests.",
-            "Override Codex reasoning effort to xhigh when supported by the selected model.",
-            "Override Codex reasoning effort to max when supported by the selected model."
+            "Fast option for simple, single-check procedures; use when latency matters.",
+            "Recommended default for most SCAP-NG authoring; usually balances speed and accuracy.",
+            "Use for complex or ambiguous procedures with multiple Tests, applicability branches, wildcards, or organizational inputs; slower.",
+            "Use only for exceptionally difficult authoring cases; may be substantially slower.",
+            "Use only for exceptionally difficult authoring cases; may be substantially slower."
           ],
           "default": "host",
           "scope": "window",
-          "description": "Per-request Codex reasoning effort. Host preserves the Codex CLI setting; unsupported model/effort combinations may be rejected by Codex."
+          "description": "Per-request Codex reasoning effort. Medium is the recommended default for most authoring; High is for complex or ambiguous procedures. Host preserves the Codex CLI setting; unsupported model/effort combinations may be rejected by Codex."
         }
       }
     },
