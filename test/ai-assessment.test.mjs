@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stringify } from 'yaml';
 import { MetadataPack } from '../dist/metadata.js';
 import { createAssistedAssessment } from '../dist/assisted-draft.js';
 import { AI_REQUEST_TOTAL_TIMEOUT_MS, buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
@@ -10,6 +11,88 @@ const validYaml = createAssistedAssessment(pack, {
   title: 'Check the passwd file',
   checkText: 'Verify that the file /etc/passwd is present on the system.'
 }).yaml;
+
+
+function chronyYaml({ broadSelectors = false } = {}) {
+  const selector = broadSelectors ? '^\\s*server(?:\\s+.*)?$' : '^\\s*server\\s+\\S+(?:\\s+.*)?$';
+  const value = {
+    assessment: {
+      specification: { id: 'scap-ng.pre-alpha.assessment', version: '0.4.1' },
+      id: 'amazon-linux-2023-chrony-assessment', version: 1,
+      assessment_title: 'Verify chrony server settings', mode: 'automated', class: 'compliance',
+      inputs: { 'authorized-time-server-input': {
+        datatype: 'string', cardinality: 'one_or_more', required: true,
+        description: 'Organization-approved time source.'
+      }},
+      tests: {
+        'chrony-maxpoll-test': {
+          test_title: 'Every active chrony server directive has maxpoll no greater than 16',
+          capability: 'independent.textfilecontent', reported_elements: 'all',
+          object: { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: selector } },
+          require: {
+            item_requirement: { items_found: 'one_or_more', items_satisfying: 'every' },
+            field_requirement: { values_found: 'one_or_more', values_matching: 'every' },
+            fields: { text: { matches_regex: '^\\s*server\\s+\\S+.*\\bmaxpoll\\s+(?:0|[1-9]|1[0-6])(?:\\s+.*)?$' } }
+          }
+        },
+        'chrony-authorized-source-test': {
+          test_title: 'Every active chrony server directive uses an authorized time source',
+          capability: 'independent.textfilecontent', reported_elements: 'all',
+          object: { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: selector } },
+          require: {
+            item_requirement: { items_found: 'one_or_more', items_satisfying: 'every' },
+            field_requirement: { values_found: 'one_or_more', values_matching: 'every' },
+            fields: { subexpression: { equals: { input: 'authorized-time-server-input' }, value_match: 'one_or_more' } }
+          }
+        }
+      },
+      evaluate: { and: [{ test: 'chrony-maxpoll-test' }, { test: 'chrony-authorized-source-test' }] }
+    }
+  };
+  return stringify(value);
+}
+
+test('chrony generation corrects narrow selectors without oscillating Test count', async () => {
+  const responses = [
+    JSON.stringify({
+      generated_mode: 'automated', confidence: 'high', assessment_yaml: chronyYaml(),
+      assumptions: [], unresolved_questions: [], citations: [], rationale: 'First draft',
+      coverage: {
+        applicability: 'not-needed',
+        procedure_steps: [
+          { summary: 'Check maxpoll', represented: true, tests: ['chrony-maxpoll-test'] },
+          { summary: 'Check authorized source', represented: true, tests: ['chrony-authorized-source-test'] }
+        ], path_patterns: []
+      }
+    }),
+    JSON.stringify({
+      generated_mode: 'automated', confidence: 'medium', assessment_yaml: chronyYaml({ broadSelectors: true }),
+      assumptions: ['The authorized time source is supplied as an organizational input.'],
+      unresolved_questions: [], citations: [], rationale: 'Corrected population-complete draft',
+      coverage: {
+        applicability: 'not-needed',
+        procedure_steps: [
+          { summary: 'Check maxpoll', represented: true, tests: ['chrony-maxpoll-test'] },
+          { summary: 'Check authorized source', represented: true, tests: ['chrony-authorized-source-test'] }
+        ], path_patterns: []
+      }
+    })
+  ];
+  let index = 0;
+  const { result, requests } = await withFetch(() => response(responses[index++]), () => createAiAssessmentDraft(
+    pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+      ruleId: 'amazon-linux-2023-source-at-least-every-24-hours-sv-274175-rule',
+      title: 'Amazon Linux 2023 must synchronize clocks',
+      checkText: 'Verify /etc/chrony.conf server maxpoll is no greater than 16 and uses an authoritative USNO or DoW time source.',
+      platform: 'amazon-linux-2023'
+    }
+  ));
+  assert.equal(requests.length, 2);
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(Object.keys(result.document.assessment.tests).length, 2);
+  assert.equal(result.document.assessment.tests['chrony-maxpoll-test'].object.pattern.matches_regex, '^\\s*server(?:\\s+.*)?$');
+  assert.equal(result.rationale, 'Corrected population-complete draft');
+});
 
 test('bounded AI authoring leaves time for a provider correction pass', () => {
   assert.equal(AI_REQUEST_TOTAL_TIMEOUT_MS, 240_000);
