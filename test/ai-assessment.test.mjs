@@ -13,87 +13,6 @@ const validYaml = createAssistedAssessment(pack, {
 }).yaml;
 
 
-function chronyYaml({ broadSelectors = false } = {}) {
-  const selector = broadSelectors ? '^\\s*server(?:\\s+.*)?$' : '^\\s*server\\s+\\S+(?:\\s+.*)?$';
-  const value = {
-    assessment: {
-      specification: { id: 'scap-ng.pre-alpha.assessment', version: '0.4.1' },
-      id: 'amazon-linux-2023-chrony-assessment', version: 1,
-      assessment_title: 'Verify chrony server settings', mode: 'automated', class: 'compliance',
-      inputs: { 'authorized-time-server-input': {
-        datatype: 'string', cardinality: 'one_or_more', required: true,
-        description: 'Organization-approved time source.'
-      }},
-      tests: {
-        'chrony-maxpoll-test': {
-          test_title: 'Every active chrony server directive has maxpoll no greater than 16',
-          capability: 'independent.textfilecontent', reported_elements: 'all',
-          object: { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: selector } },
-          require: {
-            item_requirement: { items_found: 'one_or_more', items_satisfying: 'every' },
-            field_requirement: { values_found: 'one_or_more', values_matching: 'every' },
-            fields: { text: { matches_regex: '^\\s*server\\s+\\S+.*\\bmaxpoll\\s+(?:0|[1-9]|1[0-6])(?:\\s+.*)?$' } }
-          }
-        },
-        'chrony-authorized-source-test': {
-          test_title: 'Every active chrony server directive uses an authorized time source',
-          capability: 'independent.textfilecontent', reported_elements: 'all',
-          object: { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: selector } },
-          require: {
-            item_requirement: { items_found: 'one_or_more', items_satisfying: 'every' },
-            field_requirement: { values_found: 'one_or_more', values_matching: 'every' },
-            fields: { subexpression: { equals: { input: 'authorized-time-server-input' }, value_match: 'one_or_more' } }
-          }
-        }
-      },
-      evaluate: { and: [{ test: 'chrony-maxpoll-test' }, { test: 'chrony-authorized-source-test' }] }
-    }
-  };
-  return stringify(value);
-}
-
-test('chrony generation corrects narrow selectors without oscillating Test count', async () => {
-  const responses = [
-    JSON.stringify({
-      generated_mode: 'automated', confidence: 'high', assessment_yaml: chronyYaml(),
-      assumptions: [], unresolved_questions: [], citations: [], rationale: 'First draft',
-      coverage: {
-        applicability: 'not-needed',
-        procedure_steps: [
-          { summary: 'Check maxpoll', represented: true, tests: ['chrony-maxpoll-test'] },
-          { summary: 'Check authorized source', represented: true, tests: ['chrony-authorized-source-test'] }
-        ], path_patterns: []
-      }
-    }),
-    JSON.stringify({
-      generated_mode: 'automated', confidence: 'medium', assessment_yaml: chronyYaml({ broadSelectors: true }),
-      assumptions: ['The authorized time source is supplied as an organizational input.'],
-      unresolved_questions: [], citations: [], rationale: 'Corrected population-complete draft',
-      coverage: {
-        applicability: 'not-needed',
-        procedure_steps: [
-          { summary: 'Check maxpoll', represented: true, tests: ['chrony-maxpoll-test'] },
-          { summary: 'Check authorized source', represented: true, tests: ['chrony-authorized-source-test'] }
-        ], path_patterns: []
-      }
-    })
-  ];
-  let index = 0;
-  const { result, requests } = await withFetch(() => response(responses[index++]), () => createAiAssessmentDraft(
-    pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
-      ruleId: 'amazon-linux-2023-source-at-least-every-24-hours-sv-274175-rule',
-      title: 'Amazon Linux 2023 must synchronize clocks',
-      checkText: 'Verify /etc/chrony.conf server maxpoll is no greater than 16 and uses an authoritative USNO or DoW time source.',
-      platform: 'amazon-linux-2023'
-    }
-  ));
-  assert.equal(requests.length, 2);
-  assert.equal(result.diagnostics.length, 0);
-  assert.equal(Object.keys(result.document.assessment.tests).length, 2);
-  assert.equal(result.document.assessment.tests['chrony-maxpoll-test'].object.pattern.matches_regex, '^\\s*server(?:\\s+.*)?$');
-  assert.equal(result.rationale, 'Corrected population-complete draft');
-});
-
 test('bounded AI authoring leaves time for a provider correction pass', () => {
   assert.equal(AI_REQUEST_TOTAL_TIMEOUT_MS, 240_000);
 });
@@ -132,7 +51,7 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.relevant_capability_mappings.some(entry => entry.capability === 'linux.systemdunitproperty'));
   const organizational = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), {
     platform: 'amazon-linux-2023',
-    checkText: 'Verify /etc/chrony.conf contains an active server directive using an organization-approved time server.'
+    checkText: 'Verify the /etc/example.conf configuration file contains an organization-approved endpoint value.'
   }));
   assert.ok(organizational.relevant_capability_mappings.some(entry => entry.capability === 'independent.textfilecontent'));
   assert.deepEqual(organizational.schemas['capability-common.schema.json'].defs.input_reference.required, ['input']);
@@ -146,7 +65,9 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.schemas['capability-common.schema.json'].defs.file_traversal);
   assert.ok(knowledge.schemas['variable-expression.schema.json'].defs.expression);
   assert.ok(knowledge.authoring_invariants.some(item => /approved deviation.*after evaluation/i.test(item)));
-  assert.ok(knowledge.authoring_invariants.some(item => /organization-defined value.*authorized time server/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /organization-defined value or policy parameter.*input reference/i.test(item)));
+  assert.ok(knowledge.current_authoring_examples.organizational_input.includes('organization-approved-value-input'));
+  assert.doesNotMatch(JSON.stringify(knowledge.authoring_invariants), /USNO|DoW|chrony|device_t|unlabeled_t|vmci/i);
   assert.ok(knowledge.authoring_invariants.some(item => /missing_organizational_input/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /never repeat item_requirement inside a logical child/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
@@ -189,7 +110,7 @@ test('AI response can recover an omitted generated_mode from an explicit automat
   const payload = JSON.stringify({
     confidence: 'high', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'The provider omitted the protocol mode field.',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-a', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
@@ -211,7 +132,7 @@ test('AI response is parsed, pinned-schema validated, and remains review-only', 
     rationale: 'A native file existence check is available.',
     coverage: {
       applicability: 'not-needed',
-      procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-file-test'] }],
+      procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-the-passwd-file-test'] }],
       path_patterns: []
     }
   });
@@ -309,7 +230,7 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
     citations: [], rationale: 'Partial draft',
     coverage: {
       applicability: 'not-representable',
-      procedure_steps: [{ summary: 'Check configuration', represented: true, tests: ['check-file-test'] }],
+      procedure_steps: [{ summary: 'Check configuration', represented: true, tests: ['check-the-passwd-file-test'] }],
       path_patterns: [{ pattern: '/etc/sssd/conf.d/*.conf', represented: false }]
     }
   });
@@ -321,13 +242,30 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
   assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
 });
 
+test('AI coverage cannot reference a Test that the Assessment does not author', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Unknown coverage reference',
+    coverage: {
+      applicability: 'not-needed',
+      procedure_steps: [{ summary: 'Check the file', represented: true, tests: ['missing-procedure-test'] }],
+      path_patterns: []
+    }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 2);
+  assert.ok(result.diagnostics.some(item => /Test IDs not present.*missing-procedure-test/i.test(item)));
+});
+
 test('AI candidates cannot silently narrow explicit notification alternatives to email only', async () => {
   const payload = {
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [],
     coverage: {
       applicability: 'not-needed',
-      procedure_steps: [{ summary: 'Verify integrity checking and notification', represented: true, tests: ['check-file-test'] }],
+      procedure_steps: [{ summary: 'Verify integrity checking and notification', represented: true, tests: ['check-the-passwd-file-test'] }],
       path_patterns: []
     }
   };
@@ -368,40 +306,13 @@ test('technical not_evaluated branches remain valid when an ISSO exception also 
   assert.equal(result.diagnostics.length, 0);
 });
 
-test('device-label generation keeps both source find obligations and falls back to manual review', async () => {
-  const responses = [
-    JSON.stringify({
-      generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
-      assumptions: [], unresolved_questions: [], citations: [],
-      coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check device labels', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
-    }),
-    JSON.stringify({
-      generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
-      assumptions: [], unresolved_questions: [], citations: [],
-      coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check device labels', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
-    })
-  ];
-  let index = 0;
-  const { result, requests } = await withFetch(() => response(responses[index++]), () => createAiAssessmentDraft(
-    pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
-      ruleId: 'rhel-10-device-label-rule', title: 'RHEL device files must be correctly labeled',
-      checkText: 'Verify all system device files are correctly labeled. Use find for device_t and unlabeled_t. /dev/vmci is an approved exception.',
-      platform: 'rhel-10'
-    }
-  ));
-  assert.equal(requests.length, 2);
-  assert.equal(result.generatedMode, 'manual-only');
-  assert.equal(result.diagnostics.length, 0);
-  assert.ok(result.unresolved.some(value => /exception/i.test(value)));
-});
-
 test('AI generation performs one bounded correction pass after local rejection', async () => {
   let calls = 0;
   const phases = [];
   const repaired = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Corrected draft',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   const { result, requests } = await withFetch(() => {
     calls++;
@@ -420,7 +331,7 @@ test('AI authoring reports first-response and correction lifecycle phases', asyn
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Lifecycle test',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   const result = await createAiAssessmentDraft(pack, process.cwd(), 'codex-local', '', 'gpt-5.6-luna', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.', progress: phase => phases.push(phase)
@@ -452,7 +363,7 @@ test('withtools models fall back once when the gateway rejects tools', async () 
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Fallback draft',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   let calls = 0;
   let persisted = false;
@@ -478,7 +389,7 @@ test('withtools models receive pinned local tools and resume after a tool result
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Tool-assisted draft',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   let calls = 0;
   const { result, requests } = await withFetch(() => {
@@ -505,7 +416,7 @@ test('persisted tool rejection skips the failed tools negotiation on later reque
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'Cached capability',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.cached.example/v1', 'key', 'gemini-3.8-flash-withtools', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
@@ -522,7 +433,7 @@ test('provider Assessment IDs are normalized generically before correction when 
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'high', assessment_yaml: longYaml,
     assumptions: [], unresolved_questions: [], citations: [],
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   });
   const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.id.example/v1', 'key', 'model', {
     ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
@@ -537,10 +448,10 @@ test('AI candidates cannot be reported fully automated when source contains an u
   const payload = {
     generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'A provider omitted the source value binding.',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   };
   const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
-    ruleId: 'check-file-rule', title: 'Authorized source', checkText: 'Verify the system uses <USNO/DoW Server> as the authorized time source.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
+    ruleId: 'check-file-rule', title: 'Approved endpoint', checkText: 'Verify the system uses <organization-approved endpoint> as the authorized endpoint value.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
   }));
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.automationClass, 'fully-automated');
@@ -548,14 +459,29 @@ test('AI candidates cannot be reported fully automated when source contains an u
 });
 
 test('AI candidates with a required organizational input are classified separately from fully automated', async () => {
-  const inputYaml = validYaml.replace('  evaluate:', `  inputs:\n    authorized-time-server-input:\n      datatype: string\n      cardinality: one_or_more\n      required: true\n  evaluate:`);
+  const inputYaml = validYaml
+    .replace('  evaluate:', `  inputs:
+    organization-approved-value-input:
+      datatype: string
+      cardinality: one_or_more
+      required: true
+  evaluate:`)
+    .replace('          items_found: one_or_more', `          items_found: one_or_more
+          items_satisfying: every
+        field_requirement:
+          values_found: one_or_more
+          values_matching: every
+        fields:
+          full_path:
+            equals: {input: organization-approved-value-input}
+            value_match: one_or_more`);
   const payload = {
     generated_mode: 'automated', confidence: 'high', assessment_yaml: inputYaml,
     assumptions: [], unresolved_questions: [], citations: [], rationale: 'The source value is bound by policy.',
-    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
   };
   const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
-    ruleId: 'check-file-rule', title: 'Authorized source', checkText: 'Verify the system uses <USNO/DoW Server> as the authorized time source.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
+    ruleId: 'check-file-rule', title: 'Approved endpoint', checkText: 'Verify the system uses <organization-approved endpoint> as the authorized endpoint value.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
   }));
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.automationClass, 'organizational-input');
