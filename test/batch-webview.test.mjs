@@ -27,6 +27,12 @@ test('batch automation webview script is executable with source text containing 
   assert.match(match[1], /Automatic effort/);
   assert.match(match[1], /not a final manual-only decision/);
   assert.match(html, /Cancel All/);
+  assert.match(html, /Accept all eligible and link/);
+  assert.match(html, /Review next/);
+  assert.match(match[1], /approveAll/);
+  assert.match(match[1], /nextReview/);
+  assert.match(match[1], /linkable===true/);
+  assert.match(match[1], /manual-only/);
   assert.match(match[1], /Cancel Rule/);
   assert.match(match[1], /cancelEntry/);
   assert.match(match[1], /cancelAll/);

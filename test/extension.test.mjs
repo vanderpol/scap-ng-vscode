@@ -259,6 +259,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /planning window up to/);
   assert.match(extensionSource, /locally clean and independently reviewed/);
   assert.match(extensionSource, /result\.linkable === false/);
+  assert.match(extensionSource, /Accept all and link/);
+  assert.match(extensionSource, /message\.type === 'approveAll'/);
+  assert.match(extensionSource, /linkApprovedEntry/);
+  assert.match(extensionSource, /ready candidate blocked by the confidence gate/);
   assert.match(extensionSource, /locally clean, independently reviewed candidate is ready for human/);
   assert.match(extensionSource, /entry\.independentVerification\?\.status === 'passed'/);
   assert.match(extensionSource, /entry\.status = entry\.comparisonOnly \? 'comparison-only' : 'ready'/);
