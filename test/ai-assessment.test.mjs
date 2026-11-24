@@ -454,6 +454,19 @@ test('provider Assessment specification is normalized from a generic root-envelo
   }));
   assert.ok(malformed.result.diagnostics.some(item => /unsupported property.*unexpected_root_member/i.test(item)));
   assert.ok(malformed.result.diagnostics.some(item => /missing required property.*specification/i.test(item)));
+
+  const scalarSpecificationYaml = validYaml.replace(nestedSpecification, '').replace('assessment:\n', 'specification: scap-ng.pre-alpha.assessment/0.4.1\nassessment:\n');
+  const scalarPayload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: scalarSpecificationYaml,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const scalar = await withFetch(() => response(scalarPayload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.envelope.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(scalar.result.diagnostics.length, 0);
+  assert.deepEqual(scalar.result.document.assessment.specification, { id: 'scap-ng.pre-alpha.assessment', version: '0.4.1' });
+  assert.ok(scalar.result.assumptions.some(item => /id\/version.*canonical object form/i.test(item)));
 });
 
 test('provider Assessment IDs are normalized generically before correction when they exceed schema limits', async () => {

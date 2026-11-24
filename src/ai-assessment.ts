@@ -619,11 +619,23 @@ function normalizeProviderAssessmentEnvelope(value: any): { value: any; yamlChan
   const assessment = value?.assessment;
   if (!value || typeof value !== 'object' || Array.isArray(value) || !assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return { value, yamlChanged: false };
   if (!Object.hasOwn(value, 'specification') || Object.hasOwn(assessment, 'specification')) return { value, yamlChanged: false };
-  const specification = value.specification;
-  if (!specification || typeof specification !== 'object' || Array.isArray(specification)) return { value, yamlChanged: false };
+  const rawSpecification = value.specification;
+  let specification = rawSpecification;
+  let scalarNote = '';
+  if (typeof rawSpecification === 'string') {
+    // A few models compress the canonical pair as `id/version`. Only accept
+    // this unambiguous envelope shorthand; malformed or unrelated scalars
+    // remain validator errors rather than being guessed or repaired.
+    const separator = rawSpecification.indexOf('/');
+    const id = separator > 0 ? rawSpecification.slice(0, separator).trim() : '';
+    const version = separator > 0 ? rawSpecification.slice(separator + 1).trim() : '';
+    if (!id || !version || version.includes('/')) return { value, yamlChanged: false };
+    specification = { id, version };
+    scalarNote = ' Converted the provider shorthand `specification: id/version` to the canonical object form.';
+  } else if (!rawSpecification || typeof rawSpecification !== 'object' || Array.isArray(rawSpecification)) return { value, yamlChanged: false };
   const next = { ...value, assessment: { ...assessment, specification } };
   delete next.specification;
-  return { value: next, yamlChanged: true, note: 'The provider placed the Assessment specification beside the document root; normalized it into assessment.specification before pinned-schema validation.' };
+  return { value: next, yamlChanged: true, note: `The provider placed the Assessment specification beside the document root; normalized it into assessment.specification before pinned-schema validation.${scalarNote}` };
 }
 
 function normalizeProviderAssessmentInputs(value: any): { value: any; yamlChanged: boolean; note?: string } {
