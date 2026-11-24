@@ -121,6 +121,27 @@ test('AI response can recover an omitted generated_mode from an explicit automat
   assert.ok(result.assumptions.some(message => /omitted generated_mode.*assessment\.mode: automated/i.test(message)));
 });
 
+test('AI parser removes manual-only metadata copied into an automated candidate', async () => {
+  const value = parseDocument(validYaml).toJS();
+  value.assessment.procedure = 'Manual source procedure copied by the provider.';
+  value.assessment.response = { type: 'ocil-manual' };
+  value.assessment.references = [{ source_check_ref: 'ocil:test' }];
+  value.assessment.evidence_guidance = 'Manual evidence guidance.';
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Complete.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check /etc/passwd presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  };
+  const { result, requests } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-metadata', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.deepEqual(result.diagnostics, []);
+  assert.doesNotMatch(result.yaml, /ocil-manual|Manual source procedure|Manual evidence guidance/);
+  assert.ok(result.assumptions.some(message => /Removed manual-only Assessment metadata/i.test(message)));
+});
+
 test('AI response is parsed, pinned-schema validated, and remains review-only', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated',

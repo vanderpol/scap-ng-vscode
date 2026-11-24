@@ -638,6 +638,30 @@ function normalizeProviderAssessmentEnvelope(value: any): { value: any; yamlChan
   return { value: next, yamlChanged: true, note: `The provider placed the Assessment specification beside the document root; normalized it into assessment.specification before pinned-schema validation.${scalarNote}` };
 }
 
+function normalizeProviderAutomatedMetadata(value: any): { value: any; yamlChanged: boolean; note?: string } {
+  const assessment = value?.assessment;
+  if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment) || assessment.mode !== 'automated') {
+    return { value, yamlChanged: false };
+  }
+  // The automated Assessment contract intentionally excludes manual OCIL
+  // response/procedure metadata. Providers sometimes copy the source manual
+  // Assessment into an otherwise usable automated candidate, which triggers
+  // the schema's fail-closed mode guard and needlessly sends the job to retry.
+  // The immutable source procedure is already retained in the generation input
+  // and review UI; remove only these contract-forbidden metadata keys. Never
+  // synthesize or rewrite Tests, Objects, predicates, or Evaluate semantics.
+  const forbidden = ['procedure', 'response', 'references', 'evidence_guidance'] as const;
+  const removed = forbidden.filter(key => Object.hasOwn(assessment, key));
+  if (!removed.length) return { value, yamlChanged: false };
+  const nextAssessment = { ...assessment };
+  for (const key of removed) delete nextAssessment[key];
+  return {
+    value: { ...value, assessment: nextAssessment },
+    yamlChanged: true,
+    note: `Removed manual-only Assessment metadata (${removed.join(', ')}) from the automated candidate before pinned-schema validation; source procedure and provenance remain in the review input.`
+  };
+}
+
 function normalizeProviderAssessmentInputs(value: any): { value: any; yamlChanged: boolean; note?: string } {
   const inputs = value?.assessment?.inputs;
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return { value, yamlChanged: false };
@@ -860,6 +884,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
     value = normalizedInputs.value;
     yamlText = stringify(value);
   }
+  const normalizedAutomatedMetadata = normalizeProviderAutomatedMetadata(value);
+  if (normalizedAutomatedMetadata.yamlChanged) {
+    value = normalizedAutomatedMetadata.value;
+    yamlText = stringify(value);
+  }
   const schemaUri = pack.manifest.resources.find((item: any) => item.kind === 'schema' && item.uri.endsWith('/assessment.schema.json'))?.uri;
   const diagnostics = schemaUri ? schemaValidationDiagnostics(pack, schemaUri, value) : ['Pinned Assessment schema is unavailable.'];
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
@@ -868,6 +897,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   if (envelope.note) assumptions.push(envelope.note);
   if (identity.note) assumptions.push(identity.note);
   if (normalizedInputs.note) assumptions.push(normalizedInputs.note);
+  if (normalizedAutomatedMetadata.note) assumptions.push(normalizedAutomatedMetadata.note);
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');
   diagnostics.push(...semanticDiagnostics);
   const effectiveConfidence = diagnostics.length ? 'low' : confidence;
