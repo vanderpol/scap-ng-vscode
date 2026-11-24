@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stringify } from 'yaml';
+import { parseDocument, stringify } from 'yaml';
 import { MetadataPack } from '../dist/metadata.js';
 import { createAssistedAssessment } from '../dist/assisted-draft.js';
 import { AI_REQUEST_TOTAL_TIMEOUT_MS, buildScapNgKnowledge, createAiAssessmentDraft, modelUsesPinnedTools } from '../dist/ai-assessment.js';
@@ -344,6 +344,28 @@ test('AI candidates cannot silently narrow explicit notification alternatives to
   assert.equal(requests.length, 2);
   assert.equal(result.generatedMode, 'manual-only');
   assert.equal(result.automationClass, 'manual');
+});
+
+test('technical not_evaluated branches remain valid when an ISSO exception also exists', async () => {
+  const value = parseDocument(validYaml).toJS();
+  const testId = Object.keys(value.assessment.tests)[0];
+  value.assessment.evaluate = {
+    if: { test: testId },
+    then: { test: testId },
+    else: { not_evaluated: { reason: 'The command returned an unexpected state or unavailable evidence.' } }
+  };
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Technical evidence branch',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: [testId] }], path_patterns: [] }
+  });
+  const { result, requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'isso-branch-rule', title: 'Check the file',
+    checkText: 'Verify the file is present. If the result is not documented with the ISSO, this is a finding.', platform: 'rhel'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
 });
 
 test('AI generation performs one bounded correction pass after local rejection', async () => {

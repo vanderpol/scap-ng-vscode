@@ -482,6 +482,12 @@ function expressionHasNotEvaluated(value: unknown): boolean {
   return Object.values(value as Record<string, unknown>).some(expressionHasNotEvaluated);
 }
 
+function expressionHasTestReference(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Object.hasOwn(value, 'test')) return true;
+  return Object.values(value as Record<string, unknown>).some(expressionHasTestReference);
+}
+
 function hasExternalApplicability(value: any): boolean {
   const assessment = value?.assessment;
   if (assessment?.applicability) return true;
@@ -570,7 +576,15 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   if (!coverage.procedureSteps.length) diagnostics.push('The AI coverage manifest contains no procedure steps.');
   const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent|not managed/i.test(item));
   if (unresolvedCritical.length && !expressionHasNotEvaluated(value?.assessment?.evaluate)) diagnostics.push('The AI reports unresolved semantic coverage gaps; represent the technical check completely or return manual-only.');
-  if (procedureHasHumanException(input.checkText) && expressionHasNotEvaluated(value?.assessment?.evaluate)) diagnostics.push('A known technical failure must remain a pass/fail Test. Do not use not_evaluated for an ISSO/owner deviation; record the approved deviation after evaluation.');
+  // A technical branch may legitimately use not_evaluated when command evidence
+  // is unavailable or an unexpected state is observed. Reject it only when the
+  // candidate has no technical Test reference at all, which indicates that the
+  // provider converted an ISSO/owner decision into a non-evaluated outcome.
+  if (procedureHasHumanException(input.checkText)
+    && expressionHasNotEvaluated(value?.assessment?.evaluate)
+    && !expressionHasTestReference(value?.assessment?.evaluate)) {
+    diagnostics.push('A known technical failure must remain a pass/fail Test. Do not use not_evaluated for an ISSO/owner deviation; record the approved deviation after evaluation.');
+  }
   if (procedureHasAlternativeNotification(input.checkText) && !assessmentRepresentsAlternativeNotification(value)) diagnostics.push('The source procedure explicitly permits multiple notification channels (such as email, monitoring traps, and local or hardware indications), but the candidate models only a narrower channel. Do not silently narrow the source obligation; model the supported alternatives or return manual-only for human policy selection.');
   diagnostics.push(...chronyDirectiveDiagnostics(input, value));
   if (value?.assessment?.mode === 'automated' && !value?.assessment?.evaluate && coverage.procedureSteps.length > 1) diagnostics.push('Multiple procedure steps require explicit evaluate logic; the draft has no evaluate expression.');
