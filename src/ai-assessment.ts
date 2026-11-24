@@ -273,6 +273,8 @@ export interface AiKnowledgeOptions {
   platform?: string;
   checkText?: string;
   maxDocumentChars?: number;
+  /** Omit broad reference material when the provider can inspect the pinned pack locally. */
+  compact?: boolean;
 }
 
 /**
@@ -289,7 +291,7 @@ export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, 
   for (const [name, value] of Object.entries(schemaResources)) {
     if (name === 'assessment-language.schema.json' && value?.$defs) {
       const names = ['test', 'canonical_all_items_requirement', 'canonical_field_predicate', 'canonical_inherited_condition', 'object_selector_predicate', 'field_predicate_body', 'scalar_field_predicate', 'existence_cardinality'];
-      schemas[name] = { $id: value.$id, 'x-scap-ng-version': value['x-scap-ng-version'], required: value.required, properties: schemaSummary(value.properties), defs: Object.fromEntries(names.filter(name => value.$defs[name]).map(name => [name, schemaSummary(value.$defs[name])])) };
+      schemas[name] = { $id: value.$id, 'x-scap-ng-version': value['x-scap-ng-version'], required: value.required, properties: schemaSummary(value.properties, options.compact ? 1 : 0), defs: Object.fromEntries(names.filter(name => value.$defs[name]).map(name => [name, schemaSummary(value.$defs[name], options.compact ? 1 : 0)])) };
     } else if (name === 'native-selector.schema.json' && value?.$defs) {
       const { relevant } = selectedMappings(pack, `${options.checkText ?? ''} ${options.platform ?? ''}`, options.platform);
       const relevantNames = new Set(relevant.map(mapping => String(mapping.capability ?? '').replaceAll('.', '_')));
@@ -320,15 +322,10 @@ export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, 
   let vocabulary: any;
   try { vocabulary = vocabularyResource ? pack.resource(vocabularyResource.uri) : undefined; } catch { vocabulary = undefined; }
   const documentLimit = options.maxDocumentChars ?? 6500;
-  const documents = Object.fromEntries([
-    ['SCAP-NG-PRIMER.md', readKnowledgeDocument(extensionRoot, 'SCAP-NG-PRIMER.md', documentLimit)],
-    ['ASSISTED-ASSESSMENT-DRAFTS.md', readKnowledgeDocument(extensionRoot, 'ASSISTED-ASSESSMENT-DRAFTS.md', documentLimit)],
-    ['P0-SCHEMA-GUIDED-AUTHORING.md', readKnowledgeDocument(extensionRoot, 'P0-SCHEMA-GUIDED-AUTHORING.md', documentLimit)],
-    ['EDITOR-BLUEPRINT.md', readKnowledgeDocument(extensionRoot, 'EDITOR-BLUEPRINT.md', documentLimit)],
-    ['SCAP-NG-YAML-ARCHITECTURE-REVIEW.md', readKnowledgeDocument(extensionRoot, 'SCAP-NG-YAML-ARCHITECTURE-REVIEW.md', documentLimit)],
-    ['SCHEMA-VERSION-MIGRATION-PLAN.md', readKnowledgeDocument(extensionRoot, 'SCHEMA-VERSION-MIGRATION-PLAN.md', documentLimit)],
-    ['AI-AUTHORING-PLAYBOOK.md', readKnowledgeDocument(extensionRoot, 'AI-AUTHORING-PLAYBOOK.md', documentLimit)]
-  ].filter(([, value]) => value));
+  const documentNames = options.compact
+    ? ['SCAP-NG-PRIMER.md', 'ASSISTED-ASSESSMENT-DRAFTS.md', 'AI-AUTHORING-PLAYBOOK.md']
+    : ['SCAP-NG-PRIMER.md', 'ASSISTED-ASSESSMENT-DRAFTS.md', 'P0-SCHEMA-GUIDED-AUTHORING.md', 'EDITOR-BLUEPRINT.md', 'SCAP-NG-YAML-ARCHITECTURE-REVIEW.md', 'SCHEMA-VERSION-MIGRATION-PLAN.md', 'AI-AUTHORING-PLAYBOOK.md'];
+  const documents = Object.fromEntries(documentNames.map(name => [name, readKnowledgeDocument(extensionRoot, name, documentLimit)]).filter(([, value]) => value));
   return JSON.stringify({
     contract: {
       schema_version: pack.pin.schemaVersion,
@@ -342,7 +339,7 @@ export function buildScapNgKnowledge(pack: MetadataPack, extensionRoot: string, 
     schemas,
     capability_catalog: mappings.catalog,
     relevant_capability_mappings: mappings.relevant,
-    vocabulary,
+    ...(options.compact ? {} : { vocabulary }),
     editor_documents: documents,
     authoring_invariants: [
       'The pinned 0.4.1 JSON Schemas are normative; YAML must be a complete Assessment with specification.id scap-ng.pre-alpha.assessment and specification.version 0.4.1.',
@@ -702,9 +699,13 @@ export async function createAiAssessmentDraft(pack: MetadataPack, extensionRoot:
   if (input.checkText.length > 60000) return finalize(draftFromFailure('The procedure text is larger than the AI authoring limit (60,000 characters); use a focused excerpt or the offline workflow.'));
   if ((input.ruleYaml?.length ?? 0) > 50000) return finalize(draftFromFailure('The Rule YAML is larger than the AI authoring limit (50,000 characters); remove unrelated context or use the offline workflow.'));
   if (input.title.length > 4000 || input.ruleId.length > 1000) return finalize(draftFromFailure('The Rule identity/title exceeds the AI authoring limit; shorten it before retrying.'));
-  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText, maxDocumentChars: 4500 });
+  // Keep the full pinned context for high-effort Codex requests: the extra schema
+  // detail improves difficult semantic repairs. Compact context is reserved for
+  // explicitly lower-effort local runs where latency is the primary concern.
+  const compactCodexContext = endpoint === 'codex-local' && options.reasoningEffort !== 'high' && options.reasoningEffort !== 'xhigh' && options.reasoningEffort !== 'max';
+  const knowledge = buildScapNgKnowledge(pack, extensionRoot, { platform: input.platform, checkText: input.checkText, maxDocumentChars: compactCodexContext ? 3600 : 4500, compact: compactCodexContext });
   const localCodexTools = endpoint === 'codex-local'
-    ? `You are running through the local Codex CLI with read-only tools available. Before drafting the Assessment, you MUST make at least one read-only tool call against the authoritative pinned files under ${pack.directory} (inspect schemas/assessment.schema.json and the relevant capability mapping), and use that result to verify field names and requirement shape. Do not modify files. Tool availability is not proof of scanner/runtime execution; report only authoring validation.`
+    ? `You are running through the local Codex CLI with read-only tools available. The prompt contains a compact extract of the pinned pack. Before drafting the Assessment, make at most two targeted read-only tool calls against authoritative files under ${pack.directory} (inspect schemas/assessment.schema.json and the one or two relevant capability mappings); do not scan the directory broadly or inspect unrelated documents. Use those results only to verify field names and requirement shape. Do not modify files. Tool availability is not proof of scanner/runtime execution; report only authoring validation.`
     : '';
   const system = `${localCodexTools}
 You are a SCAP-NG 0.4.1 assessment-authoring specialist, not a generic novice assistant. Use ONLY the canonical knowledge pack below as the normative contract. Apply the included AI-AUTHORING-PLAYBOOK.md procedure method; it contains generic authoring reasoning, not hard-coded content. The schema and capability mappings are authoritative; do not invent fields, capabilities, operators, result semantics, applicability semantics, or scanner behavior. Do not invent numeric bounds absent from the procedure; preserve explicit inequalities and flag external implementation-range assumptions for review. Do not collapse independent procedure checks merely to reduce Test count: a pattern that selects only lines containing an option cannot detect another line that omits it; preserve a full-population predicate or explicit absence Test. Before finalizing, perform an adversarial semantic review: test omitted options, malformed values, negative or out-of-range values, duplicate directives, comments/inline comments, empty collections, and mixed compliant/noncompliant populations; a filter must not hide a member that the procedure says is a finding. When syntax or implementation validity is uncertain, state the assumption and preserve a finding/review condition. Regex escaping is layered: the outer JSON response escapes backslashes once, but the returned YAML scalar must contain the intended regex after YAML parsing; prefer a single-quoted YAML regex scalar when backslashes are needed and do not emit JSON-style double escaping into the YAML value. Verify the parsed regex semantics before returning. Prefer an existing mapped capability over a new one. Preserve the objective technical check and its real pass/fail result even when the procedure mentions an ISSO/ISSM/SA/AO exception; approved deviations are recorded after evaluation and must not be represented as not_evaluated. When a procedure requires an organization-defined value (for example, an authorized time server), declare a typed Assessment input and consume it through an input reference instead of hard-coding a value or inventing a default. In a field predicate, serialize the reference as an operator operand plus a sibling value_match cardinality, for example fields: {subexpression: {equals: {input: authorized-time-server-input}, value_match: one_or_more}}; value_match is not field_requirement.values_matching. The unknown organization-approved value is not a reason for manual-only; the policy-layer binding supplies it later. Do not invent a networked-system Input or applicability gate unless the supplied procedure explicitly defines that branch. Missing required input is a runtime error with reason code missing_organizational_input; optional consumers require an input_provided guard. Return manual-only only when no objective collector/predicate can be expressed or the check itself cannot be performed. If the procedure names an organization-approved value (such as an authorized time server), prefer a valid automated Assessment Input contract; do not hard-code it or downgrade it to manual-only merely because the binding is supplied later. During correction, recompute generated_mode: if the corrected YAML cannot be made complete and schema-valid, return manual-only with no assessment_yaml rather than returning an invalid automated candidate. For a Rule-local applicability branch, use internal Tests and evaluate if/then/else with an explicit not_applicable outcome. Use an external applicability Assessment only when a supplied reusable condition/dependency exists; never invent an external Assessment ID.

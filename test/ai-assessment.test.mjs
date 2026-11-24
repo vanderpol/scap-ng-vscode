@@ -77,6 +77,11 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   // Keep the outbound prompt bounded enough for an enterprise gateway while
   // retaining schema/mapping/history context.
   assert.ok(JSON.stringify(knowledge).length < 250_000);
+  const compactKnowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), { platform: 'amazon-linux-2023', checkText: 'chrony server maxpoll', maxDocumentChars: 3600, compact: true }));
+  assert.ok(JSON.stringify(compactKnowledge).length < JSON.stringify(knowledge).length);
+  assert.equal(compactKnowledge.vocabulary, undefined);
+  assert.ok(compactKnowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md']);
+  assert.ok(compactKnowledge.schemas['assessment.schema.json']);
 });
 
 test('AI response parser accepts prose-wrapped JSON without accepting prose as content', async () => {
