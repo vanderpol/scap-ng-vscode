@@ -8,6 +8,29 @@ import { createAssistedAssessment, isLikelyAutomatableDraft } from '../dist/assi
 const pack = new MetadataPack('.external/editor-pack', JSON.parse(readFileSync('schema-profile.json', 'utf8')));
 
 
+test('Amazon Linux chrony source rule keeps both checks and models the authorized server as organizational input', () => {
+  const result = createAssistedAssessment(pack, {
+    platform: 'amazon-linux-2023',
+    title: 'Amazon Linux 2023 must synchronize internal information system clocks to the authoritative time source at least every 24 hours.',
+    checkText: `Complete the source OCIL procedure ocil:navy.navwar.niwcatlantic.scc.amzlx23os:questionnaire:33701.
+Verify Amazon Linux 2023 chrony service specifies a maximum interval of 24 hours between requests sent to a United States Naval Observatory (USNO) server.
+$ sudo grep maxpoll /etc/chrony.conf
+server <USNO/DoW Server> iburst maxpoll 16
+If the "maxpoll" option is not configured, set to a number greater than 16, or the line is commented out, this is a finding.
+Verify Amazon Linux 2023 chrony service is configured to use authoritative USNO or appropriate DoW time source.
+$ sudo grep -i server /etc/chrony.conf
+server <USNO/DoW Server>
+If the parameter "server" is not set or is not set to an authoritative USNO or appropriate DoW time source, this is a finding.`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.automationClass, 'organizational-input');
+  assert.deepEqual(Object.keys(result.document.assessment.inputs), ['authorized-time-server-input']);
+  assert.equal(Object.keys(result.document.assessment.tests).length, 2);
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(isLikelyAutomatableDraft(result, 'Verify the two objective chrony checks.'), true);
+});
+
+
 test('package finding wording keeps installed-package requirements as presence checks', () => {
   const result = createAssistedAssessment(pack, {
     platform: 'rhel',

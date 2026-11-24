@@ -34,6 +34,7 @@ interface Candidate {
   objectComplete?: boolean;
   fields?: Record<string, Json>;
   testCandidates?: Array<{ title: string; object?: Record<string, Json>; fields?: Record<string, Json>; presenceOnly?: boolean; itemFound?: string }>;
+  inputs?: Record<string, Json>;
   conditionalBranches?: ConditionalBranch[];
   evaluate?: 'and' | 'or' | 'one' | 'xor';
   presenceOnly?: boolean;
@@ -1007,6 +1008,38 @@ function sshBannerCandidate(text: string): Candidate | undefined {
   };
 }
 
+function chronyTimeSourceCandidate(text: string): Candidate | undefined {
+  if (!/\bchrony\b/i.test(text) || !/\bmaxpoll\b/i.test(text) || !/(?:USNO|DoW|authoritative time source|time source)/i.test(text) || !/\/etc\/chrony\.conf\b/i.test(text)) return undefined;
+  const activeServerPattern = String.raw`^\s*[Ss][Ee][Rr][Vv][Ee][Rr]\s+\S+(?:\s+[^#]*)?(?:#.*)?$`;
+  const authoritativePattern = String.raw`^\s*[Ss][Ee][Rr][Vv][Ee][Rr]\s+(\S+)(?:\s+[^#]*)?(?:#.*)?$`;
+  const maxpollPattern = String.raw`^\s*[Ss][Ee][Rr][Vv][Ee][Rr]\s+\S+(?:\s+[^#\s]+)*\s+[Mm][Aa][Xx][Pp][Oo][Ll][Ll]\s+(?:0|[1-9]|1[0-6])(?:\s+[^#\s]+)*(?:\s+#.*)?\s*$`;
+  const object = { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: activeServerPattern }, instance: { greater_than_or_equal: 1 } } as Record<string, Json>;
+  return {
+    capability: 'independent.textfilecontent',
+    object,
+    testCandidates: [
+      { title: 'Every active chrony server directive specifies maxpoll no greater than 16', fields: { text: { matches_regex: maxpollPattern } } },
+      { title: 'Every active chrony server directive uses an authorized USNO or DoW time source', object: { full_path: { equals: '/etc/chrony.conf' }, pattern: { matches_regex: authoritativePattern }, instance: { greater_than_or_equal: 1 } }, fields: { subexpression: { equals: { input: 'authorized-time-server-input' }, value_match: 'one_or_more' } } }
+    ],
+    inputs: {
+      'authorized-time-server-input': {
+        datatype: 'string', cardinality: 'one_or_more', required: true,
+        description: 'Organization-approved authoritative USNO or appropriate DoW time-source hostname or address.'
+      }
+    },
+    evaluate: 'and',
+    confidence: 'high',
+    assumptions: [
+      'Recognized the two objective chrony checks: active server directives must specify maxpoll 0 through 16 and must use an organization-authorized USNO or DoW time source.',
+      'The organization supplies authorized-time-server-input at assessment binding time; no concrete address is hard-coded.'
+    ],
+    review: [
+      'Confirm the runtime textfilecontent collector captures every active server directive and compares the captured server token to the organizational input.',
+      'Confirm chrony-specific handling of duplicate server directives and inline comments before relying on runtime results.'
+    ]
+  };
+}
+
 function textFileContentCandidate(text: string): Candidate | undefined {
   const command = text.match(/\b(?:grep|egrep)\s+(?:-[A-Za-z]+\s+)?([A-Za-z][A-Za-z0-9_.-]*)\s+(\/[^\s,;:)]+)/i);
   const line = text.match(/\b([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*([A-Za-z0-9_.+-]+)/);
@@ -1498,7 +1531,7 @@ function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate 
   // title-first context when an author provides one for benchmark-family hints.
   const suppliedTitle = cleanText(input.title);
   const context = suppliedTitle ? `${suppliedTitle}\n${text}` : text;
-  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? sshBannerCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
+  return officeSemanticCandidate(context, input.platform) ?? browserSemanticCandidate(context, input.platform) ?? benchmarkFamilyCandidate(context, input.platform) ?? suseSemanticCandidate(context, input.platform) ?? ubuntuSemanticCandidate(context, input.platform) ?? solarisSemanticCandidate(context, input.platform) ?? auditEventCandidate(context) ?? registryCandidate(text) ?? userRightCandidate(context, pack) ?? sysctlCandidate(text) ?? firewallFallbackCandidate(text) ?? systemdCandidate(text) ?? windowsKerberosCandidate(context) ?? windowsSemanticCandidate(context) ?? windowsCmdletCandidate(text) ?? windowsWmiCandidate(context) ?? windowsServiceCandidate(text) ?? graphicalDisplayCandidate(text) ?? auditRuleCandidate(text) ?? awkViolationCandidate(text) ?? promiscuousInterfaceCandidate(text) ?? auditFailureCandidate(text) ?? shostsEquivCandidate(text) ?? worldWritableDirectoryCandidate(text) ?? releaseCandidate(text) ?? mfaCandidate(text) ?? deviceLabelCandidate(text) ?? sshPrivateKeyCandidate(text) ?? findNoGroupCandidate(text) ?? nmcliWirelessCandidate(text) ?? packageGatedTextFileCandidate(text) ?? postconfCandidate(text) ?? sshBannerCandidate(text) ?? chronyTimeSourceCandidate(text) ?? textFileContentCandidate(text) ?? sshdCandidate(text) ?? macSystemSetupCandidate(text) ?? macDisabledServiceCandidate(text) ?? macAccountCandidate(text) ?? linuxPartitionCandidate(text) ?? linuxKernelModuleCandidate(text) ?? selinuxCandidate(context) ?? networkDeviceCandidate(text) ?? solarisCandidate(text) ?? policyCandidate(context, input.platform) ?? packageCandidate(text) ?? windowsCertificateFileCandidate(context) ?? windowsFileCandidate(text) ?? interactiveInitializationOwnershipCandidate(text) ?? genericLinuxTextFileCandidate(context) ?? unixFileCandidate(context) ?? rhelSemanticCandidate(context, input.platform) ?? unixFileCandidate(text) ?? shellCommandCandidate(text);
 }
 
 function manualDraft(pack: MetadataPack, input: AssistedDraftInput, confidence: AssistedConfidence, assumptions: string[], unresolved: string[]): AssistedDraftResult {
@@ -1581,7 +1614,7 @@ export function createAssistedAssessment(pack: MetadataPack, input: AssistedDraf
     : undefined;
   const generated = createGuidedAssessment(pack, {
     platform: firstPlatform(pack), id: slug(title, 'assessment'), title,
-    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: explicitEvaluate || conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle,
+    mode: 'automated', className: firstClass(pack), evaluate: explicitEvaluate ?? conditionalEvaluate ?? candidate.evaluate, dependencies: Object.keys(conditionalDependencies).length ? conditionalDependencies : undefined, applicability: explicitEvaluate || conditionalEvaluate ? undefined : input.applicability, objectStyle: input.objectStyle, inputs: candidate.inputs,
     tests: normalizedTests.map((test, index) => ({
       id: testIds[index], title: test.title, capability: candidate.capability,
       object: test.object ?? candidate.object, fields: test.fields, presenceOnly: test.presenceOnly ?? candidate.presenceOnly ?? false, itemFound: test.itemFound

@@ -20,7 +20,7 @@ export interface GuidedObjectField {
 export interface GuidedObjectRequirement { fields: string[]; description?: string; }
 export interface GuidedTestDraft { id: string; title: string; capability: string; object: Json; presenceOnly?: boolean; fields?: Record<string, Json>; itemFound?: string; itemsSatisfying?: string; }
 export interface GuidedApplicabilitySelection { alias: string; assessmentId: string; expectedVersion: string | number; }
-export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor' | Json; dependencies?: Record<string, Json>; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
+export interface GuidedAssessmentDraft { platform: string; id: string; title: string; mode: 'manual' | 'automated'; className: string; procedure?: string; response?: Json; tests?: GuidedTestDraft[]; evaluate?: 'and' | 'or' | 'one' | 'xor' | Json; dependencies?: Record<string, Json>; inputs?: Record<string, Json>; applicability?: GuidedApplicabilitySelection; objectStyle?: YamlObjectStyle; }
 function object(value: unknown): value is Record<string, any> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 const schemaContext = (pack: MetadataPack) => ({ documentVersion: pack.pin.schemaVersion, schemaValid: true, isOverride: false, diagnostics: [] as string[] });
 function schemaDefaultOrObjectDefaults(pack: MetadataPack, uri: string): Json {
@@ -218,6 +218,7 @@ export function createGuidedAssessment(pack: MetadataPack, draft: GuidedAssessme
   if (!draft.title.trim()) throw new Error('Assessment title is required');
   if (!draft.platform) throw new Error('Choose a target platform authoring context');
   const assessment: Record<string, Json> = { id: draft.id, version: 1, assessment_title: draft.title, mode: draft.mode, class: draft.className };
+  if (draft.inputs && object(draft.inputs)) assessment.inputs = draft.inputs;
   if (draft.dependencies && object(draft.dependencies)) assessment.dependencies = draft.dependencies;
   if (draft.applicability) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.applicability.alias)) throw new Error('Applicability alias must use lowercase kebab-case.');
