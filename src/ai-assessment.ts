@@ -588,6 +588,21 @@ function deviceLabelDiagnostics(input: AiAssessmentInput, value: any): string[] 
   return diagnostics;
 }
 
+
+function manualReviewFromDeviceLabelRejection(draft: AiAssessmentDraft): AiAssessmentDraft {
+  const reviewNotes = [...draft.unresolved, ...draft.diagnostics, 'No safe automated device-label Assessment was accepted after the bounded correction pass; make the manual-only decision or retry explicitly.'];
+  return {
+    ...draft,
+    generatedMode: 'manual-only',
+    automationClass: 'manual',
+    confidence: 'low',
+    yaml: '',
+    document: undefined,
+    diagnostics: [],
+    unresolved: [...new Set(reviewNotes)]
+  };
+}
+
 function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any): string[] {
   const coverage = normalizeCoverage(payload?.coverage);
   if (!coverage) return ['AI response omitted the required procedure coverage manifest; no draft was accepted.'];
@@ -957,10 +972,18 @@ ${JSON.stringify(input.availableConditions ?? [])}`;
     const repairedRaw = await requestDraft([{ role: 'system', content: repairSystem }, { role: 'user', content: repairUser }], repairTimeout, true);
     reportProgress('validating-correction');
     const repaired = parseAiAssessmentResponse(pack, input, repairedRaw);
-    if (repaired.diagnostics.length) repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
+    if (repaired.diagnostics.length) {
+      repaired.diagnostics.unshift('The provider was given one automatic correction pass, but the replacement still requires author review.');
+      // This source has a known human-policy boundary: the exception inventory
+      // for device labels is not safely inferable. Do not leave the author in a
+      // retry loop when the bounded correction still cannot produce a safe
+      // candidate; surface a terminal manual decision instead.
+      if (procedureHasDeviceLabelShape(input.checkText)) return finalize(manualReviewFromDeviceLabelRejection(repaired));
+    }
     return finalize(repaired);
   } catch (error) {
     draft.diagnostics.push(`Automatic correction pass failed: ${error instanceof Error ? error.message : String(error)}`);
+    if (procedureHasDeviceLabelShape(input.checkText)) return finalize(manualReviewFromDeviceLabelRejection(draft));
     return finalize(draft);
   }
 }

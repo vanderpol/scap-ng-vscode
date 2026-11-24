@@ -376,9 +376,9 @@ test('device-label generation keeps both source find obligations and falls back 
       coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check device labels', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
     }),
     JSON.stringify({
-      generated_mode: 'manual-only', confidence: 'high', assessment_yaml: '',
-      assumptions: ['The approved exception set and complete filesystem collector require human qualification.'],
-      unresolved_questions: ['Confirm the organization-approved device-file exception paths.'], citations: []
+      generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+      assumptions: [], unresolved_questions: [], citations: [],
+      coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check device labels', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
     })
   ];
   let index = 0;
