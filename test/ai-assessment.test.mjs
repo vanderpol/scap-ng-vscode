@@ -361,3 +361,32 @@ test('provider Assessment IDs are normalized generically before correction when 
   assert.equal(result.document.assessment.id, 'check-file-assessment');
   assert.ok(result.assumptions.some(item => /normalized.*identity limit/i.test(item)));
 });
+
+test('AI candidates cannot be reported fully automated when source contains an unresolved organizational value', async () => {
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'A provider omitted the source value binding.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Authorized source', checkText: 'Verify the system uses <USNO/DoW Server> as the authorized time source.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
+  }));
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.automationClass, 'fully-automated');
+  assert.ok(result.diagnostics.some(message => /Assessment Input|not be treated as fully automated/i.test(message)));
+});
+
+test('AI candidates with a required organizational input are classified separately from fully automated', async () => {
+  const inputYaml = validYaml.replace('  evaluate:', `  inputs:\n    authorized-time-server-input:\n      datatype: string\n      cardinality: one_or_more\n      required: true\n  evaluate:`);
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: inputYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'The source value is bound by policy.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check authorized source', represented: true, tests: ['check-file-test'] }], path_patterns: [] }
+  };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Authorized source', checkText: 'Verify the system uses <USNO/DoW Server> as the authorized time source.', ruleYaml: 'rule:\n  default_assessment_choice: manual'
+  }));
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.automationClass, 'organizational-input');
+  assert.equal(result.diagnostics.length, 0);
+});

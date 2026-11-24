@@ -176,6 +176,7 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
   assert.match(extensionSource, /Automatic effort estimates are local preflight guidance/);
   assert.match(extensionSource, /offline preflight found no safe automated draft/);
+  assert.match(extensionSource, /offline preflight predicts organizational-input/);
   assert.match(extensionSource, /The batch stopped before this Rule was sent/);
   assert.match(extensionSource, /saveApprovedRuleLink\(api, document, edit\.document\.text, generatedId\)/);
   assert.match(extensionSource, /saveApprovedRuleLink\(api, ruleDocument, edit\.document\.text, generatedId\)/);
