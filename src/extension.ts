@@ -477,7 +477,11 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     else if (result?.linkable === false) entry.outcomeReason = 'confidence-gate';
     else if (result?.confidence === 'low') entry.outcomeReason = 'low-confidence';
     else if (result?.diagnostics?.length) entry.outcomeReason = 'schema-or-coverage';
-    if (result?.generatedMode === 'automated' && !result.diagnostics?.length && result.linkable !== false && (!mode || mode === 'offline' || entry.comparisonOnly || entry.independentVerification?.status === 'passed')) entry.status = entry.comparisonOnly ? 'comparison-only' : 'ready';
+    // A locally clean, independently reviewed candidate is ready for human
+    // review even when the confidence gate intentionally keeps it unlinkable.
+    // Keep retry/review for provider/validation failures, not for a safe
+    // candidate that only needs an author decision.
+    if (result?.generatedMode === 'automated' && !result.diagnostics?.length && (!mode || mode === 'offline' || entry.comparisonOnly || entry.independentVerification?.status === 'passed')) entry.status = entry.comparisonOnly ? 'comparison-only' : 'ready';
     else if (result?.generatedMode === 'manual' || result?.generatedMode === 'manual-only') entry.status = 'manual-only';
     else entry.status = 'rejected';
     entry.phase = undefined; entry.completedAt = Date.now(); entry.error = undefined;
