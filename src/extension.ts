@@ -346,7 +346,7 @@ async function analyzeBenchmarkAutomation(api: any, index: WorkspaceIndex, state
             checkText: procedureText,
             platform: benchmarkContextPlatform(selected)
           });
-          if (isLikelyAutomatableDraft(result, procedureText)) { likelyAutomatable++; likelyRuleUris.push(rule.uri); }
+          if (isLikelyAutomatableDraft(result, procedureText, pack)) { likelyAutomatable++; likelyRuleUris.push(rule.uri); }
         }
       }
     } catch { /* One malformed/missing manual source must not abort the batch. */ }

@@ -760,3 +760,91 @@ If the "X11UseLocalhost" keyword is set to "no", is missing, or is commented out
   assert.equal(test.capability, 'independent.textfilecontent');
   assert.deepEqual(test.require.fields.subexpression, { matches_regex: '^(yes)$' });
 });
+
+test('repeated registry blocks preserve every predicate and use per-profile NTUSER for HKCU', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Windows Explorer preview settings must be disabled.',
+    checkText: `Registry Hive: HKEY_CURRENT_USER
+Registry Path: \\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer
+Value Name: NoPreviewPane
+Type: REG_DWORD
+Value: 1
+
+Registry Hive: HKEY_CURRENT_USER
+Registry Path: \\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer
+Value Name: NoReadingPane
+Type: REG_DWORD
+Value: 1`
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(Object.keys(result.document.assessment.tests).length, 2);
+  assert.equal(result.document.assessment.evaluate.and.length, 2);
+  for (const test of Object.values(result.document.assessment.tests)) {
+    assert.equal(test.capability, 'windows.ntuser');
+    assert.equal(test.object.include_default, false);
+    assert.equal(test.object.item_creation, 'every_ntuser');
+    assert.equal(test.require.fields.value.equals, 1);
+  }
+});
+
+test('likely analysis recognizes selectorless native policy capabilities and rejects unresolved NA branches', () => {
+  const audit = createAssistedAssessment(pack, {
+    title: 'Removable Storage failures must be audited.',
+    checkText: 'Use AuditPol /get /category:* and verify Object Access >> Removable Storage - Failure. If the system does not audit the following, this is a finding.'
+  });
+  assert.equal(audit.generatedMode, 'automated');
+  assert.equal(isLikelyAutomatableDraft(audit, 'Use AuditPol /get /category:* and verify Object Access >> Removable Storage - Failure.', pack), true);
+  const na = createAssistedAssessment(pack, {
+    title: 'Windows 2012 R2 setting',
+    checkText: 'This requirement is NA for Windows 2012. It is applicable to Windows 2012 R2. Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1'
+  });
+  assert.equal(na.generatedMode, 'automated');
+  assert.equal(isLikelyAutomatableDraft(na, 'This requirement is NA for Windows 2012. It is applicable to Windows 2012 R2. Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1', pack), false);
+});
+
+test('generic CIM account queries become bounded no-finding cmdlet Tests', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Enabled local accounts must require passwords.',
+    checkText: 'Run Get-CimInstance -Class Win32_Useraccount -Filter "PasswordRequired=False and LocalAccount=True". If any enabled user accounts are returned, this is a finding.'
+  });
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.cmdlet');
+  assert.equal(test.object.noun, 'CimInstance');
+  assert.equal(test.object.parameters.fields.class.equals, 'Win32_Useraccount');
+  assert.equal(test.object.parameters.fields.filter.equals, 'PasswordRequired=False and LocalAccount=True');
+  assert.equal(test.require.item_requirement.items_found, 'none');
+});
+
+test('multi-extension file searches keep each extension selector independent', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Certificate installation files must be absent.',
+    checkText: 'Search all drives for *.p12 and *.pfx files. If any files with these extensions exist, this is a finding.'
+  });
+  const tests = Object.values(result.document.assessment.tests);
+  assert.equal(tests.length, 2);
+  assert.match(tests[0].object.filepath.matches_regex, /p12/);
+  assert.match(tests[1].object.filepath.matches_regex, /pfx/);
+});
+
+test('placeholder evidence output is not promoted to an automated policy check', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'An allowlisting policy must be enabled.',
+    checkText: 'Execute Get-AppLockerPolicy -Effective -XML > c:\\temp\\file.xml. Substitute an appropriate location and file name, then review the policy.'
+  });
+  assert.equal(result.generatedMode, 'manual');
+  assert.match(result.unresolved.join(' '), /placeholder|policy object|selector/i);
+});
+
+test('generic cmdlet parsing does not let an unbounded AD branch hide a concrete local query', () => {
+  const result = createAssistedAssessment(pack, {
+    title: 'Enabled local accounts must require passwords.',
+    checkText: `Domain Controllers: Get-ADUser -Filter * -Properties PasswordNotRequired | Where PasswordNotRequired -eq True.
+Member servers: Get-CimInstance -Class Win32_Useraccount -Filter "PasswordRequired=False and LocalAccount=True" | FT Name, PasswordRequired.`
+  });
+  const test = Object.values(result.document.assessment.tests)[0];
+  assert.equal(test.capability, 'windows.cmdlet');
+  assert.equal(test.object.noun, 'CimInstance');
+});

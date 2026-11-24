@@ -179,6 +179,41 @@ function labeledRegistryValues(text: string, label: string): string[] {
   return [...text.matchAll(new RegExp(`(?:^|\\r?\\n)\\s*${escaped}\\s*:\\s*([^\\r\\n]*)`, 'gim'))]
     .map(match => match[1].trim().replace(/[.,;:]+$/, '').trim()).filter(Boolean);
 }
+
+interface LabeledRegistryEntry {
+  hive?: string;
+  path?: string;
+  name?: string;
+  type?: string;
+  value?: string;
+}
+
+/** Parse repeated labeled registry blocks without collapsing their fields.
+ * Converted OCIL procedures commonly repeat Hive/Path/Name blocks (for
+ * example, two per-user values). Treating those as one path plus one name
+ * silently loses an objective predicate and can turn an AND requirement into
+ * an unresolved alternative. This parser is deliberately label-based and
+ * does not infer registry locations from Rule IDs or titles.
+ */
+function labeledRegistryEntries(text: string): LabeledRegistryEntry[] {
+  const starts = [...text.matchAll(/(?:^|\n)\s*Registry\s+Hive\s*:?/gim)].map(match => match.index ?? 0);
+  if (!starts.length) return [];
+  return starts.map((start, index) => {
+    const block = text.slice(start, starts[index + 1] ?? text.length);
+    const value = (label: string): string | undefined => {
+      const labelPattern = label === 'Value' ? 'Value(?!\\s+Name\\b)' : label;
+      const match = block.match(new RegExp(`(?:^|\\n)\\s*${labelPattern}\\s*:?\\s*([^\\r\\n]*)`, 'i'));
+      return match?.[1]?.trim().replace(/[.,;:]+$/, '').trim() || undefined;
+    };
+    return {
+      hive: value('Registry Hive'),
+      path: value('Registry Path'),
+      name: value('Value Name'),
+      type: value('Value Type') ?? value('Type'),
+      value: value('Value')
+    };
+  }).filter(entry => entry.path || entry.name);
+}
 function normalizeRegistryPath(value: string): string {
   return value.replace(/\s+\([^\r\n)]*\)\s*$/, '').trim().replace(/^\\+|\\+$/g, '');
 }
@@ -189,9 +224,78 @@ function registryScalar(value: string): Json {
   if (/^(true|false)\b/i.test(raw)) return raw.toLowerCase().startsWith('true');
   return raw;
 }
+
+function concreteRegistryValue(value: string | undefined): boolean {
+  if (!value) return false;
+  if (/\b(?:see|below|option|site[- ]defined|manual|documented|equivalent|organization|approved)\b/i.test(value)) return false;
+  return value.length <= 120;
+}
+function registryFieldsFor(text: string, entry: LabeledRegistryEntry): Record<string, Json> {
+  const fields: Record<string, Json> = {};
+  const expected = concreteRegistryValue(entry.value) ? entry.value : undefined;
+  if (expected !== undefined) {
+    const parsed = registryScalar(expected);
+    const minimum = /(?:or\s+(?:greater|higher|more)|at\s+least|minimum)/i.test(expected) || /\b(?:or\s+(?:greater|higher|more)|at\s+least|minimum)\b/i.test(text);
+    fields.value = { [minimum ? 'greater_than_or_equal' : 'equals']: parsed };
+    const type = entry.type?.toUpperCase();
+    if (type === 'REG_DWORD' || type === 'REG_DWORD_LITTLE_ENDIAN') fields.type = { equals: 'dword' };
+    else if (type === 'REG_QWORD' || type === 'REG_QWORD_LITTLE_ENDIAN') fields.type = { equals: 'qword' };
+    else if (type === 'REG_MULTI_SZ') fields.type = { equals: 'multi_string' };
+    else if (type === 'REG_EXPAND_SZ') fields.type = { equals: 'expand_string' };
+    else if (type === 'REG_SZ') fields.type = { equals: 'string' };
+    else if (typeof parsed === 'number') fields.type = { equals: Number.isInteger(parsed) ? 'dword' : 'string' };
+  } else if (entry.type?.toUpperCase() === 'REG_DWORD' || entry.type?.toUpperCase() === 'REG_DWORD_LITTLE_ENDIAN') {
+    // Preserve a known datatype even when the source deliberately leaves the
+    // acceptable value organization-defined; the value predicate still needs
+    // an explicit input or human decision and is never guessed here.
+    fields.type = { equals: 'dword' };
+  }
+  return fields;
+}
+function repeatedRegistryBlockCandidate(text: string, blocks: LabeledRegistryEntry[]): Candidate | undefined {
+  if (blocks.length < 2 || blocks.some(block => !block.path || !block.name)) return undefined;
+  const selected = blocks.map(block => ({ ...block, selectedHive: hive(block.hive ?? '') }));
+  if (selected.some(block => !block.selectedHive)) return undefined;
+  const capability = selected[0].selectedHive === 'current_user' ? 'windows.ntuser' : 'windows.registry';
+  if (selected.some(block => (block.selectedHive === 'current_user') !== (selected[0].selectedHive === 'current_user'))) return undefined;
+  const objectFor = (block: typeof selected[number]): Record<string, Json> => {
+    const key = normalizeRegistryPath(block.path!).replace(/^\\+|\\+$/g, '');
+    return block.selectedHive === 'current_user'
+      ? { include_default: false, item_creation: 'every_ntuser', key: { equals: key }, name: { equals: block.name! } }
+      : { hive: { equals: block.selectedHive! }, key: { equals: key }, name: { equals: block.name! } };
+  };
+  const testCandidates = selected.map(block => ({
+    title: `Registry setting ${block.name}`,
+    object: objectFor(block),
+    fields: Object.keys(registryFieldsFor(text, block)).length ? registryFieldsFor(text, block) : undefined,
+    presenceOnly: !Object.keys(registryFieldsFor(text, block)).length,
+    itemFound: 'one_or_more'
+  }));
+  const sameName = new Set(selected.map(block => block.name)).size === 1;
+  const sameKey = new Set(selected.map(block => normalizeRegistryPath(block.path!))).size === 1;
+  if (sameName && !sameKey) {
+    const branches = selected.map((block, index) => ({ label: `registry path ${index + 1}`, object: objectFor(block) }));
+    return {
+      capability, object: objectFor(selected[0]), fields: testCandidates[0].fields,
+      testCandidates, conditionalBranches: branches,
+      confidence: testCandidates.every(test => test.fields) ? 'medium' : 'low',
+      assumptions: ['Parsed repeated labeled registry blocks as distinct source alternatives.', 'Each alternative requires an explicit applicability condition; no operating-system version was inferred from the path text.'],
+      conditionalElseReason: 'Select or create the applicable registry-path Assessment before relying on this draft.'
+    };
+  }
+  const unresolvedText = selected.some(block => !Object.keys(registryFieldsFor(text, block)).length) && /site[- ]defined|manual review|organization(?:al)?/i.test(text);
+  return {
+    capability, object: objectFor(selected[0]), fields: testCandidates[0].fields,
+    testCandidates, evaluate: 'and', confidence: testCandidates.every(test => test.fields) ? 'high' : 'medium',
+    manualOnlyReason: unresolvedText ? 'The procedure leaves at least one registry value organization-defined or explicitly requires manual review; a guessed value would not preserve the source predicate.' : undefined,
+    assumptions: ['Parsed each repeated labeled registry block as an independent Test and preserved all listed values.', ...(testCandidates.every(test => test.fields) ? [] : ['At least one registry block has no concrete expected value; review or bind that predicate before use.'])]
+  };
+}
 function registryCandidate(text: string): Candidate | undefined {
   const upper = text.toUpperCase();
   if (!/(REGISTRY|REGEDIT|HKEY_|HKLM|HKCU|HKU|HKCC)/.test(upper)) return undefined;
+  const repeatedBlocks = repeatedRegistryBlockCandidate(text, labeledRegistryEntries(text));
+  if (repeatedBlocks) return repeatedBlocks;
   const labeledHive = labeledRegistryValue(text, 'Registry Hive');
   const labeledPaths = labeledRegistryValues(text, 'Registry Path');
   const labeledName = labeledRegistryValue(text, 'Value Name');
@@ -222,7 +326,9 @@ function registryCandidate(text: string): Candidate | undefined {
     return parts.join('\\');
   });
   const valueMatch = text.match(/(?:set|configured|defined|must be|equals?)\b[^.\n]{0,240}?(?:to|as|at|of)\s+["'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)["'`]?/i) ?? text.match(/(?:must be|equals?)\s+["'`]?(-?\d+(?:\.\d+)?|enabled|disabled|true|false|yes|no|on|off)["'`]?/i);
-  const expected = labeledValue || compactValue || valueMatch?.[1];
+  const labeledExpected = labeledValue ?? compactValue;
+  const multilineExpected = /(?:^|\n)\s*Value\s*:\s*See\s+message\s+text\s+below\s*\n+([\s\S]+)$/i.exec(text)?.[1]?.trim();
+  const expected = multilineExpected || (labeledExpected !== undefined ? (concreteRegistryValue(labeledExpected) ? labeledExpected : undefined) : valueMatch?.[1]);
   const fields: Record<string, Json> = {};
   if (expected !== undefined) {
     const parsed = registryScalar(expected);
@@ -259,8 +365,9 @@ function registryCandidate(text: string): Candidate | undefined {
     ...(keys.some(key => /\[[^\]]+\]/.test(key)) ? ['A registry path contains a placeholder such as [guid]; confirm how the target expands it before use.'] : []),
     ...(fields.value ? [minimumFieldAssumption(fields.value)] : ['No unambiguous expected registry value was found; the generated Test is presence-only.'])
   ];
-  const confidence: AssistedConfidence = fields.value && labeled && !alternatePaths && !keys.some(key => /\[[^\]]+\]/.test(key)) ? 'high' : 'medium';
-  return { capability, object: objectFor(keys[0]), testCandidates, conditionalBranches, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !fields.value, confidence, assumptions };
+  const confidence: AssistedConfidence = fields.value && labeled && !alternatePaths && !keys.some(key => /\[[^\]]+\]/.test(key)) ? (multilineExpected ? 'medium' : 'high') : 'medium';
+  const nonConcreteExpectation = labeledExpected !== undefined && !concreteRegistryValue(labeledExpected);
+  return { capability, object: objectFor(keys[0]), testCandidates, conditionalBranches, fields: Object.keys(fields).length ? fields : undefined, presenceOnly: !fields.value, confidence, manualOnlyReason: nonConcreteExpectation && /site[- ]defined|manual review|organization(?:al)?/i.test(text) ? 'The registry procedure names an organization-defined or explicitly manual value; a placeholder string cannot be turned into a safe automated predicate.' : undefined, assumptions };
 }
 function minimumFieldAssumption(value: Json): string {
   const predicate = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, Json> : {};
@@ -399,16 +506,37 @@ function windowsSemanticCandidate(text: string): Candidate | undefined {
 }
 
 function windowsCmdletCandidate(text: string): Candidate | undefined {
-  const command = text.match(/\bGet-ADUser\b[^\n]*/i)?.[0];
+  const adCommand = text.match(/\bGet-ADUser\b[^\n]*/i)?.[0];
+  const cimCommand = text.match(/\bGet-CimInstance\b[^\n]*/i)?.[0] ?? text.match(/\bGet-WmiObject\b[^\n]*/i)?.[0];
+  const filterPattern = /-Filter\s+(?:'([^']*)'|"([^"]*)"|\{([^}]*)\})/i;
+  // A procedure can include both a domain-controller command and a local
+  // account command. Select the first command with a complete, parseable
+  // predicate instead of letting an unbounded `-Filter *` hide the concrete
+  // CIM query that follows.
+  const command = adCommand && filterPattern.test(adCommand) ? adCommand : cimCommand && filterPattern.test(cimCommand) ? cimCommand : adCommand;
   if (!command) return undefined;
-  const filter = command.match(/-Filter\s+\{([^}]*)\}/i)?.[1]?.trim();
-  if (!filter) return undefined;
+  const filter = command.match(filterPattern);
+  const filterValue = filter?.[1] ?? filter?.[2] ?? filter?.[3];
+  if (!filterValue) return undefined;
+  const isCim = Boolean(cimCommand);
+  const noun = isCim ? (command.match(/-Class\s+([A-Za-z0-9_]+)/i)?.[1] ? 'CimInstance' : 'WmiObject') : 'ADUser';
+  const moduleName = isCim ? (noun === 'CimInstance' ? 'CimCmdlets' : 'Microsoft.PowerShell.Management') : 'ActiveDirectory';
+  const className = command.match(/-Class\s+([A-Za-z0-9_]+)/i)?.[1];
   const object: Record<string, Json> = {
-    module_name: 'ActiveDirectory', module_id: null, module_version: null, verb: 'Get', noun: 'ADUser',
-    parameters: { fields: { filter: { equals: filter, selection_match: 'every' } } },
+    module_name: moduleName, module_id: null, module_version: null, verb: 'Get', noun,
+    parameters: { fields: {
+      ...(isCim && className ? { class: { equals: className, selection_match: 'every' } } : {}),
+      filter: { equals: filterValue.trim(), selection_match: 'every' }
+    } },
     select: { fields: { first: { equals: '100', selection_match: 'every' } } }
   };
-  return { capability: 'windows.cmdlet', object, presenceOnly: true, itemFound: 'none', confidence: 'high', assumptions: ['Inferred the native ActiveDirectory Get-ADUser query from the pasted PowerShell check.', 'The generated Test expects no noncompliant accounts; confirm the filter and exception scope.'] };
+  return {
+    capability: 'windows.cmdlet', object, presenceOnly: true, itemFound: 'none', confidence: 'high',
+    assumptions: [
+      `Inferred the native ${isCim ? `${noun} ${className ?? 'class'}` : 'ActiveDirectory Get-ADUser'} query from the pasted PowerShell check.`,
+      'The generated Test expects no returned noncompliant accounts; confirm domain/local-account and exception scope.'
+    ]
+  };
 }
 
 function windowsWmiCandidate(text: string): Candidate | undefined {
@@ -439,12 +567,13 @@ function windowsCertificateFileCandidate(text: string): Candidate | undefined {
   const negative = /(?:must have|must be|should be)\s+(?:removed|absent)|(?:any|no)\s+files?\s+with/i.test(text);
   const tests = extensions.map(extension => ({ title: `Certificate files *.${extension} ${negative ? 'are absent' : 'are present'}`, object: { filepath: { matches_regex: `.*\\.${extension}$` } }, itemFound: negative ? 'none' : 'one_or_more' }));
   const first = tests[0];
-  return { capability: 'windows.file', object: first.object, testCandidates: tests.map(test => ({ title: test.title, presenceOnly: true, itemFound: test.itemFound })), evaluate: tests.length > 1 ? 'and' : undefined, presenceOnly: true, itemFound: first.itemFound, confidence: 'high', assumptions: [`Inferred a Windows certificate file search for ${extensions.map(value => `*.${value}`).join(' and ')}.`, ...(negative ? ['Inferred that matching certificate files must be absent.'] : [])] };
+  return { capability: 'windows.file', object: first.object, testCandidates: tests.map(test => ({ title: test.title, object: test.object, presenceOnly: true, itemFound: test.itemFound })), evaluate: tests.length > 1 ? 'and' : undefined, presenceOnly: true, itemFound: first.itemFound, confidence: 'high', assumptions: [`Inferred a Windows certificate file search for ${extensions.map(value => `*.${value}`).join(' and ')}.`, ...(negative ? ['Inferred that matching certificate files must be absent.'] : [])] };
 }
 
 function windowsFileCandidate(text: string): Candidate | undefined {
   const path = text.match(/\b[A-Za-z]:\\(?:[^\s"'<>|]+\\?)+/i)?.[0]?.replace(/[),.;:]+$/, '');
   if (!path || /c:\\path\\filename\.txt/i.test(path) || !/(?:Windows|NTFS|icacls|file permissions?|ACL|directory|file\s+(?:exist|present|removed|permissions?))/i.test(text)) return undefined;
+  if (/\[[^\]]+\]|(?:substituting|location and file name).{0,100}\bfile\.xml\b/i.test(text)) return { capability: 'windows.file', object: { filepath: { equals: path } }, presenceOnly: true, confidence: 'low', manualOnlyReason: 'The procedure uses a placeholder evidence-output path rather than naming the policy object or predicate to evaluate; collecting that temporary file would not automate the requirement.', assumptions: ['Detected a command output file placeholder in the procedure.', 'The generated Assessment must not treat a reviewer-selected evidence filename as the compliance object.'] };
   return { capability: 'windows.file', object: { filepath: { equals: path } }, presenceOnly: true, confidence: /\bicacls\b/i.test(text) ? 'high' : 'medium', assumptions: [`Inferred a Windows file Object from the path '${path}'.`, 'The expected Windows file state/permissions still needs author review; this draft checks Item presence only.'] };
 }
 function linuxPartitionCandidate(text: string): Candidate | undefined {
@@ -1475,7 +1604,7 @@ function hasOutcome(value: unknown, key: 'not_applicable' | 'not_evaluated'): bo
   return Object.values(value as Record<string, unknown>).some(child => hasOutcome(child, key));
 }
 function hasDynamicPopulation(text: string): boolean {
-  return /(?:\[[A-Z][A-Z0-9 _-]{1,40}\]|\/[^\s\n]*\*[^\s\n]*|conf\.d|for each|each applicable|all local interactive|all files? and director|all files? contained|every file|per-user|whose\s+owner|of which\s+the\s+(?:user|owner)|is a member of)/i.test(text);
+  return /(?:\[[A-Z][A-Z0-9 _-]{1,40}\]|(?:^|\s)(?:[A-Za-z]:\\|\/(?:etc|var|usr|opt|home|root|tmp|dev|boot|srv|bin|sbin)(?:\/|\b))[^\s]*\*[^\s]*|conf\.d|for each|each applicable|all local interactive|all files? and director|all files? contained|every file|per-user|whose\s+owner|of which\s+the\s+(?:user|owner)|is a member of)/i.test(text);
 }
 function hasAlternativeNotification(text: string): boolean {
   return /\b(?:email|mail)\b[\s\S]{0,220}\b(?:and\/or|or)\b[\s\S]{0,220}\b(?:monitoring system trap|trap|local (?:computer )?console|hardware indication|lights?)\b/i.test(text)
@@ -1485,7 +1614,7 @@ function hasConditionalApplicability(text: string): boolean {
   // A finding condition such as "if the package is not installed, this is a
   // finding" is not an applicability branch. Require explicit N/A language
   // or a conditional state that actually leads to N/A.
-  return /not applicable|\bn\/a\b/i.test(text)
+  return /not applicable|\bn\/?a\b|\bNA\b/i.test(text)
     || /if\s+(?:the\s+)?[^.\n]{0,180}\b(?:not installed|not configured|inactive|not being used|not being utilized|absent)\b[^.\n]{0,100}\b(?:not applicable|n\/a)\b/i.test(text);
 }
 function hasConcretePredicateCue(text: string): boolean {
@@ -1498,7 +1627,7 @@ function hasComparisonOrExplicitAbsence(test: any): boolean {
   const found = require.item_requirement?.items_found;
   return found === 'none' || found === 'one_or_more' || found === 'exactly_one';
 }
-export function likelyAutomationReviewReasons(result: AssistedDraftResult, checkText: string): string[] {
+export function likelyAutomationReviewReasons(result: AssistedDraftResult, checkText: string, pack?: MetadataPack): string[] {
   const reasons: string[] = [];
   if (result.generatedMode !== 'automated' || result.diagnostics.length > 0) reasons.push('The offline draft is not a clean automated candidate.');
   if (result.confidence === 'low') reasons.push('The offline draft has low confidence.');
@@ -1507,9 +1636,19 @@ export function likelyAutomationReviewReasons(result: AssistedDraftResult, check
   const assessment = value?.assessment;
   const tests = Object.values(assessment?.tests ?? {}) as any[];
   if (!tests.length) reasons.push('The draft contains no Tests.');
-  if (tests.some(test => !test?.object || typeof test.object !== 'object' || Array.isArray(test.object) || Object.keys(test.object).length === 0)) reasons.push('At least one Test has no concrete Object selector.');
+  if (tests.some(test => {
+    if (!test?.object || typeof test.object !== 'object' || Array.isArray(test.object) || Object.keys(test.object).length > 0) return false;
+    // Some native capabilities intentionally have no Object selectors (for
+    // example policy tables and command collectors). When the pinned schema
+    // says no selector branch is required, an empty Object is complete rather
+    // than a selectorless placeholder.
+    if (pack) {
+      try { if (new GuidedCatalog(pack).objectRequirements(String(test.capability ?? '')).length === 0) return false; } catch { /* retain the conservative gate */ }
+    }
+    return true;
+  })) reasons.push('At least one Test has no concrete Object selector.');
   if (tests.some(test => !hasComparisonOrExplicitAbsence(test))) reasons.push('At least one Test has no explicit predicate or presence/absence requirement.');
-  if (hasConditionalApplicability(checkText)) {
+  if (hasConditionalApplicability(checkText) || hasOutcome(assessment?.evaluate, 'not_evaluated')) {
     if (!hasOutcome(assessment?.evaluate, 'not_applicable')) reasons.push('The procedure contains an applicability branch without an explicit not_applicable outcome.');
     if (hasOutcome(assessment?.evaluate, 'not_evaluated')) reasons.push('The draft leaves an applicability branch not_evaluated instead of resolving it as a technical gate or Not Applicable result.');
   }
@@ -1522,6 +1661,7 @@ export function likelyAutomationReviewReasons(result: AssistedDraftResult, check
   // candidate when the prose clearly specifies a value. Presence-only files
   // (for example /etc/passwd) remain eligible.
   if (hasConcretePredicateCue(checkText) && tests.some(test => /^independent\.textfilecontent$/i.test(String(test?.capability)) && Object.keys(test?.require?.fields ?? {}).length === 0 && !/package|file\s+(?:is\s+)?(?:present|exists)|must\s+be\s+installed/i.test(checkText))) reasons.push('The procedure contains a value/state predicate but the text-file Test has no field predicate.');
+  if (/(?:permission|ACL|access|read(?:\s+and)?\s+execute|Full Control)/i.test(checkText) && tests.some(test => test?.capability === 'windows.file' && Object.keys(test?.require?.fields ?? {}).length === 0)) reasons.push('The procedure specifies Windows file permissions or ACLs, but the draft only checks path presence.');
   // Shell output must either be filtered by the command/object or be an
   // explicit no-output test. Merely collecting `systemctl status`, `cat`, or
   // `ls` output is not automation of the requirement.
@@ -1535,8 +1675,8 @@ export function likelyAutomationReviewReasons(result: AssistedDraftResult, check
  * candidate. Human-approved exceptions remain eligible when the technical
  * Test itself is concrete and preserves its normal pass/fail result.
  */
-export function isLikelyAutomatableDraft(result: AssistedDraftResult, checkText: string): boolean {
-  return likelyAutomationReviewReasons(result, checkText).length === 0;
+export function isLikelyAutomatableDraft(result: AssistedDraftResult, checkText: string, pack?: MetadataPack): boolean {
+  return likelyAutomationReviewReasons(result, checkText, pack).length === 0;
 }
 
 function candidateFor(input: AssistedDraftInput, pack: MetadataPack): Candidate | undefined {
