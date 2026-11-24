@@ -57,6 +57,30 @@ A known negative result must never be made informational by an Evaluate branch.
 A branch may be `not_applicable` only for genuine inapplicability and may be
 `not_evaluated` only for an unavailable/unfinished technical assessment.
 
+## Windows per-profile registry rule
+
+When the source explicitly identifies `HKEY_CURRENT_USER` (or `HKCU`), the
+capability is always `windows.ntuser`, never `windows.registry`. The registry
+collector observes only the currently logged-in user; `windows.ntuser` is the
+per-profile collector for the user hives stored in NTUSER.DAT.
+
+For the normal “all users who have logged in” population, serialize the native
+Object acquisition controls explicitly:
+
+```yaml
+object:
+  include_default: false
+  item_creation: every_ntuser
+  key:
+    equals: Software\Policies\Example
+  name:
+    equals: Setting
+```
+
+The technical `Require` predicate remains unchanged. Do not substitute a
+single-user `windows.registry` Test for an explicit HKCU source. This is a
+generic capability/population rule, not a Rule-specific exception.
+
 ## Native Test semantics
 
 Use the exact schema shape and explicit values:
