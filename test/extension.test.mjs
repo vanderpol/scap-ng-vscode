@@ -445,6 +445,8 @@ test('direct 0.4.1 applicability expressions are displayed read-only instead of 
 
 test('Graphical Rule context shows inherited applicability from coverage without duplicating it into Rule YAML', () => {
   assert.match(extensionSource, /Inherited applicability/);
+  assert.match(extensionSource, /<button id=\"refresh\" type=\"button\">Refresh<\/button>/);
+  assert.match(extensionSource, /message\.type === 'ready' \|\| message\.type === 'refresh'/);
   assert.match(extensionSource, /converter coverage sidecar/);
   assert.match(extensionSource, /not duplicated into the Rule YAML/);
   assert.match(extensionSource, /inheritedApplicability/);
