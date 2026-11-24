@@ -12,6 +12,15 @@ export const aiAssistanceModes = ['none', 'codex-local', 'remote', 'vscode', 'lo
 export type AiAssistanceMode = typeof aiAssistanceModes[number];
 
 /** Codex reasoning effort; host delegates to the user's Codex configuration. */
+export const DEFAULT_AI_BATCH_CONCURRENCY = 4;
+export const MAX_AI_BATCH_CONCURRENCY = 8;
+
+export function normalizeAiBatchConcurrency(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_AI_BATCH_CONCURRENCY;
+  return Math.min(MAX_AI_BATCH_CONCURRENCY, Math.max(1, Math.floor(numeric)));
+}
+
 export const codexReasoningEfforts = ['auto', 'host', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type CodexReasoningEffort = typeof codexReasoningEfforts[number];
 export type CodexResolvedReasoningEffort = Exclude<CodexReasoningEffort, 'auto'>;
@@ -31,6 +40,8 @@ export interface AiAuthoringConfiguration {
   codexModel: string;
   /** Optional per-request Codex effort; auto selects from bounded procedure complexity, host preserves config.toml. */
   codexReasoningEffort?: CodexReasoningEffort;
+  /** Shared worker limit for interactive and overnight AI batches. */
+  batchConcurrency?: number;
 }
 
 export function normalizeAiAssistanceMode(value: unknown): AiAssistanceMode {

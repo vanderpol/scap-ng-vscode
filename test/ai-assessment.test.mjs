@@ -359,6 +359,18 @@ test('AI manual-only output remains provider-authored review state without offli
   assert.ok(result.unresolved.includes('ISSO review is required.'));
 });
 
+test('AI prompt carries the offline candidate as advisory context without bypassing validation', async () => {
+  const payload = JSON.stringify({ generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '', assumptions: [], unresolved_questions: [], citations: [] });
+  let outbound;
+  const result = await createAiAssessmentDraft(pack, process.cwd(), 'codex-local', '', 'model', {
+    ruleId: 'offline-context-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.',
+    offlineCandidateYaml: validYaml
+  }, { request: async messages => { outbound = messages; return payload; } });
+  assert.equal(result.generatedMode, 'manual-only');
+  assert.match(outbound[1].content, /Deterministic offline preflight candidate/);
+  assert.match(outbound[1].content, /do not copy it blindly/);
+});
+
 test('withtools models fall back once when the gateway rejects tools', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,

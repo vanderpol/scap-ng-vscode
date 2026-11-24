@@ -357,6 +357,13 @@
           "default": "auto",
           "scope": "window",
           "description": "Per-request Codex reasoning effort. Automatic analyzes each procedure locally and chooses Low, Medium, or High; Medium is the usual choice and High is reserved for complex/ambiguous procedures. The total authoring deadline is 240 seconds. Host preserves the Codex CLI setting; unsupported model/effort combinations may be rejected by Codex."
+        },
+        "scapNg.ai.batchConcurrency": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Shared maximum concurrent Rules for interactive and overnight AI batches. Defaults to 4 and is capped at 8; each Rule still runs accuracy stages sequentially."
         }
       }
     },

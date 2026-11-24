@@ -1,8 +1,11 @@
-import { mkdirSync, rmSync, cpSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, cpSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 const stage = '/tmp/scap-ng-vscode-vsix';
 rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'extension'), { recursive: true });
 for (const path of ['package.json','README.md','LICENSE','THIRD-PARTY-NOTICES.md','schema-profile.json','docs','media','dist']) cpSync(path, join(stage, 'extension', path), { recursive: true });
+const verifiedPack = '.external/editor-pack';
+if (!existsSync(join(verifiedPack, 'manifest.json'))) throw new Error(`Verified offline metadata pack is missing at ${verifiedPack}; run npm run bootstrap:pack before packaging.`);
+cpSync(verifiedPack, join(stage, 'extension', 'editor-pack'), { recursive: true });
 // Runtime dependencies are intentionally staged explicitly: VS Code does not install npm
 // dependencies for a VSIX, and the offline extension must activate from a cold install.
 const runtimeDependencies = ['yaml', 'ajv', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'require-from-string', 'pcre2-wasm'];

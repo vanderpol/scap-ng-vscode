@@ -27,10 +27,11 @@ import { WelcomePanel, type WelcomeContextInfo } from './welcome.js';
 import { assessmentFileName } from './assessment-filename.js';
 import { AiConfigurationPanel } from './ai-configuration-panel.js';
 import { EditorOptionsPanel, type EditorOptions } from './editor-options-panel.js';
-import { aiEndpointError, normalizeAiAssistanceMode, normalizeCodexReasoningEffort, type AiAuthoringConfiguration } from './ai-configuration.js';
+import { aiEndpointError, normalizeAiAssistanceMode, normalizeAiBatchConcurrency, normalizeCodexReasoningEffort, type AiAuthoringConfiguration } from './ai-configuration.js';
 import { testOpenAiCompatibleGateway } from './ai-remote.js';
 import { createAiAssessmentDraft, type AiAssessmentInput, type AiAuthoringProgress } from './ai-assessment.js';
 import { effortPlanningSeconds, recommendCodexReasoningEffort, resolveCodexReasoningEffort } from './codex-effort.js';
+import { configureSharedAiBatchConcurrency, runConcurrentStageBatch, runWithSharedAiBatchLimit, type BatchJob, type BatchStage } from './ai-batch.js';
 import { discoverCodexModels, runCodexLocal, testCodexLocal } from './codex-local.js';
 import { resolveStudioSearch } from './studio-search.js';
 
@@ -257,13 +258,17 @@ interface BatchAutomationEntry {
   /** Fast local preflight only; never establishes a provider manual-only decision. */
   offlineDisposition?: 'likely-manual' | 'organizational-input' | 'technical-candidate';
   status: BatchAutomationStatus;
-  phase?: 'queued' | 'preparing' | 'sending-request' | 'waiting-provider' | 'received-response' | 'validating' | 'sending-correction' | 'waiting-correction' | 'received-correction' | 'validating-correction' | 'complete' | 'saving';
+  phase?: 'queued' | 'preparing' | 'sending-request' | 'waiting-provider' | 'received-response' | 'validating' | 'sending-correction' | 'waiting-correction' | 'received-correction' | 'validating-correction' | 'independent-verification' | 'complete' | 'saving';
   startedAt?: number;
   completedAt?: number;
   attempt?: number;
   result?: any;
   error?: string;
   comparisonOnly?: boolean;
+  /** Populated only after a separate review request passes local validation. */
+  independentVerification?: { status: 'passed' | 'failed'; confidence?: string; diagnostics: string[] };
+  /** Generic machine-readable reason for a review outcome; never Rule-specific. */
+  outcomeReason?: 'provider-failure' | 'schema-or-coverage' | 'independent-verification' | 'low-confidence' | 'manual-decision';
   cancelRequested?: boolean;
 }
 
@@ -271,7 +276,7 @@ function batchAutomationUserStatus(entry: BatchAutomationEntry): string {
   switch (entry.status) {
     case 'ready': return entry.result?.automationClass === 'organizational-input' ? 'Organizational-input candidate; review and bind policy values' : 'Fully automated candidate; ready for human review';
     case 'comparison-only': return 'AI comparison only; existing automation is protected';
-    case 'manual-only': return 'Manual-only candidate; human decision required';
+    case 'manual-only': return entry.outcomeReason === 'manual-decision' ? 'Manual-only candidate; human decision required' : 'Provider classified this Rule manual-only';
     case 'manual-only-approved': return 'Manual-only decision recorded';
     case 'rejected': {
       const diagnostics = entry.result?.diagnostics ?? [];
@@ -299,7 +304,7 @@ function batchAutomationEntryForUi(entry: BatchAutomationEntry): any {
     status: entry.status, statusLabel: batchAutomationUserStatus(entry), error: entry.error, comparisonOnly: entry.comparisonOnly,
     yaml: result?.yaml, generatedMode: result?.generatedMode, automationClass: result?.automationClass, confidence: result?.confidence,
     assumptions: result?.assumptions ?? [], unresolved: result?.unresolved ?? [], diagnostics: result?.diagnostics ?? [],
-    provider: result?.provider, model: result?.model, durationMs: result?.durationMs,
+    provider: result?.provider, model: result?.model, durationMs: result?.durationMs, independentVerification: entry.independentVerification, outcomeReason: entry.outcomeReason,
     reasoningEffort: result?.reasoningEffort, reasoningEffortSelection: result?.reasoningEffortSelection, reasoningEffortReason: result?.reasoningEffortReason, effortRecommendation: entry.effortRecommendation, offlineDisposition: entry.offlineDisposition, toolMode: result?.toolMode, toolWarning: result?.toolWarning,
     checkText: entry.checkText, platform: entry.platform, phase: entry.phase, startedAt: entry.startedAt,
     completedAt: entry.completedAt, attempt: entry.attempt, cancelRequested: entry.cancelRequested
@@ -308,6 +313,11 @@ function batchAutomationEntryForUi(entry: BatchAutomationEntry): any {
 
 function aiQuotaFailure(value: unknown): boolean {
   return /\b(?:quota|rate limit|rate-limit|insufficient[_ -]?quota|credits?|billing|tokens? exhausted|token limit)\b/i.test(String(value ?? ''));
+}
+
+function aiTransientFailure(value: unknown): boolean {
+  const text = String(value ?? '');
+  return aiQuotaFailure(text) || /(?:request timed out|timed out|gateway responded with HTTP 5|gateway connection failed|before a response was received|temporarily unavailable|connection reset)/i.test(text);
 }
 
 /**
@@ -381,10 +391,10 @@ function benchmarkBatchAutomationHtml(scopeLabel: string, mode: BatchAutomationM
   .status-ready,.status-linked{color:var(--vscode-testing-iconPassed)}.status-comparison-only,.status-manual-only,.status-manual-only-approved,.status-rejected,.status-failed,.status-not-attempted,.status-cancelled{color:var(--vscode-editorWarning-foreground)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}button{font:inherit;padding:7px 10px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}button.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}button:disabled{opacity:.5;cursor:default}pre{white-space:pre-wrap;overflow:auto;max-height:430px;background:var(--vscode-textCodeBlock-background);padding:10px;font:11px var(--vscode-editor-font-family)}details{margin:8px 0}li{margin:4px 0}.error{color:var(--vscode-errorForeground)}.source-note{white-space:pre-wrap;max-height:220px;overflow:auto;background:var(--vscode-textCodeBlock-background);padding:9px;font:11px var(--vscode-editor-font-family)}
   @media(max-width:800px){.layout{grid-template-columns:1fr}}
   </style></head><body><h1>Batch Assessment automation review</h1>
-  <div class="banner"><p><strong>Scope:</strong> ${escapeHtml(scopeLabel)}</p><p>This ${mode === 'ai' ? 'AI' : 'offline'} pass uses the same source-backed single-Rule workflow for each eligible Rule. ${mode === 'ai' ? 'AI requests run sequentially to protect provider quotas; existing automation is comparison-only and will not be replaced.' : 'Offline candidates are generated locally and do not use provider tokens.'}</p><p><strong>Automatic effort estimates are local preflight guidance.</strong> They show the expected Codex effort and planning window before a provider response arrives. A local “likely manual” signal is not a final manual-only decision; the AI result still requires review.</p><p><strong>Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only.</strong> Every result is review-only until you approve it individually. A generated candidate never changes a Rule.</p></div>
+  <div class="banner"><p><strong>Scope:</strong> ${escapeHtml(scopeLabel)}</p><p>This ${mode === 'ai' ? 'AI' : 'offline'} pass uses the same source-backed single-Rule workflow for each eligible Rule. ${mode === 'ai' ? 'AI Rules use the shared configurable worker limit (default 4, maximum 8); each Rule runs generation then independent verification sequentially, and quota failures are isolated to that Rule. Existing automation is comparison-only and will not be replaced.' : 'Offline candidates are generated locally and do not use provider tokens.'}</p><p><strong>Automatic effort estimates are local preflight guidance.</strong> They show the expected Codex effort and planning window before a provider response arrives. A local “likely manual” signal is not a final manual-only decision; the AI result still requires review.</p><p><strong>Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only.</strong> Every result is review-only until you approve it individually. A generated candidate never changes a Rule.</p></div>
   <div id="progress" class="progress" role="status" aria-live="polite">Preparing the review queue…</div><div id="counts" class="counts"></div><div class="actions"><button id="cancelAll" class="danger" disabled>Cancel All</button></div>
   <div class="layout"><section><h2>Draft queue</h2><div id="list" class="list"></div></section><section><h2 id="detailTitle">Select a Rule</h2><div id="detail" class="detail"><p class="muted">Each candidate requires human review before it can be saved or linked.</p></div></section></div><div class="actions"><button id="close">Close (cancel active work)</button></div>
-  <script nonce="batch-automation">const vscode=acquireVsCodeApi();let data={scopeLabel:${scriptJson(scopeLabel)},mode:${scriptJson(mode)},entries:${scriptJson(initialEntries)}};let selected=0;let timer;let disclosureState={};let scrollState={};const $=id=>document.getElementById(id);const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));function statusClass(value){return 'status-'+String(value||'').replace(/[^a-z-]/g,'');}function phaseLabel(value){return ({queued:'queued to start',preparing:'preparing source','sending-request':'sending request to provider','waiting-provider':'waiting for provider response','received-response':'received first response; validating','validating':'validating locally','sending-correction':'sending revised request','waiting-correction':'waiting for correction response','received-correction':'received correction; validating','validating-correction':'validating corrected response',complete:'complete',saving:'saving approved files'})[value]||'working';}function elapsed(entry){return entry?.startedAt?Math.max(0,Math.floor(((entry.completedAt||Date.now())-entry.startedAt)/1000))+'s':'';}function rememberDisclosureState(){for(const node of document.querySelectorAll('details[data-state-key]'))disclosureState[node.dataset.stateKey]=node.open;}function rememberScrollState(){for(const node of document.querySelectorAll('[data-scroll-key]'))scrollState[node.dataset.scrollKey]=node.scrollTop;}function restoreScrollState(){for(const node of document.querySelectorAll('[data-scroll-key]'))if(scrollState[node.dataset.scrollKey]!==undefined)node.scrollTop=scrollState[node.dataset.scrollKey];}function render(){rememberDisclosureState();rememberScrollState();const batchRunning=data.entries.some(item=>item.status==='generating');const activeIndex=data.entries.findIndex(item=>item.status==='generating');if(batchRunning&&activeIndex>=0&&data.entries[selected]?.status!=='generating')selected=activeIndex;const list=$('list');list.replaceChildren();data.entries.forEach((entry,index)=>{const row=document.createElement('button');row.type='button';row.className='row'+(index===selected?' selected':'');row.disabled=batchRunning;row.title=batchRunning?'Queue navigation is locked while generation is active; use Cancel Rule or Cancel All.':'';row.onclick=()=>{selected=index;render();};const name=document.createElement('strong');name.textContent=entry.title||entry.ruleId;row.append(name);const id=document.createElement('span');id.textContent=entry.ruleId;row.append(id);const state=document.createElement('span');state.className=statusClass(entry.status);state.textContent=(entry.statusLabel||entry.status)+(entry.status==='generating'&&entry.phase?' · '+entry.phase:'')+(entry.status==='generating'&&entry.effortRecommendation?' · automatic '+entry.effortRecommendation.effort+' / '+entry.effortRecommendation.planningSeconds+'s plan':'')+(entry.status==='generating'&&elapsed(entry)?' · '+elapsed(entry):'');row.append(state);list.append(row);});const counts={queued:data.entries.filter(e=>e.status==='generating'&&!e.startedAt).length,running:data.entries.filter(e=>e.status==='generating'&&e.startedAt).length,ready:data.entries.filter(e=>e.status==='ready').length,manual:data.entries.filter(e=>['manual-only','manual-only-approved'].includes(e.status)).length,rejected:data.entries.filter(e=>['rejected','failed'].includes(e.status)).length,cancelled:data.entries.filter(e=>e.status==='cancelled').length,done:data.entries.filter(e=>['linked','skipped','manual-only-approved'].includes(e.status)).length};$('counts').innerHTML='<span class="count"><strong>'+counts.queued+'</strong> queued</span><span class="count"><strong>'+counts.running+'</strong> running</span><span class="count"><strong>'+counts.ready+'</strong> ready for review</span><span class="count"><strong>'+counts.manual+'</strong> manual decision</span><span class="count"><strong>'+counts.rejected+'</strong> retry/review</span><span class="count"><strong>'+counts.cancelled+'</strong> canceled</span><span class="count"><strong>'+counts.done+'</strong> completed</span>';const cancelAll=$('cancelAll');if(cancelAll){cancelAll.disabled=!batchRunning;cancelAll.onclick=()=>vscode.postMessage({type:'cancelAll'});}const entry=data.entries[selected];const detail=$('detail');detail.replaceChildren();$('detailTitle').textContent=entry?entry.title:'Select a Rule';if(!entry){$('progress').textContent='No candidates are available.';return;}const meta=document.createElement('p');meta.className='meta';meta.textContent=[entry.ruleId,entry.sourceLabel,entry.confidence&&('confidence '+entry.confidence),entry.automationClass&&('class '+(entry.automationClass==='organizational-input'?'organizational-input':'fully-automated')),entry.provider&&('provider '+entry.provider),entry.model&&('model '+entry.model),entry.effortRecommendation&&('estimated '+entry.effortRecommendation.effort+' / up to '+entry.effortRecommendation.planningSeconds+'s'),entry.reasoningEffort&&('effort '+entry.reasoningEffort+(entry.reasoningEffortSelection==='automatic'?' (automatic)':'')),entry.reasoningEffortReason&&('effort basis '+entry.reasoningEffortReason),entry.toolMode&&('tools '+entry.toolMode),entry.durationMs!=null&&('duration '+(entry.durationMs/1000).toFixed(1)+'s')].filter(Boolean).join(' · ');detail.append(meta);const state=document.createElement('p');state.className=statusClass(entry.status);state.textContent=(entry.statusLabel||entry.status)+(entry.status==='generating'&&entry.phase?' · '+entry.phase:'')+(entry.status==='generating'?' · '+elapsed(entry):'');detail.append(state);if(entry.effortRecommendation||entry.offlineDisposition){const estimate=document.createElement('p');estimate.className='notice';const effort=entry.effortRecommendation?entry.effortRecommendation.effort.toUpperCase():'pending';const windowText=entry.effortRecommendation?'planning window up to '+entry.effortRecommendation.planningSeconds+' seconds':'complexity estimate pending';estimate.textContent='Automatic preflight: '+effort+' · '+windowText+'. '+(entry.offlineDisposition==='likely-manual'?'The offline heuristic currently found no safe automated draft; this is not a final manual-only decision and the provider result is still required.':entry.offlineDisposition==='organizational-input'?'The offline heuristic predicts organizational-input automation; policy binding and human approval remain required.':'This is local planning guidance, not a provider guarantee.');detail.append(estimate);}if(entry.error){const error=document.createElement('p');error.className='error';error.textContent=entry.error;detail.append(error);}const audit=document.createElement('details');audit.dataset.stateKey='audit';audit.open=disclosureState.audit??(entry.status==='generating');const auditSummary=document.createElement('summary');auditSummary.textContent='Generation inputs / audit details';audit.append(auditSummary);const auditText=document.createElement('div');auditText.className='source-note';auditText.dataset.scrollKey='audit';auditText.textContent='Rule: '+entry.ruleId+'\\nTitle: '+entry.title+'\\nTarget platform: '+(entry.platform||'unknown')+'\\nSource: '+(entry.sourceLabel||'preparing')+'\\n\\nImmutable procedure/check text sent to the generator:\\n'+(entry.checkText||'Preparing source text…');audit.append(auditText);detail.append(audit);for(const [label,values] of [['Assumptions',entry.assumptions],['Review needed',entry.unresolved],['Diagnostics',entry.diagnostics]]){if(!Array.isArray(values)||!values.length)continue;const box=document.createElement('details');box.dataset.stateKey='list-'+label;box.open=disclosureState[box.dataset.stateKey]??false;const summary=document.createElement('summary');summary.textContent=label+' ('+values.length+')';box.append(summary);const ul=document.createElement('ul');for(const value of values){const li=document.createElement('li');li.textContent=value;ul.append(li);}box.append(ul);detail.append(box);}if(entry.toolWarning){const warning=document.createElement('p');warning.className='warning';warning.textContent='Provider/tool warning: '+entry.toolWarning;detail.append(warning);}if(entry.yaml){const heading=document.createElement('h3');heading.textContent=entry.comparisonOnly?'AI comparison YAML — existing automation unchanged':entry.status==='ready'?'Generated YAML — review before approval':'Candidate YAML — review only';detail.append(heading);const pre=document.createElement('pre');pre.dataset.scrollKey='yaml';pre.textContent=entry.yaml;detail.append(pre);}const actions=document.createElement('div');actions.className='actions';const cancelEntry=document.createElement('button');cancelEntry.textContent='Cancel Rule';cancelEntry.className='danger';cancelEntry.disabled=entry.status!=='generating';cancelEntry.title='Stop this Rule without saving or linking anything';cancelEntry.onclick=()=>vscode.postMessage({type:'cancelEntry',uri:entry.uri});actions.append(cancelEntry);const open=document.createElement('button');open.textContent='Open Rule';open.disabled=batchRunning;open.onclick=()=>vscode.postMessage({type:'openRule',uri:entry.uri});if(data.mode==='ai'){const retry=document.createElement('button');retry.textContent='Retry AI';retry.disabled=batchRunning||entry.comparisonOnly||!['rejected','failed','manual-only','cancelled'].includes(entry.status);retry.title='Send this Rule through a fresh bounded AI attempt (including one correction pass)';retry.onclick=()=>vscode.postMessage({type:'retry',uri:entry.uri});actions.append(retry);}const link=document.createElement('button');link.className='primary';link.textContent='Save and link this Assessment';link.disabled=batchRunning||entry.status!=='ready'||entry.comparisonOnly;link.title=entry.status==='ready'?'Human approval saves the Assessment and updates this Rule only':'Only a clean automated candidate can be linked';link.onclick=()=>vscode.postMessage({type:'approve',uri:entry.uri});actions.append(link);const manual=document.createElement('button');manual.textContent='Record manual-only decision';manual.disabled=batchRunning||entry.comparisonOnly||!['manual-only','rejected'].includes(entry.status);manual.onclick=()=>vscode.postMessage({type:'manualOnly',uri:entry.uri});actions.append(manual);const skip=document.createElement('button');skip.textContent='Skip';skip.disabled=batchRunning||['linked','skipped','manual-only-approved'].includes(entry.status);skip.onclick=()=>vscode.postMessage({type:'skip',uri:entry.uri});actions.append(skip);detail.append(actions);const active=data.entries.find(item=>item.status==='generating'&&item.startedAt)||data.entries.find(item=>item.status==='generating');const runningPosition=active?data.entries.indexOf(active)+1:0;$('progress').textContent=active?((active.startedAt?'Generating ':'Starting ')+'Rule '+runningPosition+' of '+data.entries.length+' · '+phaseLabel(active.phase)+(active.effortRecommendation?' · Automatic effort '+active.effortRecommendation.effort.toUpperCase()+'; plan up to '+active.effortRecommendation.planningSeconds+'s':' · Analyzing effort before provider request')+(active.offlineDisposition==='likely-manual'?' · offline preflight found no safe automated draft; not a final manual-only decision':active.offlineDisposition==='organizational-input'?' · offline preflight predicts organizational-input; binding and approval required':'')+(active.startedAt?' · '+elapsed(active)+' elapsed':'')+'. No files are being saved.'):(counts.done+counts.cancelled)+' of '+data.entries.length+' reviewed. '+(data.mode==='ai'?'AI output is provider-assisted and remains review-only until approved.':'Offline drafts remain candidates, not scanner/runtime proof.');requestAnimationFrame(restoreScrollState);}window.addEventListener('message',event=>{const message=event.data;if(message.type==='batch'){data=message.data;selected=Math.min(selected,Math.max(0,data.entries.length-1));render();}if(message.type==='status'){const status=$('progress');status.className=message.error?'progress error':'progress';status.textContent=message.message||'';}});timer=setInterval(()=>{if(data.entries.some(entry=>entry.status==='generating'))render();},1000);$('close').onclick=()=>vscode.postMessage({type:'close'});vscode.postMessage({type:'ready'});render();</script></body></html>`;
+  <script nonce="batch-automation">const vscode=acquireVsCodeApi();let data={scopeLabel:${scriptJson(scopeLabel)},mode:${scriptJson(mode)},entries:${scriptJson(initialEntries)}};let selected=0;let timer;let disclosureState={};let scrollState={};const $=id=>document.getElementById(id);const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));function statusClass(value){return 'status-'+String(value||'').replace(/[^a-z-]/g,'');}function phaseLabel(value){return ({queued:'queued to start',preparing:'preparing source','sending-request':'sending request to provider','waiting-provider':'waiting for provider response','received-response':'received first response; validating','validating':'validating locally','sending-correction':'sending revised request','waiting-correction':'waiting for correction response','received-correction':'received correction; validating','validating-correction':'validating corrected response','independent-verification':'independent verification',complete:'complete',saving:'saving approved files'})[value]||'working';}function elapsed(entry){return entry?.startedAt?Math.max(0,Math.floor(((entry.completedAt||Date.now())-entry.startedAt)/1000))+'s':'';}function rememberDisclosureState(){for(const node of document.querySelectorAll('details[data-state-key]'))disclosureState[node.dataset.stateKey]=node.open;}function rememberScrollState(){for(const node of document.querySelectorAll('[data-scroll-key]'))scrollState[node.dataset.scrollKey]=node.scrollTop;}function restoreScrollState(){for(const node of document.querySelectorAll('[data-scroll-key]'))if(scrollState[node.dataset.scrollKey]!==undefined)node.scrollTop=scrollState[node.dataset.scrollKey];}function render(){rememberDisclosureState();rememberScrollState();const batchRunning=data.entries.some(item=>item.status==='generating');const activeIndex=data.entries.findIndex(item=>item.status==='generating');if(batchRunning&&activeIndex>=0&&data.entries[selected]?.status!=='generating')selected=activeIndex;const list=$('list');list.replaceChildren();data.entries.forEach((entry,index)=>{const row=document.createElement('button');row.type='button';row.className='row'+(index===selected?' selected':'');row.disabled=batchRunning;row.title=batchRunning?'Queue navigation is locked while generation is active; use Cancel Rule or Cancel All.':'';row.onclick=()=>{selected=index;render();};const name=document.createElement('strong');name.textContent=entry.title||entry.ruleId;row.append(name);const id=document.createElement('span');id.textContent=entry.ruleId;row.append(id);const state=document.createElement('span');state.className=statusClass(entry.status);state.textContent=(entry.statusLabel||entry.status)+(entry.outcomeReason?' · '+entry.outcomeReason:'')+(entry.status==='generating'&&entry.phase?' · '+entry.phase:'')+(entry.status==='generating'&&entry.effortRecommendation?' · automatic '+entry.effortRecommendation.effort+' / '+entry.effortRecommendation.planningSeconds+'s plan':'')+(entry.status==='generating'&&elapsed(entry)?' · '+elapsed(entry):'');row.append(state);list.append(row);});const counts={queued:data.entries.filter(e=>e.status==='generating'&&!e.startedAt).length,running:data.entries.filter(e=>e.status==='generating'&&e.startedAt).length,ready:data.entries.filter(e=>e.status==='ready').length,manual:data.entries.filter(e=>['manual-only','manual-only-approved'].includes(e.status)).length,rejected:data.entries.filter(e=>['rejected','failed'].includes(e.status)).length,cancelled:data.entries.filter(e=>e.status==='cancelled').length,processed:data.entries.filter(e=>['ready','comparison-only','manual-only','manual-only-approved','rejected','failed','not-attempted','linked','skipped','cancelled'].includes(e.status)).length};$('counts').innerHTML='<span class="count"><strong>'+counts.queued+'</strong> queued</span><span class="count"><strong>'+counts.running+'</strong> running</span><span class="count"><strong>'+counts.ready+'</strong> ready for review</span><span class="count"><strong>'+counts.manual+'</strong> manual decision</span><span class="count"><strong>'+counts.rejected+'</strong> retry/review</span><span class="count"><strong>'+counts.cancelled+'</strong> canceled</span><span class="count"><strong>'+counts.processed+'</strong> processed</span>';const cancelAll=$('cancelAll');if(cancelAll){cancelAll.disabled=!batchRunning;cancelAll.onclick=()=>vscode.postMessage({type:'cancelAll'});}const entry=data.entries[selected];const detail=$('detail');detail.replaceChildren();$('detailTitle').textContent=entry?entry.title:'Select a Rule';if(!entry){$('progress').textContent='No candidates are available.';return;}const meta=document.createElement('p');meta.className='meta';meta.textContent=[entry.ruleId,entry.sourceLabel,entry.confidence&&('confidence '+entry.confidence),entry.automationClass&&('class '+(entry.automationClass==='organizational-input'?'organizational-input':'fully-automated')),entry.provider&&('provider '+entry.provider),entry.model&&('model '+entry.model),entry.effortRecommendation&&('estimated '+entry.effortRecommendation.effort+' / up to '+entry.effortRecommendation.planningSeconds+'s'),entry.reasoningEffort&&('effort '+entry.reasoningEffort+(entry.reasoningEffortSelection==='automatic'?' (automatic)':'')),entry.reasoningEffortReason&&('effort basis '+entry.reasoningEffortReason),entry.toolMode&&('tools '+entry.toolMode),entry.durationMs!=null&&('duration '+(entry.durationMs/1000).toFixed(1)+'s'),entry.independentVerification&&('independent verification '+entry.independentVerification.status),entry.outcomeReason&&('review reason '+entry.outcomeReason)].filter(Boolean).join(' · ');detail.append(meta);const state=document.createElement('p');state.className=statusClass(entry.status);state.textContent=(entry.statusLabel||entry.status)+(entry.outcomeReason?' · '+entry.outcomeReason:'')+(entry.status==='generating'&&entry.phase?' · '+entry.phase:'')+(entry.status==='generating'?' · '+elapsed(entry):'');detail.append(state);if(entry.effortRecommendation||entry.offlineDisposition){const estimate=document.createElement('p');estimate.className='notice';const effort=entry.effortRecommendation?entry.effortRecommendation.effort.toUpperCase():'pending';const windowText=entry.effortRecommendation?'planning window up to '+entry.effortRecommendation.planningSeconds+' seconds':'complexity estimate pending';estimate.textContent='Automatic preflight: '+effort+' · '+windowText+'. '+(entry.offlineDisposition==='likely-manual'?'The offline heuristic currently found no safe automated draft; this is not a final manual-only decision and the provider result is still required.':entry.offlineDisposition==='organizational-input'?'The offline heuristic predicts organizational-input automation; policy binding and human approval remain required.':'This is local planning guidance, not a provider guarantee.');detail.append(estimate);}if(entry.error){const error=document.createElement('p');error.className='error';error.textContent=entry.error;detail.append(error);}const audit=document.createElement('details');audit.dataset.stateKey='audit';audit.open=disclosureState.audit??(entry.status==='generating');const auditSummary=document.createElement('summary');auditSummary.textContent='Generation inputs / audit details';audit.append(auditSummary);const auditText=document.createElement('div');auditText.className='source-note';auditText.dataset.scrollKey='audit';auditText.textContent='Rule: '+entry.ruleId+'\\nTitle: '+entry.title+'\\nTarget platform: '+(entry.platform||'unknown')+'\\nSource: '+(entry.sourceLabel||'preparing')+'\\n\\nImmutable procedure/check text sent to the generator:\\n'+(entry.checkText||'Preparing source text…');audit.append(auditText);detail.append(audit);for(const [label,values] of [['Assumptions',entry.assumptions],['Review needed',entry.unresolved],['Diagnostics',entry.diagnostics]]){if(!Array.isArray(values)||!values.length)continue;const box=document.createElement('details');box.dataset.stateKey='list-'+label;box.open=disclosureState[box.dataset.stateKey]??false;const summary=document.createElement('summary');summary.textContent=label+' ('+values.length+')';box.append(summary);const ul=document.createElement('ul');for(const value of values){const li=document.createElement('li');li.textContent=value;ul.append(li);}box.append(ul);detail.append(box);}if(entry.independentVerification){const verification=document.createElement('p');verification.className=entry.independentVerification.status==='passed'?'':'warning';verification.textContent='Independent verification: '+entry.independentVerification.status+(entry.independentVerification.confidence?' · confidence '+entry.independentVerification.confidence:'')+(entry.independentVerification.diagnostics?.length?' · '+entry.independentVerification.diagnostics.join(' '):'');detail.append(verification);}if(entry.toolWarning){const warning=document.createElement('p');warning.className='warning';warning.textContent='Provider/tool warning: '+entry.toolWarning;detail.append(warning);}if(entry.yaml){const heading=document.createElement('h3');heading.textContent=entry.comparisonOnly?'AI comparison YAML — existing automation unchanged':entry.status==='ready'?'Generated YAML — review before approval':'Candidate YAML — review only';detail.append(heading);const pre=document.createElement('pre');pre.dataset.scrollKey='yaml';pre.textContent=entry.yaml;detail.append(pre);}const actions=document.createElement('div');actions.className='actions';const cancelEntry=document.createElement('button');cancelEntry.textContent='Cancel Rule';cancelEntry.className='danger';cancelEntry.disabled=entry.status!=='generating';cancelEntry.title='Stop this Rule without saving or linking anything';cancelEntry.onclick=()=>vscode.postMessage({type:'cancelEntry',uri:entry.uri});actions.append(cancelEntry);const open=document.createElement('button');open.textContent='Open Rule';open.disabled=batchRunning;open.onclick=()=>vscode.postMessage({type:'openRule',uri:entry.uri});if(data.mode==='ai'){const retry=document.createElement('button');retry.textContent='Retry AI';retry.disabled=batchRunning||entry.comparisonOnly||!['rejected','failed','manual-only','cancelled'].includes(entry.status);retry.title='Send this Rule through a fresh bounded AI attempt (including one correction pass)';retry.onclick=()=>vscode.postMessage({type:'retry',uri:entry.uri});actions.append(retry);}const link=document.createElement('button');link.className='primary';link.textContent='Save and link this Assessment';link.disabled=batchRunning||entry.status!=='ready'||entry.comparisonOnly;link.title=entry.status==='ready'?'Human approval saves the Assessment and updates this Rule only':'Only a clean automated candidate can be linked';link.onclick=()=>vscode.postMessage({type:'approve',uri:entry.uri});actions.append(link);const manual=document.createElement('button');manual.textContent='Record manual-only decision';manual.disabled=batchRunning||entry.comparisonOnly||!['manual-only','rejected'].includes(entry.status);manual.onclick=()=>vscode.postMessage({type:'manualOnly',uri:entry.uri});actions.append(manual);const skip=document.createElement('button');skip.textContent='Skip';skip.disabled=batchRunning||['linked','skipped','manual-only-approved'].includes(entry.status);skip.onclick=()=>vscode.postMessage({type:'skip',uri:entry.uri});actions.append(skip);detail.append(actions);const active=data.entries.find(item=>item.status==='generating'&&item.startedAt)||data.entries.find(item=>item.status==='generating');const runningPosition=active?data.entries.indexOf(active)+1:0;$('progress').textContent=active?((active.startedAt?'Generating ':'Starting ')+'Rule '+runningPosition+' of '+data.entries.length+' · '+phaseLabel(active.phase)+(active.effortRecommendation?' · Automatic effort '+active.effortRecommendation.effort.toUpperCase()+'; plan up to '+active.effortRecommendation.planningSeconds+'s':' · Analyzing effort before provider request')+(active.offlineDisposition==='likely-manual'?' · offline preflight found no safe automated draft; not a final manual-only decision':active.offlineDisposition==='organizational-input'?' · offline preflight predicts organizational-input; binding and approval required':'')+(active.startedAt?' · '+elapsed(active)+' elapsed':'')+'. No files are being saved.'):counts.processed+' of '+data.entries.length+' processed. '+(data.mode==='ai'?'AI output is provider-assisted and remains review-only until approved.':'Offline drafts remain candidates, not scanner/runtime proof.');requestAnimationFrame(restoreScrollState);}window.addEventListener('message',event=>{const message=event.data;if(message.type==='batch'){data=message.data;selected=Math.min(selected,Math.max(0,data.entries.length-1));render();}if(message.type==='status'){const status=$('progress');status.className=message.error?'progress error':'progress';status.textContent=message.message||'';}});timer=setInterval(()=>{if(data.entries.some(entry=>entry.status==='generating'))render();},1000);$('close').onclick=()=>vscode.postMessage({type:'close'});vscode.postMessage({type:'ready'});render();</script></body></html>`;
 }
 async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.ExtensionContext, index: WorkspaceIndex, api: any, state: BenchmarkContextState, selected: BenchmarkContextSummary, mode: BatchAutomationMode, filter: string, analysis: BenchmarkAutomationAnalysis | undefined, getPack: () => MetadataPack | undefined, getAiGenerator: () => AiAssessmentGenerator | undefined) {
   const pack = getPack();
@@ -416,18 +426,19 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     entry.status = 'cancelled';
     entry.phase = 'complete';
     entry.completedAt = Date.now();
-    entry.error = 'Canceled by the author; no files were saved or linked.';
+    entry.error = entry.startedAt ? 'Canceled by the author; no files were saved or linked.' : 'Canceled by the author; The batch stopped before this Rule was sent. No files were saved or linked.';
   };
   const cancelAllWork = () => {
     batchCancelled = true;
     batchController.abort();
+    batchHandle?.cancel();
     for (const controller of entryControllers.values()) controller.abort();
     for (const entry of entries) if (entry.status === 'generating') markCancelled(entry);
   };
   const generateEntry = async (entry: BatchAutomationEntry, rule: any, signal: AbortSignal): Promise<any> => {
     if (signal.aborted || entry.cancelRequested || batchCancelled) throw new Error('Batch generation was canceled.');
     entry.cancelRequested = false;
-    entry.startedAt = Date.now(); entry.completedAt = undefined; entry.attempt = (entry.attempt ?? 0) + 1; entry.phase = 'preparing'; entry.error = undefined; send();
+    entry.startedAt = Date.now(); entry.completedAt = undefined; entry.attempt = (entry.attempt ?? 0) + 1; entry.phase = 'preparing'; entry.error = undefined; entry.independentVerification = undefined; send();
     const document = await api.workspace.openTextDocument(api.Uri.parse(entry.uri));
     const seed = await ruleAutomationSeed(api, selected, rule, document);
     if (signal.aborted || entry.cancelRequested || batchCancelled) throw new Error('Batch generation was canceled.');
@@ -449,44 +460,77 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     entry.phase = mode === 'ai' ? 'waiting-provider' : 'validating'; send();
     const result = mode === 'offline'
       ? (offlinePreview ?? createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), objectStyle: normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')) }))
-      : await aiGenerator!({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), ruleYaml: document.getText(), availableConditions: selected.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
+      : await aiGenerator!({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), ruleYaml: document.getText(), availableConditions: selected.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), offlineCandidateYaml: offlinePreview?.generatedMode === 'automated' ? offlinePreview.yaml : undefined, signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
     if (signal.aborted || entry.cancelRequested || batchCancelled) throw new Error('Batch generation was canceled.');
     entry.phase = 'validating'; send();
     entry.result = result;
-    if (result.generatedMode === 'automated' && !result.diagnostics?.length && result.linkable !== false) entry.status = entry.comparisonOnly ? 'comparison-only' : 'ready';
-    else if (result.generatedMode === 'manual' || result.generatedMode === 'manual-only') entry.status = 'manual-only';
-    else entry.status = 'rejected';
-    entry.phase = undefined; entry.completedAt = Date.now(); entry.error = undefined;
     return result;
   };
+  type BatchExecution = { entry: BatchAutomationEntry; rule: any; result?: any };
+  let batchHandle: ReturnType<typeof runConcurrentStageBatch<BatchExecution>> | undefined;
+  const finalizeEntry = (entry: BatchAutomationEntry) => {
+    const result = entry.result;
+    if (entry.status === 'cancelled') return;
+    entry.outcomeReason = undefined;
+    if (result?.generatedMode === 'manual' || result?.generatedMode === 'manual-only') entry.outcomeReason = 'manual-decision';
+    else if (entry.independentVerification?.status === 'failed') entry.outcomeReason = 'independent-verification';
+    else if (result?.confidence === 'low') entry.outcomeReason = 'low-confidence';
+    else if (result?.diagnostics?.length) entry.outcomeReason = 'schema-or-coverage';
+    if (result?.generatedMode === 'automated' && !result.diagnostics?.length && result.linkable !== false && (!mode || mode === 'offline' || entry.comparisonOnly || entry.independentVerification?.status === 'passed')) entry.status = entry.comparisonOnly ? 'comparison-only' : 'ready';
+    else if (result?.generatedMode === 'manual' || result?.generatedMode === 'manual-only') entry.status = 'manual-only';
+    else entry.status = 'rejected';
+    entry.phase = undefined; entry.completedAt = Date.now(); entry.error = undefined;
+  };
+  const generationStage: BatchStage<BatchExecution> = { name: 'source-generation', run: async (state, context) => {
+    if (state.entry.cancelRequested) throw new Error('Batch generation was canceled.');
+    state.result = await generateEntry(state.entry, state.rule, context.signal);
+    if (mode === 'ai' && aiTransientFailure(state.result?.diagnostics?.join(' '))) throw new Error(state.result.diagnostics.join(' '));
+    // A schema/coverage rejection is retryable at the Rule level too. The
+    // provider already receives one bounded correction pass; a second whole
+    // attempt gives it a fresh context without weakening the local gate.
+    if (mode === 'ai' && state.result?.generatedMode === 'automated' && state.result?.diagnostics?.length) {
+      throw new Error(`AI candidate rejected on attempt ${state.entry.attempt ?? 1}; retrying the bounded Rule authoring pipeline: ${state.result.diagnostics.slice(0, 8).join(' ')}`);
+    }
+    return state;
+  }};
+  const verificationStage: BatchStage<BatchExecution> = { name: 'independent-verification', run: async (state, context) => {
+    const entry = state.entry; const result = state.result;
+    if (mode !== 'ai' || entry.comparisonOnly || !result || result.generatedMode !== 'automated' || result.diagnostics?.length || result.linkable === false) { finalizeEntry(entry); return state; }
+    entry.phase = 'independent-verification'; send();
+    const document = await api.workspace.openTextDocument(api.Uri.parse(entry.uri));
+    const verification = await aiGenerator!({ ruleId: entry.ruleId, title: entry.title, checkText: entry.checkText ?? entry.title, platform: entry.platform, ruleYaml: document.getText(), candidateYaml: result.yaml, reviewMode: true, availableConditions: selected.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: context.signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
+    if (aiTransientFailure(verification?.diagnostics?.join(' '))) throw new Error(verification.diagnostics.join(' '));
+    const passed = verification.generatedMode === 'automated' && !verification.diagnostics?.length && verification.confidence !== 'low' && result.confidence === 'high';
+    entry.independentVerification = { status: passed ? 'passed' : 'failed', confidence: verification.confidence, diagnostics: passed ? [] : (verification.diagnostics?.length ? verification.diagnostics.slice(0, 8) : ['The draft must be high-confidence; independent verification must return a locally clean automated candidate without low-confidence uncertainty.']) };
+    if (passed) {
+      // Use the independently checked complete replacement when supplied. It
+      // is still review-only; this does not write or link workspace files.
+      state.result = { ...result, yaml: verification.yaml || result.yaml, document: verification.document || result.document, independentVerification: entry.independentVerification };
+      entry.result = state.result;
+    } else {
+      state.result = { ...result, linkable: false, diagnostics: [...(result.diagnostics ?? []), 'Independent verification did not establish a high-confidence clean candidate.'], independentVerification: entry.independentVerification };
+      entry.result = state.result;
+    }
+    finalizeEntry(entry); send(); return state;
+  }};
   const generation = async () => {
-    let stopped = false;
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      if (batchCancelled) break;
-      if (entry.status === 'cancelled') continue;
-      if (stopped) { entry.status = 'not-attempted'; entry.phase = undefined; entry.error = 'The batch stopped before this Rule was sent.'; send(); continue; }
-      const controller = new AbortController();
-      entryControllers.set(entry.uri, controller);
-      const onBatchAbort = () => controller.abort();
-      batchController.signal.addEventListener('abort', onBatchAbort, { once: true });
-      try {
-        const rule = rules.find(item => item.uri === entry.uri);
-        if (!rule) throw new Error('Rule is no longer associated with the selected Benchmark.');
-        const result = await generateEntry(entry, rule, controller.signal);
-        if (controller.signal.aborted || entry.cancelRequested || batchCancelled) { markCancelled(entry); }
-        else if (aiQuotaFailure(result.diagnostics?.join(' '))) stopped = true;
-      } catch (error) {
-        if (controller.signal.aborted || entry.cancelRequested || batchCancelled || /generation was canceled/i.test(error instanceof Error ? error.message : String(error))) markCancelled(entry);
-        else {
-          entry.status = 'failed'; entry.phase = 'complete'; entry.completedAt = Date.now(); entry.error = error instanceof Error ? error.message : String(error);
-          if (mode === 'ai' && aiQuotaFailure(entry.error)) stopped = true;
-        }
-      } finally {
-        batchController.signal.removeEventListener('abort', onBatchAbort);
-        entryControllers.delete(entry.uri);
-      }
-      send();
+    const jobs: BatchJob<BatchExecution>[] = entries.map(entry => ({ id: entry.uri, value: { entry, rule: rules.find(item => item.uri === entry.uri) } as BatchExecution }));
+    batchHandle = runConcurrentStageBatch(jobs, mode === 'ai' ? [generationStage, verificationStage] : [generationStage], {
+      concurrency: configureSharedAiBatchConcurrency(api.workspace.getConfiguration('scapNg.ai').get('batchConcurrency', 4)),
+      maxAttempts: 2,
+      signal: batchController.signal,
+      useSharedLimiter: false,
+      isQuotaError: error => aiQuotaFailure(error instanceof Error ? error.message : String(error)),
+      onStage: event => { const entry = entryFor(event.jobId); if (entry && event.stage === 'independent-verification' && event.state === 'started') { entry.phase = 'independent-verification'; send(); } },
+      onProgress: () => send()
+    });
+    const results = await batchHandle.promise;
+    for (const result of results) {
+      const entry = entryFor(result.id); if (!entry) continue;
+      if (result.status === 'cancelled') markCancelled(entry);
+      else if (result.status === 'quota-isolated') { entry.status = 'failed'; entry.phase = 'complete'; entry.completedAt = Date.now(); entry.error = 'Provider quota/rate limit was isolated to this Rule; other Rules continued. Retry this Rule after the quota resets.'; entry.outcomeReason = 'provider-failure'; }
+      else if (result.status === 'failed') { entry.status = 'failed'; entry.phase = 'complete'; entry.completedAt = Date.now(); entry.error = result.error instanceof Error ? result.error.message : String(result.error); entry.outcomeReason = /candidate rejected|schema|coverage|validator|authoring/i.test(entry.error) ? 'schema-or-coverage' : 'provider-failure'; }
+      else if (!entry.independentVerification || entry.independentVerification.status !== 'failed') finalizeEntry(entry);
     }
     send();
   };
@@ -501,6 +545,7 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
       if (entry.status !== 'generating') return;
       entry.cancelRequested = true;
       entryControllers.get(entry.uri)?.abort();
+      batchHandle?.cancelJob(entry.uri);
       if (!entry.startedAt) markCancelled(entry);
       send();
       return;
@@ -513,11 +558,11 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
         if (!['rejected', 'failed', 'cancelled'].includes(entry.status)) throw new Error('Only a rejected, failed, or provider-classified manual-only AI candidate can be retried.');
         const rule = rules.find(item => item.uri === entry.uri);
         if (!rule) throw new Error('Rule is no longer associated with the selected Benchmark.');
-        entry.status = 'generating'; entry.phase = 'queued'; entry.startedAt = undefined; entry.completedAt = undefined; entry.error = undefined; entry.cancelRequested = false; send();
+        entry.status = 'generating'; entry.phase = 'queued'; entry.startedAt = undefined; entry.completedAt = undefined; entry.error = undefined; entry.outcomeReason = undefined; entry.cancelRequested = false; send();
         const retryController = new AbortController(); entryControllers.set(entry.uri, retryController);
         const onBatchAbort = () => retryController.abort(); batchController.signal.addEventListener('abort', onBatchAbort, { once: true });
-        try { const result = await generateEntry(entry, rule, retryController.signal); if (retryController.signal.aborted || entry.cancelRequested || batchCancelled) markCancelled(entry); else if (aiQuotaFailure(result.diagnostics?.join(' '))) entry.error = 'The provider reported a quota or rate-limit condition; retry after the account limit resets.'; }
-        catch (error) { if (retryController.signal.aborted || entry.cancelRequested || batchCancelled || /generation was canceled/i.test(error instanceof Error ? error.message : String(error))) markCancelled(entry); else { entry.status = 'failed'; entry.phase = 'complete'; entry.completedAt = Date.now(); entry.error = error instanceof Error ? error.message : String(error); } }
+        try { const stateForRetry: BatchExecution = { entry, rule }; await generationStage.run(stateForRetry, { jobId: entry.uri, stage: 'source-generation', attempt: entry.attempt ?? 1, signal: retryController.signal }); await verificationStage.run(stateForRetry, { jobId: entry.uri, stage: 'independent-verification', attempt: 1, signal: retryController.signal }); if (retryController.signal.aborted || entry.cancelRequested || batchCancelled) markCancelled(entry); }
+        catch (error) { if (retryController.signal.aborted || entry.cancelRequested || batchCancelled || /generation was canceled/i.test(error instanceof Error ? error.message : String(error))) markCancelled(entry); else { entry.status = 'failed'; entry.phase = 'complete'; entry.completedAt = Date.now(); entry.error = error instanceof Error ? error.message : String(error); entry.outcomeReason = /candidate rejected|schema|coverage|validator|authoring/i.test(entry.error) ? 'schema-or-coverage' : 'provider-failure'; } }
         finally { batchController.signal.removeEventListener('abort', onBatchAbort); entryControllers.delete(entry.uri); }
         send(); return;
       }
@@ -615,7 +660,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
         // revision check at approval time protects the same immutable inputs.
         const controller = new AbortController();
         activeAiController = controller;
-        const result = await aiGenerator({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
+        const result = await aiGenerator({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), offlineCandidateYaml: (() => { try { const preview = createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), objectStyle }); return preview.generatedMode === 'automated' ? preview.yaml : undefined; } catch { return undefined; } })(), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
         if (controller.signal.aborted) { panel.webview.postMessage({ type: 'status', message: 'AI generation canceled; no Assessment was saved or linked.' }); return; }
         generated = result;
         panel.webview.postMessage({ type: 'generated', result: { ...result, document: undefined } });
@@ -629,7 +674,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
         if (!generated?.yaml) throw new Error('Generate a candidate Assessment before requesting Codex review.');
         const controller = new AbortController();
         activeAiController = controller;
-        const result = await aiReviewer({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), candidateYaml: generated.yaml, reviewMode: true, availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
+        const result = await aiReviewer({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), candidateYaml: generated.yaml, reviewMode: true, availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), offlineCandidateYaml: (() => { try { const preview = createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), objectStyle }); return preview.generatedMode === 'automated' ? preview.yaml : undefined; } catch { return undefined; } })(), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
         if (controller.signal.aborted) { panel.webview.postMessage({ type: 'status', message: 'Codex review canceled; no Assessment was saved or linked.' }); return; }
         generated = result;
         panel.webview.postMessage({ type: 'generated', result: { ...result, document: undefined } });
@@ -3464,7 +3509,12 @@ export function activate(context: vscode.ExtensionContext) {
     if (pack) return pack;
     packError = undefined;
     const configuredPack = vscode.workspace.getConfiguration('scapNg').get<string>('schemaPackPath');
-    const candidate = configuredPack || discoverPackPath(documentPath);
+    // A packaged VSIX carries the exact verified pack beside its runtime. A
+    // workspace pack still takes precedence when explicitly configured or
+    // discovered, but clean-clone/installed-VSIX users must not need a hidden
+    // repository checkout just to run AI authoring.
+    const bundledPack = join(context.extensionPath, 'editor-pack');
+    const candidate = configuredPack || discoverPackPath(documentPath) || (existsSync(join(bundledPack, 'manifest.json')) ? bundledPack : undefined);
     if (!candidate) { packError = 'No verified offline SCAP-NG metadata pack was found for this workspace.'; return undefined; }
     try {
       pack = new MetadataPack(candidate, profile);
@@ -3543,7 +3593,8 @@ export function activate(context: vscode.ExtensionContext) {
     const model = configuration.get('model', '') ?? '';
     const codexModel = configuration.get('codexModel', '') ?? '';
     const codexReasoningEffort = normalizeCodexReasoningEffort(configuration.get('codexReasoningEffort', 'auto'));
-    return { mode, endpoint, model, codexModel, codexReasoningEffort };
+    const batchConcurrency = configureSharedAiBatchConcurrency(configuration.get('batchConcurrency', 4));
+    return { mode, endpoint, model, codexModel, codexReasoningEffort, batchConcurrency };
   };
   const writeAiConfiguration = async (value: AiAuthoringConfiguration): Promise<AiAuthoringConfiguration> => {
     const endpointError = aiEndpointError(value.mode, value.endpoint);
@@ -3553,12 +3604,14 @@ export function activate(context: vscode.ExtensionContext) {
     const codexReasoningEffort = value.codexReasoningEffort === undefined
       ? readAiConfiguration().codexReasoningEffort ?? 'auto'
       : normalizeCodexReasoningEffort(value.codexReasoningEffort);
-    const saved = { mode: normalizeAiAssistanceMode(value.mode), endpoint: value.endpoint.trim(), model: value.model.trim(), codexModel: value.codexModel.trim(), codexReasoningEffort };
+    const batchConcurrency = normalizeAiBatchConcurrency(value.batchConcurrency ?? readAiConfiguration().batchConcurrency);
+    const saved = { mode: normalizeAiAssistanceMode(value.mode), endpoint: value.endpoint.trim(), model: value.model.trim(), codexModel: value.codexModel.trim(), codexReasoningEffort, batchConcurrency };
     await configuration.update('mode', saved.mode, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('endpoint', saved.endpoint || undefined, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('model', saved.model || undefined, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('codexModel', saved.codexModel || undefined, api.ConfigurationTarget?.Global ?? 1);
     await configuration.update('codexReasoningEffort', saved.codexReasoningEffort, api.ConfigurationTarget?.Global ?? 1);
+    await configuration.update('batchConcurrency', saved.batchConcurrency, api.ConfigurationTarget?.Global ?? 1);
     authoringSidebar.refreshContext();
     AiConfigurationPanel.update(saved);
     return saved;
@@ -3734,13 +3787,13 @@ export function activate(context: vscode.ExtensionContext) {
     if (target.mode === 'codex-local') {
       const workspace = api.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
       const selectedEffort = resolveCodexReasoningEffort(target.codexReasoningEffort, input);
-      return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', target.codexModel.trim() || 'Codex CLI configured model', input, {
+      return runWithSharedAiBatchLimit(() => createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', target.codexModel.trim() || 'Codex CLI configured model', input, {
         request: (messages, timeoutMs, signal) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: target.codexModel, reasoningEffort: selectedEffort.effort, signal }),
         signal: input.signal,
         reasoningEffort: selectedEffort.effort,
         reasoningEffortSelection: selectedEffort.selection,
         reasoningEffortReason: selectedEffort.reason
-      });
+      }), input.signal);
     }
     if (target.mode !== 'remote') throw new Error('Configured AI assistance is not enabled. Select Configured remote AI or Codex (local) first.');
     const secrets = (context as any).secrets;
@@ -3748,7 +3801,7 @@ export function activate(context: vscode.ExtensionContext) {
     const toolProfile = `${target.endpoint.replace(/\/$/, '')}\u0000${target.model.trim()}`;
     const globalState = (context as any).globalState;
     const rejectedProfiles = typeof globalState?.get === 'function' ? (globalState.get('scapNg.ai.rejectedToolProfiles', []) as string[] ?? []) : [];
-    return createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, input, {
+    return runWithSharedAiBatchLimit(() => createAiAssessmentDraft(activePack, context.extensionPath, target.endpoint, key ?? '', target.model, input, {
       signal: input.signal,
       skipTools: rejectedProfiles.includes(toolProfile),
       onToolsRejected: () => {
@@ -3757,7 +3810,7 @@ export function activate(context: vscode.ExtensionContext) {
         // immediate VS Code reload does not repeat the known-bad negotiation.
         return typeof globalState?.update === 'function' ? globalState.update('scapNg.ai.rejectedToolProfiles', next) : undefined;
       }
-    });
+    }), input.signal);
   };
   const codexReviewGenerator: AiAssessmentGenerator = async (input: AiAssessmentInput) => {
     const activePack = pack;
@@ -3767,13 +3820,13 @@ export function activate(context: vscode.ExtensionContext) {
     const configuredModel = configured.codexModel.trim();
     const reviewInput = { ...input, reviewMode: true };
     const selectedEffort = resolveCodexReasoningEffort(configured.codexReasoningEffort, reviewInput);
-    return createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', configuredModel || 'Codex CLI configured model', reviewInput, {
+    return runWithSharedAiBatchLimit(() => createAiAssessmentDraft(activePack, context.extensionPath, 'codex-local', '', configuredModel || 'Codex CLI configured model', reviewInput, {
       request: (messages, timeoutMs, signal) => runCodexLocal(messages, { cwd: workspace, timeoutMs, model: configuredModel, reasoningEffort: selectedEffort.effort, signal }),
       signal: input.signal,
       reasoningEffort: selectedEffort.effort,
       reasoningEffortSelection: selectedEffort.selection,
       reasoningEffortReason: selectedEffort.reason
-    });
+    }), input.signal);
   };
   const configuredAiGenerator = () => ['remote', 'codex-local'].includes(readAiConfiguration().mode) ? aiAssessmentGenerator : undefined;
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openAiConfiguration', () => EditorOptionsPanel.open(context, readEditorOptions, writeEditorOptions, aiConfigurationActions, 'ai')));
