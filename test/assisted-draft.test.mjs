@@ -457,7 +457,7 @@ test('assisted benchmark family context selects native collectors for obscure re
 
 test('automation procedure cleanup removes converter OCIL wrapper boilerplate but preserves check content', async () => {
   const { cleanProcedureForAutomation } = await import('../dist/assisted-draft.js');
-  const source = `Manual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nComplete the source OCIL procedure and record the result.\n\nManual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nVerify the setting with:\n\n$ grep -i remember /etc/pam.d/common-password\n\nIf remember is less than 5, this is a finding.`;
+  const source = `Manual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nComplete the source OCIL procedure ocil:navy.navwar.niwcatlantic.scc.amzlx23os:questionnaire:6301.\n\nManual alternative preserved from the original OCIL check. Follow the source procedure; this Assessment does not execute OCIL.\n\nVerify the setting with:\n\n$ grep -i remember /etc/pam.d/common-password\n\nIf remember is less than 5, this is a finding.`;
   const cleaned = cleanProcedureForAutomation(source);
   assert.doesNotMatch(cleaned, /source OCIL|Manual alternative preserved/i);
   assert.match(cleaned, /grep -i remember/);

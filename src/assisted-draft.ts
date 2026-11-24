@@ -76,7 +76,7 @@ export function cleanProcedureForAutomation(value: string | undefined): string {
   if (!text) return '';
   const boilerplate = [
     /^Manual alternative preserved from the original OCIL check\. Follow the source procedure; this Assessment does not execute OCIL\.?$/i,
-    /^Complete the source OCIL procedure and record the result\.?$/i
+    /^Complete the source OCIL procedure(?:\s+ocil:[^\n]+)?(?:\s+and record the result)?\.?$/i
   ];
   const paragraphs = text.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean);
   const kept = paragraphs.filter(paragraph => !boilerplate.some(pattern => pattern.test(paragraph)));
