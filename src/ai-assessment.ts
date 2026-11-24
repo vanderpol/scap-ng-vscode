@@ -609,6 +609,23 @@ function normalizeProviderAssessmentIdentity(value: any, input: AiAssessmentInpu
   return { value: next, yamlChanged: true, note: `The provider Assessment ID '${id || '(missing)'}' was normalized to '${replacement}' to satisfy the pinned 0.4.1 identity limit.` };
 }
 
+function normalizeProviderAssessmentEnvelope(value: any): { value: any; yamlChanged: boolean; note?: string } {
+  // Some OpenAI-compatible models serialize the canonical Assessment metadata
+  // beside the `assessment` document instead of inside it. This is a generic
+  // provider-envelope mistake, not content-specific repair: move only the
+  // known `specification` member when the nested Assessment lacks it, preserve
+  // its exact value, and leave every other unexpected root member for the
+  // pinned schema validator to reject.
+  const assessment = value?.assessment;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return { value, yamlChanged: false };
+  if (!Object.hasOwn(value, 'specification') || Object.hasOwn(assessment, 'specification')) return { value, yamlChanged: false };
+  const specification = value.specification;
+  if (!specification || typeof specification !== 'object' || Array.isArray(specification)) return { value, yamlChanged: false };
+  const next = { ...value, assessment: { ...assessment, specification } };
+  delete next.specification;
+  return { value: next, yamlChanged: true, note: 'The provider placed the Assessment specification beside the document root; normalized it into assessment.specification before pinned-schema validation.' };
+}
+
 function normalizeProviderAssessmentInputs(value: any): { value: any; yamlChanged: boolean; note?: string } {
   const inputs = value?.assessment?.inputs;
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return { value, yamlChanged: false };
@@ -816,6 +833,11 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   if (document.errors.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: document.errors.map(error => error.message), assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   let value: any;
   try { value = document.toJS({ maxAliasCount: 50 }); } catch (error) { return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [error instanceof Error ? error.message : String(error)], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' }; }
+  const envelope = normalizeProviderAssessmentEnvelope(value);
+  if (envelope.yamlChanged) {
+    value = envelope.value;
+    yamlText = stringify(value);
+  }
   const identity = normalizeProviderAssessmentIdentity(value, input);
   if (identity.yamlChanged) {
     value = identity.value;
@@ -831,6 +853,7 @@ function parseAiAssessmentResponse(pack: MetadataPack, input: AiAssessmentInput,
   const semanticDiagnostics = coverageDiagnostics(input, payload, value);
   if (diagnostics.length) return { generatedMode: 'automated', confidence: 'low', yaml: yamlText, diagnostics: [...diagnostics, ...semanticDiagnostics], assumptions, unresolved, citations, rationale, coverage, method: 'configured-ai' };
   if (value?.assessment?.mode !== 'automated') diagnostics.push('AI draft must contain assessment.mode: automated.');
+  if (envelope.note) assumptions.push(envelope.note);
   if (identity.note) assumptions.push(identity.note);
   if (normalizedInputs.note) assumptions.push(normalizedInputs.note);
   if (!value?.assessment?.id || value.assessment.id !== input.ruleId.replace(/-rule$/, '-assessment')) assumptions.push('Review the generated Assessment ID and its Rule linkage before saving.');

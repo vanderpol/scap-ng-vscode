@@ -427,6 +427,35 @@ test('persisted tool rejection skips the failed tools negotiation on later reque
   assert.equal(result.toolMode, 'fallback-no-tools');
 });
 
+test('provider Assessment specification is normalized from a generic root-envelope mistake', async () => {
+  const nestedSpecification = '  specification:\n    id: scap-ng.pre-alpha.assessment\n    version: 0.4.1\n';
+  const rootSpecification = 'specification:\n  id: scap-ng.pre-alpha.assessment\n  version: 0.4.1\n';
+  const rootSpecificationYaml = validYaml.replace(nestedSpecification, '').replace('assessment:\n', rootSpecification + 'assessment:\n');
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: rootSpecificationYaml,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.envelope.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.document.assessment.specification.id, 'scap-ng.pre-alpha.assessment');
+  assert.ok(result.assumptions.some(item => /normalized it into assessment\.specification/i.test(item)));
+
+  const malformedEnvelope = rootSpecificationYaml.replace('specification:\n', 'unexpected_root_member:\n');
+  const malformedPayload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: malformedEnvelope,
+    assumptions: [], unresolved_questions: [], citations: [],
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const malformed = await withFetch(() => response(malformedPayload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.envelope.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.ok(malformed.result.diagnostics.some(item => /unsupported property.*unexpected_root_member/i.test(item)));
+  assert.ok(malformed.result.diagnostics.some(item => /missing required property.*specification/i.test(item)));
+});
+
 test('provider Assessment IDs are normalized generically before correction when they exceed schema limits', async () => {
   const longId = 'ubuntu-operating-system-inactivity-client-alive-interval-configuration-assessment-generated-by-provider';
   const longYaml = validYaml.replace(/id: [^\n]+/, `id: ${longId}`);
