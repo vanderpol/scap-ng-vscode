@@ -343,7 +343,7 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /AI candidate rejected after correction pass; retry AI/);
   assert.match(extensionSource, /AI correction did not complete; retry AI/);
   assert.match(extensionSource, /AI correction timed out; retry AI/);
-  assert.match(extensionSource, /textContent=active\?'Generating '/);
+  assert.match(extensionSource, /textContent=active\?\(active\.startedAt\?'Generating ':'Queued '/);
   assert.match(extensionSource, /actionButton\(heroActions,'Retry AI'/);
   assert.match(extensionSource, /message\.type === 'retry'/);
   assert.match(extensionSource, /Retry AI/);

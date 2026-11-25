@@ -48,4 +48,5 @@ test('batch automation webview script is executable with source text containing 
   assert.match(match[1], /Why this candidate needs retry\/review/);
   assert.match(match[1], /status==='ready'&&entry.linkable!==false/);
   assert.match(match[1], /status==='manual-only'/);
+  assert.match(match[1], /active\.startedAt\?'Generating ':'Queued '/);
 });
