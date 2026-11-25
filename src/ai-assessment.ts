@@ -509,6 +509,19 @@ function procedureHasHumanException(text: string): boolean {
 }
 
 /**
+ * An unresolved question can document a post-evaluation human exception without
+ * making the technical Assessment incomplete. Keep true technical coverage gaps
+ * blocking, but do not turn an ISSO/owner approval note into a retry when the
+ * objective collector and predicate are already represented.
+ */
+function isPostEvaluationHumanReviewQuestion(text: string): boolean {
+  const policyReview = /\b(?:ISSO|ISSM|SA|AO|authorizing official|system owner|security administrator)\b|(?:documented|approved)\s+(?:exception|approval|use)|\b(?:human|manual|organizational)\s+(?:review|approval|decision|documentation)\b|\bexception\b[\s\S]{0,80}\b(?:review|approval|documentation|documented)\b/i.test(text);
+  if (!policyReview) return false;
+  const explicitTechnicalGap = /\b(?:technical|collector|predicate|population|path|file|test|branch|coverage|applicability)\b[\s\S]{0,120}\b(?:cannot|can't|not\s+(?:be\s+)?(?:represented|implemented|covered)|missing|incomplete|partial|unresolved)\b/i.test(text);
+  return !explicitTechnicalGap;
+}
+
+/**
  * Some procedures explicitly permit materially different notification channels
  * (for example email, a monitoring trap, or local/hardware indications). An
  * email-only candidate is not complete just because it has a valid Input and
@@ -668,7 +681,8 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   }
   if (procedureHasPathSet(input.checkText) && (!coverage.pathPatterns.length || coverage.pathPatterns.some(path => !path.represented))) diagnostics.push('The procedure names a path set, wildcard, or multiple files, but the AI did not represent the complete population.');
   if (!coverage.procedureSteps.length) diagnostics.push('The AI coverage manifest contains no procedure steps.');
-  const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent|not managed/i.test(item));
+  const unresolvedCritical = list(payload?.unresolved_questions).filter(item => /applicability|not applicable|partial|wildcard|additional file|path set|cannot be represented|not represent|not managed/i.test(item)
+    && !(procedureHasHumanException(input.checkText) && isPostEvaluationHumanReviewQuestion(item)));
   if (unresolvedCritical.length && !expressionHasNotEvaluated(value?.assessment?.evaluate)) diagnostics.push('The AI reports unresolved semantic coverage gaps; represent the technical check completely or return manual-only.');
   // A technical branch may legitimately use not_evaluated when command evidence
   // is unavailable or an unexpected state is observed. Reject it only when the

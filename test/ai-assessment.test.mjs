@@ -744,6 +744,38 @@ test('AI gets a correction opportunity when it over-applies a human exception to
   assert.equal(result.diagnostics.length, 0);
 });
 
+test('AI keeps post-evaluation human exceptions as review notes when technical coverage is complete', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [],
+    unresolved_questions: ['Confirm the exception applicability requires manual documentation review after technical evaluation.'],
+    citations: [], rationale: 'The objective predicate is represented; exception approval is post-evaluation.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check the technical predicate', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-human-review', {
+    ruleId: 'technical-exception-rule', title: 'Technical check with an exception',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \Software\Policies\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1\nIf an ISSO exception exists, document it.'
+  }));
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+  assert.ok(result.unresolved.some(question => /exception|manual documentation/i.test(question)));
+});
+
+test('AI still rejects a technical coverage gap even when a human approval note is present', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [],
+    unresolved_questions: ['The technical predicate cannot be represented completely; obtain ISSO approval.'],
+    citations: [], rationale: 'Incomplete technical candidate.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check the technical predicate', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-human-gap', {
+    ruleId: 'technical-gap-rule', title: 'Technical check with an incomplete exception branch',
+    checkText: 'Verify the technical setting. If an ISSO exception exists, document it.'
+  }));
+  assert.ok(result.diagnostics.some(message => /unresolved semantic coverage gaps/i.test(message)));
+});
+
 test('AI correction treats an exhaustive command as authoritative over an alternate GUI sample procedure', async () => {
   let calls = 0;
   const repaired = JSON.stringify({
