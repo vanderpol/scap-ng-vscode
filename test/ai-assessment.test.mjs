@@ -765,6 +765,23 @@ test('AI correction treats an exhaustive command as authoritative over an altern
   assert.match(secondMessages.find(message => message.role === 'user').content, /authoritative command itself has no explicit scope restriction/i);
 });
 
+test('AI prompt preserves exact patch prerequisites as conditional automation candidates', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Candidate.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check the registry setting and version-specific patch', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { requests } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-patch-branch', {
+    ruleId: 'script-block-logging-rule', title: 'PowerShell script block logging',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging\nValue Name: EnableScriptBlockLogging\nValue: 1\nPowerShell 4.0 requires KB3000850 on Windows 2012 R2 or KB3119938 on Windows 2012; PowerShell 5.x requires no patch.'
+  }));
+  const requestBody = JSON.parse(requests[0].options.body);
+  const system = requestBody.messages.find(message => message.role === 'system').content;
+  assert.match(system, /windows\.wuaupdatesearcher/);
+  assert.match(system, /named prerequisite patch.*not inherently manual/i);
+  assert.match(system, /conditional Evaluate logic/i);
+});
+
 test('AI does not treat AuditPol category wildcards as filesystem populations', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
