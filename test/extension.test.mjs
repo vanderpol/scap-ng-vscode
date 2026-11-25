@@ -466,6 +466,19 @@ test('direct 0.4.1 applicability expressions are displayed read-only instead of 
   assert.match(extensionSource, /Declared Benchmark OS\/App identities/);
 });
 
+test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkage surface', () => {
+  assert.ok(extensionSource.includes("values.textContent=(level.conditions||[]).join('\\\\n')"), 'embedded webview newline must remain escaped in the outer template');
+  assert.match(extensionSource, /window\.addEventListener\('unhandledrejection'/);
+  for (const field of ['rationale', 'parameters', 'references', 'remediation', 'identifiers', 'extensions', 'warnings', 'organizationalInputRequirements']) {
+    assert.match(extensionSource, new RegExp(`model\\.${field}`), field);
+  }
+  assert.match(extensionSource, /Expected Assessment version/);
+  assert.match(extensionSource, /Input bindings/);
+  assert.match(extensionSource, /Linked '\+\(linked\.mode==='automated'\?'automated':'manual'\)/);
+  assert.match(extensionSource, /type:'openAssessment'/);
+  assert.match(extensionSource, /That Assessment is not linked from this Rule/);
+});
+
 test('Graphical Rule context shows inherited applicability from coverage without duplicating it into Rule YAML', () => {
   assert.match(extensionSource, /Inherited applicability/);
   assert.match(extensionSource, /<button id=\"refresh\" type=\"button\">Refresh<\/button>/);
