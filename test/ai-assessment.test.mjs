@@ -712,3 +712,20 @@ test('AI does not treat AuditPol category wildcards as filesystem populations', 
   }));
   assert.doesNotMatch(result.diagnostics.join('\n'), /path set|wildcard.*complete population/i);
 });
+
+test('AI coverage treats an alternate Domain Controller branch as out of scope for an explicit member-server target', async () => {
+  const testId = 'check-the-passwd-file-test';
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: ['The explicit Member Server Benchmark context selects the local-account branch.'], unresolved_questions: [], citations: [], rationale: 'Role-specific branch selected.',
+    coverage: { applicability: 'not-needed', procedure_steps: [
+      { summary: 'Domain Controllers: use Get-ADUser for domain accounts.', represented: false, tests: [] },
+      { summary: 'Member servers: inspect enabled local accounts.', represented: true, tests: [testId] }
+    ], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-role-coverage', {
+    ruleId: 'member-role-coverage-rule', title: 'Accounts require passwords', platform: 'windows_server_2012_member_server',
+    checkText: 'Domain Controllers: use Get-ADUser. Member servers and standalone systems: inspect local accounts.'
+  }));
+  assert.doesNotMatch(result.diagnostics.join('\n'), /partial automation|procedure steps.*not represented/i);
+});

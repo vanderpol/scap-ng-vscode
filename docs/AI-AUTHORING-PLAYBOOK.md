@@ -33,7 +33,11 @@ to select the corresponding branch in a procedure that documents multiple roles.
 Do not make a correct role-specific conversion manual merely because the procedure
 also contains instructions for other roles; preserve only the applicable branch and
 record the context assumption. Do not infer a role when the Benchmark context does
-not provide one.
+not provide one. In the coverage manifest, an alternate role branch that is
+explicitly outside the selected Benchmark context is resolved by that context;
+mark it out of scope in the assumptions/summary rather than treating it as an
+unrepresented objective step. The selected branch must still cover every one of
+its own objective checks.
 4. Write one or more complete Tests. A Test's Object selects Items; its Require
    expresses Item existence/satisfaction and field predicates. Do not replace a
    missing predicate with an empty Object or a presence-only placeholder.

@@ -628,6 +628,18 @@ function currentUserCapabilityDiagnostics(input: AiAssessmentInput, value: any):
     : [];
 }
 
+function coverageStepOutOfScope(input: AiAssessmentInput, summary: string): boolean {
+  const platform = String(input.platform ?? '').toLowerCase();
+  const text = summary.toLowerCase();
+  // An explicit Benchmark role is part of the authoring context. A procedure
+  // may still include the alternate Domain Controller branch; that branch is
+  // intentionally not an uncovered obligation for a Member Server target.
+  // This is generic role-based coverage resolution, not Rule-specific content.
+  return platform === 'windows_server_2012_member_server'
+    && /\bdomain controllers?\b|\bactive directory\b|\bget-aduser\b/.test(text)
+    && !/\bmember servers?\b|\bstandalone systems?\b|\blocal accounts?\b/.test(text);
+}
+
 function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any): string[] {
   const coverage = normalizeCoverage(payload?.coverage);
   if (!coverage) return ['AI response omitted the required procedure coverage manifest; no draft was accepted.'];
@@ -638,7 +650,8 @@ function coverageDiagnostics(input: AiAssessmentInput, payload: any, value: any)
   diagnostics.push(...queryFindingStateDiagnostics(input, value));
   if (procedureNeedsApplicability(input.checkText) && coverage.applicability !== 'implemented') diagnostics.push('The procedure contains a Not Applicable/conditional branch, but the AI did not implement that branch in Assessment logic.');
   if (procedureNeedsApplicability(input.checkText) && !expressionHasNotApplicable(value?.assessment?.evaluate) && !hasExternalApplicability(value)) diagnostics.push('Applicability is not represented. Use an internal evaluate branch with not_applicable for a Rule-local gate, or an explicit reusable applicability Assessment dependency.');
-  if (coverage.procedureSteps.some(step => !step.represented)) diagnostics.push('The AI coverage manifest identifies one or more procedure steps that are not represented; partial automation is not linkable.');
+  const uncoveredSteps = coverage.procedureSteps.filter(step => !step.represented && !coverageStepOutOfScope(input, step.summary));
+  if (uncoveredSteps.length) diagnostics.push('The AI coverage manifest identifies one or more procedure steps that are not represented; partial automation is not linkable.');
   const authoredTestIds = new Set(Object.keys(value?.assessment?.tests ?? {}));
   for (const step of coverage.procedureSteps) {
     const unknownTests = (step.tests ?? []).filter(testId => !authoredTestIds.has(testId));
