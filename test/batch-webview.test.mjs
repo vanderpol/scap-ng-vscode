@@ -42,4 +42,10 @@ test('batch automation webview script is executable with source text containing 
   assert.doesNotMatch(match[1], /row\.disabled=batchRunning/);
   assert.match(html, /Batch result groups/);
   assert.match(match[1], /coverage and applicability/i);
+  assert.match(match[1], /assessmentSummary/);
+  assert.match(match[1], /Compare summary with source check text/);
+  assert.match(match[1], /listItems\(root,'Assumptions'/);
+  assert.match(match[1], /Why this candidate needs retry\/review/);
+  assert.match(match[1], /status==='ready'&&entry.linkable!==false/);
+  assert.match(match[1], /status==='manual-only'/);
 });
