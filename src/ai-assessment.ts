@@ -471,7 +471,8 @@ function procedureHasPathSet(text: string): boolean {
   // A command wildcard (for example Get-ADUser -Filter *) is not a filesystem
   // population. Require path-shaped wildcard evidence before demanding a path
   // coverage manifest; retain the explicit prose/set signals as before.
-  return /(?:^|[\s\"'=:(])(?:[A-Za-z]:)?[\/\\][^\n]*\*/i.test(text)
+  // Command switches such as AuditPol /category:* are not paths.
+  return /(?:^|[\s\"'=:(])(?:[A-Za-z]:[\/\\][^\s]*\*|\/(?:[A-Za-z0-9_.-]+[\/\\])+[^\s]*\*)/i.test(text)
     || /\*[^ \n/\\]*\.(?:conf|cfg|ini|log|txt|yaml|yml|json|xml|key|crt|pem|p12|pfx)\b/i.test(text)
     || /\[[^\]]+\]|\bconf\.d\b|\bfor each\b|\ball files?\b|\bany files?\b/i.test(text);
 }

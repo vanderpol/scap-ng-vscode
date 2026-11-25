@@ -699,3 +699,16 @@ test('AI gets a correction opportunity when it over-applies a human exception to
   assert.equal(result.generatedMode, 'automated');
   assert.equal(result.diagnostics.length, 0);
 });
+
+test('AI does not treat AuditPol category wildcards as filesystem populations', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Audit command.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Inspect AuditPol output', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-auditpol-wildcard', {
+    ruleId: 'auditpol-wildcard-rule', title: 'Audit removable storage',
+    checkText: 'Enter "AuditPol /get /category:*". If the system does not audit the setting, this is a finding.'
+  }));
+  assert.doesNotMatch(result.diagnostics.join('\n'), /path set|wildcard.*complete population/i);
+});
