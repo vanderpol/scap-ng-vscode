@@ -744,6 +744,27 @@ test('AI gets a correction opportunity when it over-applies a human exception to
   assert.equal(result.diagnostics.length, 0);
 });
 
+test('AI correction treats an exhaustive command as authoritative over an alternate GUI sample procedure', async () => {
+  let calls = 0;
+  const repaired = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: ['The command enumerates the target directory population in its default scope.'],
+    unresolved_questions: ['Confirm the command scope covers the intended directory.'], citations: [], rationale: 'Objective command retained.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Query the directory for violating accounts', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { requests } = await withFetch(() => response(calls++ === 0 ? JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '', assumptions: [], unresolved_questions: ['The GUI procedure mentions organization-defined OUs.'], citations: [], rationale: 'Manual.'
+  }) : repaired), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-command-scope', {
+    ruleId: 'directory-user-token-rule', title: 'Directory users require hardware authentication',
+    checkText: 'Run Get-ADUser -Filter {(Enabled -eq $True) -and (SmartcardLogonRequired -eq $False)}. If any accounts are returned, this is a finding. Alternatively, sample accounts in organization-defined OUs through the GUI.'
+  }));
+  assert.equal(requests.length, 2);
+  const firstMessages = JSON.parse(requests[0].options.body).messages;
+  const secondMessages = JSON.parse(requests[1].options.body).messages;
+  assert.match(firstMessages.find(message => message.role === 'user').content, /alternate procedure as corroborating review text/i);
+  assert.match(secondMessages.find(message => message.role === 'user').content, /authoritative command itself has no explicit scope restriction/i);
+});
+
 test('AI does not treat AuditPol category wildcards as filesystem populations', async () => {
   const payload = JSON.stringify({
     generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
