@@ -169,6 +169,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /Automate all offline/);
   assert.match(extensionSource, /Automate all AI/);
   assert.match(extensionSource, /Batch Assessment automation review/);
+  assert.match(extensionSource, /case 'queued': return 'Queued'/);
+  assert.match(extensionSource, /case 'waiting-provider': return 'Waiting for provider'/);
   assert.match(extensionSource, /Only currently unautomated Rules in this page scope are included/);
   assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);
   assert.match(extensionSource, /openBenchmarkBatchAutomationPanel/);

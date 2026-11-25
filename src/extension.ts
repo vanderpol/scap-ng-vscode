@@ -273,6 +273,23 @@ interface BatchAutomationEntry {
 }
 
 function batchAutomationUserStatus(entry: BatchAutomationEntry): string {
+  if (entry.status === 'generating') {
+    switch (entry.phase) {
+      case 'queued': return 'Queued';
+      case 'preparing': return 'Preparing source';
+      case 'sending-request': return 'Sending request';
+      case 'waiting-provider': return 'Waiting for provider';
+      case 'received-response': return 'Validating response';
+      case 'validating': return 'Validating locally';
+      case 'sending-correction': return 'Sending correction';
+      case 'waiting-correction': return 'Waiting for correction';
+      case 'received-correction': return 'Validating correction';
+      case 'validating-correction': return 'Validating correction locally';
+      case 'independent-verification': return 'Independently verifying';
+      case 'saving': return 'Saving approved result';
+      default: return entry.startedAt ? 'Generating…' : 'Queued';
+    }
+  }
   switch (entry.status) {
     case 'ready': return entry.result?.linkable === false ? 'Candidate ready for review; confidence gate blocks automatic linking' : entry.result?.automationClass === 'organizational-input' ? 'Organizational-input candidate; review and bind policy values' : 'Fully automated candidate; ready for human review';
     case 'comparison-only': return 'AI comparison only; existing automation is protected';
