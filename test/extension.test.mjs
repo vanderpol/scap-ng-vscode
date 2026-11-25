@@ -175,8 +175,8 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /includeExistingAutomationForComparison = mode === 'ai' && filter !== 'needs-automation'/);
   assert.match(extensionSource, /A filtered Needs automation page is an explicit scope boundary/);
   assert.match(extensionSource, /Existing automation is never replaced/);
-  assert.match(extensionSource, /AI output is provider-assisted and remains review-only until approved/);
-  assert.match(extensionSource, /Automatic effort estimates are local preflight guidance/);
+  assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);
+  assert.match(extensionSource, /Automatic effort estimates are local guidance only/);
   assert.match(extensionSource, /offline preflight found no safe automated draft/);
   assert.match(extensionSource, /offline preflight predicts organizational-input/);
   assert.match(extensionSource, /The batch stopped before this Rule was sent/);
@@ -343,10 +343,10 @@ test('Authoring sidebar does not alter the workbench layout or expose absolute p
   assert.match(extensionSource, /AI candidate rejected after correction pass; retry AI/);
   assert.match(extensionSource, /AI correction did not complete; retry AI/);
   assert.match(extensionSource, /AI correction timed out; retry AI/);
-  assert.match(extensionSource, /Starting .*Rule .* of/);
-  assert.match(extensionSource, /textContent='Retry AI'/);
+  assert.match(extensionSource, /textContent=active\?'Generating '/);
+  assert.match(extensionSource, /actionButton\(actions,'Retry AI'/);
   assert.match(extensionSource, /message\.type === 'retry'/);
-  assert.match(extensionSource, /fresh bounded AI attempt/);
+  assert.match(extensionSource, /Retry AI/);
   assert.match(extensionSource, /Rejected draft — no YAML accepted/);
   assert.match(extensionSource, /context as any\)\.secrets/);
   assert.match(extensionSource, /remoteApiKey/);

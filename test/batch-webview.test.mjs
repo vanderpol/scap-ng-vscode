@@ -23,11 +23,11 @@ test('batch automation webview script is executable with source text containing 
   assert.ok(match, 'batch HTML must contain its executable script');
   assert.doesNotThrow(() => new Function(match[1]));
   assert.match(match[1], /Immutable procedure\/check text sent to the generator/);
-  assert.match(match[1], /auditText\.textContent/);
-  assert.match(match[1], /Automatic effort/);
-  assert.match(match[1], /not a final manual-only decision/);
+  assert.match(match[1], /source\.textContent/);
+  assert.match(html, /Automatic effort/);
+  assert.match(html, /not a final manual-only decision/);
   assert.match(html, /Cancel All/);
-  assert.match(html, /Accept all eligible and link/);
+  assert.match(html, /Accept All eligible/);
   assert.match(html, /Review next/);
   assert.match(match[1], /approveAll/);
   assert.match(match[1], /nextReview/);
@@ -38,7 +38,8 @@ test('batch automation webview script is executable with source text containing 
   assert.match(match[1], /cancelAll/);
   assert.match(match[1], /scrollState/);
   assert.match(match[1], /restoreScrollState/);
-  assert.match(match[1], /row.disabled=batchRunning/);
-  assert.match(match[1], /open.disabled=batchRunning/);
-  assert.match(match[1], /link.disabled=batchRunning/);
+  assert.match(match[1], /row\.onclick/);
+  assert.doesNotMatch(match[1], /row\.disabled=batchRunning/);
+  assert.match(html, /Batch result groups/);
+  assert.match(match[1], /coverage and applicability/i);
 });
