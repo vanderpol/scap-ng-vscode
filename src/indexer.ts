@@ -230,6 +230,19 @@ export class WorkspaceIndex {
     this.rebuildDiagnostics();
   }
   remove(uri: string) { this.documents.delete(uri); this.rebuildDiagnostics(); }
+  /**
+   * Replace one content package without disturbing other indexed packages.
+   * Refreshing a selected Benchmark must remove deleted files from that
+   * package, while keeping unrelated Benchmark records and their diagnostics.
+   */
+  removeWithin(root: string, retainedUris: ReadonlySet<string> = new Set(), rebuild = true) {
+    const normalizedRoot = root.replaceAll('\\', '/').replace(/\/+$/, '');
+    for (const [uri, document] of this.documents) {
+      const normalizedPath = document.path.replaceAll('\\', '/').replace(/\/+$/, '');
+      if ((normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + '/')) && !retainedUris.has(uri)) this.documents.delete(uri);
+    }
+    if (rebuild) this.rebuildDiagnostics();
+  }
   /** Remove all indexed documents before switching to an exclusive content root. */
   clear() { this.documents.clear(); this.coverageByPackage.clear(); this.rebuildDiagnostics(); }
   updateCoverage(path: string, text: string) {

@@ -236,7 +236,7 @@ function cleanRuleDiscussion(value: unknown): string {
 }
 
 interface BenchmarkAutomationAnalysis {
-  state: 'not-run' | 'complete';
+  state: 'not-run' | 'running' | 'complete';
   likelyAutomatable: number;
   likelyRuleUris: string[];
   scanned: number;
@@ -244,7 +244,8 @@ interface BenchmarkAutomationAnalysis {
   analyzedAt?: string;
 }
 
-type BatchAutomationMode = 'offline' | 'ai';
+type RuleAutomationMode = 'offline' | 'ai';
+type BatchAutomationMode = RuleAutomationMode;
 type BatchAutomationStatus = 'generating' | 'ready' | 'comparison-only' | 'manual-only' | 'rejected' | 'failed' | 'not-attempted' | 'linked' | 'skipped' | 'cancelled' | 'manual-only-approved';
 const aiReviewQueueStateKey = 'scapNg.aiReviewQueue';
 interface CachedAiReviewBatch {
@@ -428,6 +429,50 @@ async function ruleAutomationSeed(api: any, context: BenchmarkContextSummary | u
   return { ruleId, ruleTitle, checkText: fallback, sourceLabel: discussion ? 'Rule discussion (manual procedure unavailable)' : 'Rule title (manual procedure unavailable)', platform: benchmarkContextPlatform(context) ?? 'unknown', ruleYaml: ruleDocument.getText(), revision: sha256(ruleDocument.getText()), existingAutomatedAssessmentId: ruleBody.assessment_choices?.automated?.assessment };
 }
 
+function ruleAutomationConditions(context: BenchmarkContextSummary): Array<{ name: string; assessment: string }> {
+  return context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string }));
+}
+
+/**
+ * Shared provider boundary for single-Rule and batch automation. Keeping the
+ * immutable seed, current Rule YAML, applicability catalog and lifecycle
+ * callbacks assembled in one place prevents the two entry points from slowly
+ * acquiring different prompts or validation inputs.
+ */
+function ruleAutomationAiInput(seed: RuleAutomationSeed, context: BenchmarkContextSummary, options: { ruleYaml: string; signal?: AbortSignal; candidateYaml?: string; reviewMode?: boolean; progress?: (phase: AiAuthoringProgress) => void }): AiAssessmentInput {
+  return {
+    ruleId: seed.ruleId,
+    title: seed.ruleTitle,
+    checkText: seed.checkText,
+    platform: seed.platform || benchmarkContextPlatform(context),
+    ruleYaml: options.ruleYaml,
+    availableConditions: ruleAutomationConditions(context),
+    ...(options.candidateYaml === undefined ? {} : { candidateYaml: options.candidateYaml }),
+    ...(options.reviewMode ? { reviewMode: true } : {}),
+    signal: options.signal,
+    progress: options.progress
+  };
+}
+
+function createRuleAutomationDraft(pack: MetadataPack, seed: RuleAutomationSeed, context: BenchmarkContextSummary, objectStyle: YamlObjectStyle) {
+  return createAssistedAssessment(pack, {
+    title: seed.ruleTitle,
+    checkText: seed.checkText,
+    platform: seed.platform || benchmarkContextPlatform(context),
+    objectStyle
+  });
+}
+
+async function generateRuleAutomationDraft(pack: MetadataPack, seed: RuleAutomationSeed, context: BenchmarkContextSummary, objectStyle: YamlObjectStyle, mode: RuleAutomationMode, aiGenerator: AiAssessmentGenerator | undefined, options: { ruleYaml: string; signal?: AbortSignal; progress?: (phase: AiAuthoringProgress) => void }) {
+  if (mode === 'offline') return createRuleAutomationDraft(pack, seed, context, objectStyle);
+  if (!aiGenerator) throw new Error('Configured AI assistance is not enabled.');
+  return aiGenerator(ruleAutomationAiInput(seed, context, options));
+}
+
+async function reviewRuleAutomationDraft(aiReviewer: AiAssessmentGenerator, seed: RuleAutomationSeed, context: BenchmarkContextSummary, ruleYaml: string, candidateYaml: string, options: { signal?: AbortSignal; progress?: (phase: AiAuthoringProgress) => void }) {
+  return aiReviewer(ruleAutomationAiInput(seed, context, { ruleYaml, candidateYaml, reviewMode: true, signal: options.signal, progress: options.progress }));
+}
+
 function benchmarkBatchAutomationHtml(scopeLabel: string, mode: BatchAutomationMode, initialEntries: any[], cached = false, aiAvailable = true) {
   const modeLabel = mode === 'ai' ? 'AI batch' : 'Offline batch';
   return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-batch-automation';"><style>
@@ -533,7 +578,7 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     // risky, but never records manual-only and never replaces provider review.
     let offlinePreview: any;
     try {
-      offlinePreview = createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), objectStyle: normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')) });
+      offlinePreview = createRuleAutomationDraft(pack, seed, selected, normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')));
       entry.offlineDisposition = offlinePreview.generatedMode === 'manual' ? 'likely-manual' : offlinePreview.automationClass === 'organizational-input' ? 'organizational-input' : 'technical-candidate';
     } catch {
       // Preflight is advisory. A provider attempt must not be blocked by an
@@ -542,8 +587,8 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     }
     entry.phase = mode === 'ai' ? 'waiting-provider' : 'validating'; send();
     const result = mode === 'offline'
-      ? (offlinePreview ?? createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), objectStyle: normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')) }))
-      : await aiGenerator!({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(selected), ruleYaml: document.getText(), availableConditions: selected.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
+      ? (offlinePreview ?? createRuleAutomationDraft(pack, seed, selected, normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle'))))
+      : await generateRuleAutomationDraft(pack, seed, selected, normalizeYamlObjectStyle(api.workspace.getConfiguration('scapNg').get('objectStyle')), mode, aiGenerator, { ruleYaml: document.getText(), signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
     if (signal.aborted || entry.cancelRequested || batchCancelled) throw new Error('Batch generation was canceled.');
     entry.phase = 'validating'; send();
     entry.result = result;
@@ -587,7 +632,8 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     if (mode !== 'ai' || entry.comparisonOnly || !result || result.generatedMode !== 'automated' || result.diagnostics?.length || result.linkable === false) { finalizeEntry(entry); return state; }
     entry.phase = 'independent-verification'; send();
     const document = await api.workspace.openTextDocument(api.Uri.parse(entry.uri));
-    const verification = await aiGenerator!({ ruleId: entry.ruleId, title: entry.title, checkText: entry.checkText ?? entry.title, platform: entry.platform, ruleYaml: document.getText(), candidateYaml: result.yaml, reviewMode: true, availableConditions: selected.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: context.signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
+    const verificationSeed: RuleAutomationSeed = { ruleId: entry.ruleId, ruleTitle: entry.title, checkText: entry.checkText ?? entry.title, sourceLabel: entry.sourceLabel, platform: entry.platform ?? benchmarkContextPlatform(selected) ?? 'unknown', ruleYaml: document.getText(), revision: entry.revision };
+    const verification = await reviewRuleAutomationDraft(aiGenerator!, verificationSeed, selected, document.getText(), result.yaml, { signal: context.signal, progress: (phase: AiAuthoringProgress) => { entry.phase = batchPhaseFromAiProgress(phase); send(); } });
     if (aiTransientFailure(verification?.diagnostics?.join(' '))) throw new Error(verification.diagnostics.join(' '));
     const independentlyClean = verification.generatedMode === 'automated' && !verification.diagnostics?.length && verification.confidence !== 'low';
     const highConfidence = result.confidence === 'high';
@@ -806,7 +852,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
         // The benchmark Rule/manual procedure is authoritative. Webview fields
         // are intentionally not accepted, so generation cannot drift from the
         // source that the author will later approve.
-        const result = createAssistedAssessment(pack, { title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), objectStyle });
+        const result = createRuleAutomationDraft(pack, seed, context, objectStyle);
         generated = result;
         panel.webview.postMessage({ type: 'generated', result: { ...result, document: undefined } });
       } catch (error) { panel.webview.postMessage({ type: 'status', error: true, message: error instanceof Error ? error.message : String(error) }); }
@@ -819,7 +865,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
         // revision check at approval time protects the same immutable inputs.
         const controller = new AbortController();
         activeAiController = controller;
-        const result = await aiGenerator({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
+        const result = await generateRuleAutomationDraft(pack, seed, context, objectStyle, 'ai', aiGenerator, { ruleYaml: ruleDocument.getText(), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
         if (controller.signal.aborted) { panel.webview.postMessage({ type: 'status', message: 'AI generation canceled; no Assessment was saved or linked.' }); return; }
         generated = result;
         panel.webview.postMessage({ type: 'generated', result: { ...result, document: undefined } });
@@ -833,7 +879,7 @@ async function openRuleAutomationPanel(extensionContext: vscode.ExtensionContext
         if (!generated?.yaml) throw new Error('Generate a candidate Assessment before requesting Codex review.');
         const controller = new AbortController();
         activeAiController = controller;
-        const result = await aiReviewer({ ruleId: seed.ruleId, title: seed.ruleTitle, checkText: seed.checkText, platform: benchmarkContextPlatform(context), ruleYaml: ruleDocument.getText(), candidateYaml: generated.yaml, reviewMode: true, availableConditions: context.conditions.filter(condition => condition.targetId).map(condition => ({ name: condition.name, assessment: condition.targetId as string })), signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
+        const result = await reviewRuleAutomationDraft(aiReviewer, seed, context, ruleDocument.getText(), generated.yaml, { signal: controller.signal, progress: (phase: AiAuthoringProgress) => panel.webview.postMessage({ type: 'aiProgress', phase }) });
         if (controller.signal.aborted) { panel.webview.postMessage({ type: 'status', message: 'Codex review canceled; no Assessment was saved or linked.' }); return; }
         generated = result;
         panel.webview.postMessage({ type: 'generated', result: { ...result, document: undefined } });
@@ -2237,7 +2283,7 @@ function pathWithinIndexedRoot(path: string, root: string): boolean {
 }
 
 /** Index SCAP-NG YAML files from either the open workspace or a user-selected folder. */
-async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri?: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState) {
+async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri?: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState, scopePackagePath?: string) {
   if (!api.workspace.findFiles || !api.workspace.openTextDocument) return 0;
   const patterns = workspaceIndexPatterns;
   const coveragePatterns = ['**/coverage.json'];
@@ -2279,15 +2325,22 @@ async function indexContentLocation(index: WorkspaceIndex, tree: StudioTree, api
   onBenchmarkIndexed?.();
   const remainingFound = await findFiles([...remainingPatterns, ...coveragePatterns]);
   const files = [...new Map([...benchmarkFiles, ...remainingFound].map((uri: any) => [uri.toString(), uri])).values()];
+  if (scopePackagePath) {
+    // A scoped refresh is a replacement, not an additive scan: remove files
+    // deleted from the selected package, but never clear another Benchmark's
+    // indexed records. Coverage is package-local and follows the same rule.
+    index.removeWithin(scopePackagePath, new Set(files.map((uri: any) => uri.toString())), false);
+    index.removeCoverage(scopePackagePath);
+  }
   const remainingFiles = files.filter((uri: any) => !benchmarkFiles.some((benchmark: any) => benchmark.toString() === uri.toString()));
   // A restored Benchmark selection identifies the only package needed by the
   // Home/source choosers. Do not parse every Benchmark in a large content
   // root (often tens of thousands of YAML files) before showing that package.
   // If no Benchmark is selected yet, leave the remaining corpus unopened;
   // the selection page shows identity only and hydration starts on selection.
-  const selectedPackagePath = state?.activeKey
+  const selectedPackagePath = scopePackagePath ?? (state?.activeKey
     ? benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey)?.packagePath
-    : undefined;
+    : undefined);
   const scopedRemainingFiles = selectedPackagePath
     ? remainingFiles.filter((uri: any) => pathWithinIndexedRoot(uri.fsPath ?? uri.path ?? uri.toString(), selectedPackagePath))
     : [];
@@ -2304,8 +2357,8 @@ async function indexWorkspace(index: WorkspaceIndex, tree: StudioTree, api: any,
   return indexContentLocation(index, tree, api, indexDiagnostics, undefined, onBenchmarkIndexed, state);
 }
 
-async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState) {
-  return indexContentLocation(index, tree, api, indexDiagnostics, folderUri, onBenchmarkIndexed, state);
+async function indexSelectedContentFolder(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, folderUri: any, onBenchmarkIndexed?: () => void, state?: BenchmarkContextState, scopePackagePath?: string) {
+  return indexContentLocation(index, tree, api, indexDiagnostics, folderUri, onBenchmarkIndexed, state, scopePackagePath);
 }
 
 async function indexWorkspaceAndImportedRoots(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
@@ -2325,11 +2378,20 @@ async function indexWorkspaceAndImportedRoots(index: WorkspaceIndex, tree: Studi
 }
 
 /** Re-read workspace/imported content so Home statistics reflect disk changes. */
-async function refreshContentIndex(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState) {
+async function refreshContentIndex(index: WorkspaceIndex, tree: StudioTree, api: any, indexDiagnostics: vscode.DiagnosticCollection, state: BenchmarkContextState, requestedPackagePath?: string) {
   const previous = state.ready;
   if (previous) { try { await previous; } catch { /* a fresh refresh can recover from a failed prior scan */ } }
+  const selectedPackagePath = requestedPackagePath ?? (state.authoringMode === 'benchmark'
+    ? benchmarkContextForKey(benchmarkContexts(index, state.importedRoots), state.activeKey)?.packagePath
+    : undefined);
   state.indexing = true;
   const run = (async () => {
+    if (selectedPackagePath && api.Uri?.file) {
+      // Home's refresh action is deliberately package-scoped. The package is
+      // the smallest indexed ownership boundary available for a Benchmark;
+      // other package roots remain untouched, including their cached drafts.
+      return indexSelectedContentFolder(index, tree, api, indexDiagnostics, api.Uri.file(selectedPackagePath), () => state.onChange?.(), state, selectedPackagePath);
+    }
     return indexWorkspaceAndImportedRoots(index, tree, api, indexDiagnostics, state);
   })();
   state.ready = run.then(() => { loadAutomationMetadata(index, state.importedRoots); state.indexing = false; state.onChange?.(); }, error => { state.indexing = false; state.onChange?.(); throw error; });
@@ -3721,6 +3783,49 @@ export function activate(context: vscode.ExtensionContext) {
       cachedReviewCount: cachedAiReviewBatches(context).reduce((count, batch) => count + batch.entries.length, 0)
     };
   };
+  const automationAnalysisRuns = new Map<string, Promise<BenchmarkAutomationAnalysis | undefined>>();
+  let homeRequested = false;
+  const ensureBenchmarkAutomationAnalysis = async (force = false, expectedKey?: string): Promise<BenchmarkAutomationAnalysis | undefined> => {
+    // Home can render while startup/selection hydration is still indexing.
+    if (benchmarkState.indexing && !benchmarkState.ready) return undefined;
+    if (benchmarkState.ready) { try { await benchmarkState.ready; } catch { /* analysis can still report a useful failure below */ } }
+    const selected = benchmarkState.authoringMode === 'benchmark'
+      ? benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey)
+      : undefined;
+    if (!selected || (expectedKey && selected.key !== expectedKey)) return undefined;
+    const current = automationAnalysis.get(selected.key);
+    if (!force && current?.state === 'complete') return current;
+    const running = automationAnalysisRuns.get(selected.key);
+    if (running) return running;
+    const loaded = loadPack(selected.benchmark.path) ?? pack;
+    if (!loaded) return undefined;
+    const runningState: BenchmarkAutomationAnalysis = { state: 'running', likelyAutomatable: 0, likelyRuleUris: [], scanned: 0, total: selected.automation.needsAutomation };
+    automationAnalysis.set(selected.key, runningState);
+    WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
+    const run = (async () => {
+      try {
+        const result = api.window.withProgress
+          ? await api.window.withProgress({ location: api.ProgressLocation?.Notification ?? 15, title: 'Analyzing Benchmark automation gaps…', cancellable: true }, (progress: any, token: any) => analyzeBenchmarkAutomation(api, index, benchmarkState, loaded, selected, progress, token))
+          : await analyzeBenchmarkAutomation(api, index, benchmarkState, loaded, selected);
+        automationAnalysis.set(selected.key, result);
+        WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
+        return result;
+      } catch (error) {
+        automationAnalysis.delete(selected.key);
+        WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
+        throw error;
+      } finally {
+        automationAnalysisRuns.delete(selected.key);
+      }
+    })();
+    automationAnalysisRuns.set(selected.key, run);
+    return run;
+  };
+  const openWelcome = () => {
+    homeRequested = true;
+    WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo);
+    void ensureBenchmarkAutomationAnalysis().catch(() => { /* automatic Home analysis stays non-blocking */ });
+  };
   const tree = new StudioTree(index);
   const diagnostics = vscode.languages.createDiagnosticCollection('scap-ng');
   const schemaDiagnostics = vscode.languages.createDiagnosticCollection('scap-ng-schema');
@@ -3811,6 +3916,7 @@ export function activate(context: vscode.ExtensionContext) {
     WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
     authoringSidebar.refreshContext();
     for (const listener of benchmarkState.refreshListeners) listener();
+    if (homeRequested) void ensureBenchmarkAutomationAnalysis().catch(() => { /* keep background Home analysis non-blocking */ });
   };
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('scapNg-authoringSidebar', authoringSidebar));
   if (api.workspace.onDidChangeConfiguration) context.subscriptions.push(api.workspace.onDidChangeConfiguration((event: any) => {
@@ -3997,7 +4103,7 @@ export function activate(context: vscode.ExtensionContext) {
     AiConfigurationPanel.update(saved);
     return saved;
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openWelcome', () => WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo)));
+  context.subscriptions.push(vscode.commands.registerCommand('scapNg.openWelcome', openWelcome));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.openBatchReviewQueue', async () => {
     const batches = cachedAiReviewBatches(context);
     if (!batches.length) { await api.window.showInformationMessage('There are no saved AI Assessment drafts waiting for review.'); return; }
@@ -4021,13 +4127,31 @@ export function activate(context: vscode.ExtensionContext) {
     await openStandaloneAssessmentFile(api);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.refreshContentIndex', async () => {
-    automationAnalysis.clear();
-    const refresh = () => refreshContentIndex(index, tree, api, indexDiagnostics, benchmarkState);
+    // Home can be shown while the startup scan is still restoring the saved
+    // context. Observe that scan before deciding that no Benchmark is selected.
+    if (benchmarkState.ready) { try { await benchmarkState.ready; } catch { /* the refresh below can recover from a failed scan */ } }
+    const selected = benchmarkState.authoringMode === 'benchmark'
+      ? benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey)
+      : undefined;
+    if (!selected) {
+      await api.window.showInformationMessage('Select a Benchmark before refreshing Benchmark data.');
+      return;
+    }
+    // Do not let a refresh race an analysis over the old index. Finish any
+    // already-running pass first, then rebuild this package and analyze it
+    // again from the refreshed source.
+    const activeAnalysis = automationAnalysisRuns.get(selected.key);
+    if (activeAnalysis) { try { await activeAnalysis; } catch { /* refresh still rebuilds the selected package */ } }
+    // Automation analysis is derived from the selected package. Preserve
+    // analyses for every other indexed Benchmark when this package is rebuilt.
+    automationAnalysis.delete(selected.key);
+    const refresh = () => refreshContentIndex(index, tree, api, indexDiagnostics, benchmarkState, selected.packagePath);
     try {
       const count = api.window.withProgress
-        ? await api.window.withProgress({ location: api.ProgressLocation?.Window ?? 10, title: 'Refreshing Benchmark data…' }, refresh)
+        ? await api.window.withProgress({ location: api.ProgressLocation?.Window ?? 10, title: `Refreshing ${selected.benchmark.title ?? 'Benchmark'} data…` }, refresh)
         : await refresh();
-      await api.window.showInformationMessage(`Benchmark data refreshed (${count} YAML files indexed).`);
+      await ensureBenchmarkAutomationAnalysis(true, selected.key);
+      await api.window.showInformationMessage(`${selected.benchmark.title ?? 'Benchmark'} data refreshed (${count} files indexed).`);
     } catch (error) {
       await api.window.showErrorMessage(`Benchmark data refresh failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -4050,7 +4174,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Assessment Studio view. Never strand a first-time user with a file-first
     // warning: without an Assessment, Home is the actionable creation surface.
     if (!uri || !isAssessmentFilePath(uri.fsPath ?? '')) {
-      WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo);
+      openWelcome();
       return;
     }
     const selected = benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey);
@@ -4161,12 +4285,9 @@ export function activate(context: vscode.ExtensionContext) {
       ? benchmarkContextForKey(benchmarkContexts(index, benchmarkState.importedRoots), benchmarkState.activeKey)
       : undefined;
     if (!selected) { await api.window.showInformationMessage('Select a Benchmark before analyzing automation gaps.'); return; }
-    const loaded = loadPack(selected.benchmark.path) ?? pack;
-    if (!loaded) { await api.window.showWarningMessage('A verified offline metadata pack is required for automation analysis.'); return; }
-    const result = await api.window.withProgress({ location: api.ProgressLocation?.Notification ?? 15, title: 'Analyzing Benchmark automation gaps…', cancellable: true }, (progress: any, token: any) => analyzeBenchmarkAutomation(api, index, benchmarkState, loaded, selected, progress, token));
-    automationAnalysis.set(selected.key, result);
-    WelcomePanel.updateContext(welcomeContextInfo(), Boolean(pack));
-    await api.window.showInformationMessage(`Automation analysis complete: ${result.likelyAutomatable} of ${result.total} Rules look promising for author review.`);
+    if (!loadPack(selected.benchmark.path) && !pack) { await api.window.showWarningMessage('A verified offline metadata pack is required for automation analysis.'); return; }
+    const result = await ensureBenchmarkAutomationAnalysis(true, selected.key);
+    if (result) await api.window.showInformationMessage(`Automation analysis complete: ${result.likelyAutomatable} of ${result.total} Rules look promising for author review.`);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testRegex', (argument: any) => RegexTesterPanel.open(context, argument?.document ?? api.window.activeTextEditor?.document, pack, { useFirst: argument?.useFirst === true })));
   context.subscriptions.push(vscode.commands.registerCommand('scapNg.testObject', () => SampleObjectTesterPanel.open(context, api.window.activeTextEditor?.document, pack)));
@@ -4191,7 +4312,7 @@ export function activate(context: vscode.ExtensionContext) {
   // users commonly close the tab and expect it to be available again after
   // restarting VS Code. Keep the Authoring sidebar focused on editing.
   if (!api.window.activeTextEditor?.document) {
-    setTimeout(() => WelcomePanel.open(context, () => Boolean(pack), build, welcomeContextInfo), 500);
+    setTimeout(openWelcome, 500);
   }
 }
 export function deactivate() { /* no network, telemetry or scanner process */ }

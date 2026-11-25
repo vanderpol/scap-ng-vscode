@@ -192,3 +192,20 @@ test('coverage sidecars retain inherited Benchmark applicability without enterin
   index.clear();
   assert.equal(index.coverageForPackage('/workspace/pkg'), undefined);
 });
+
+test('replaces one indexed package without clearing another package', () => {
+  const index = new WorkspaceIndex();
+  index.update('file:///content/a/rule.yaml', rule('a-rule', 'a-assessment'), '/content/a/rules/rule.yaml');
+  index.update('file:///content/a/old.assessment.yaml', assessment('old-a'), '/content/a/assessments/old.assessment.yaml');
+  index.update('file:///content/b/rule.yaml', rule('b-rule', 'b-assessment'), '/content/b/rules/rule.yaml');
+  index.update('file:///content/b/assessment.yaml', assessment('b-assessment'), '/content/b/assessments/assessment.yaml');
+  index.update('file:///content/ab/unrelated.yaml', assessment('unrelated'), '/content/ab/unrelated.yaml');
+
+  index.removeWithin('/content/a', new Set(['file:///content/a/rule.yaml']));
+
+  assert.equal(index.get('file:///content/a/old.assessment.yaml'), undefined, 'deleted files in the refreshed package are removed');
+  assert.equal(index.get('file:///content/a/rule.yaml')?.id, 'a-rule');
+  assert.equal(index.get('file:///content/b/rule.yaml')?.id, 'b-rule', 'another package remains indexed');
+  assert.equal(index.get('file:///content/b/assessment.yaml')?.id, 'b-assessment');
+  assert.equal(index.get('file:///content/ab/unrelated.yaml')?.id, 'unrelated', 'a path sharing only the root prefix remains indexed');
+});
