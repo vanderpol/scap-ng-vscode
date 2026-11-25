@@ -209,6 +209,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /does not link automated Assessment/);
   assert.match(extensionSource, /updateIndexedAutomationLink\(index, document, saved, edit\.document\.text\)/);
   assert.match(extensionSource, /openSingleRuleBatchAutomation/);
+  assert.match(extensionSource, /Generate offline draft/);
+  assert.match(extensionSource, /Generate with configured AI/);
+  assert.match(extensionSource, /Offline drafts stay local/);
   assert.match(extensionSource, /Index the Assessment first so Rule resolution is/);
   assert.match(extensionSource, /onSourceChanged\?\.\(edit\.document\.text\)/);
   assert.match(extensionSource, /Benchmark pages refreshed/);

@@ -841,15 +841,18 @@ async function openSingleRuleBatchAutomation(
   if (!rule) throw new Error('That Rule is not associated with the current Benchmark.');
   if (rule.automationStatus !== 'needs-automation') throw new Error('This Rule already has automation or is marked manual-only; review the existing Assessment instead.');
 
-  const choices = [
-    { label: 'Generate offline draft', description: 'Use the deterministic local workflow; no provider data is sent.', mode: 'offline' as const },
-    ...(getAiGenerator() ? [{ label: 'Generate with configured AI', description: 'Use the same AI generation and independent-verification pipeline as batch automation.', mode: 'ai' as const }] : [])
-  ];
-  const picked = choices.length === 1
-    ? choices[0]
-    : await api.window.showQuickPick(choices, { title: `Automate “${rule.title ?? rule.id ?? 'selected Rule'}”`, placeHolder: 'Choose the shared automation workflow' });
+  const aiAvailable = Boolean(getAiGenerator());
+  const offlineLabel = 'Generate offline draft';
+  const aiLabel = 'Generate with configured AI';
+  const picked = await api.window.showInformationMessage(
+    `Choose how to automate “${rule.title ?? rule.id ?? 'selected Rule'}”. Offline drafts stay local; configured AI sends bounded Rule context to the provider.`,
+    { modal: true },
+    offlineLabel,
+    ...(aiAvailable ? [aiLabel] : [])
+  );
   if (!picked) return false;
-  if (picked.mode === 'ai') {
+  const mode: BatchAutomationMode = picked === aiLabel ? 'ai' : 'offline';
+  if (mode === 'ai') {
     const consent = await api.window.showWarningMessage(
       'Generate an AI draft for this Rule? The bounded Rule context and current YAML will be sent to the configured provider. Nothing will be saved or linked until the result is reviewed and approved.',
       { modal: true },
@@ -863,7 +866,7 @@ async function openSingleRuleBatchAutomation(
     api,
     state,
     selected,
-    picked.mode,
+    mode,
     'needs-automation',
     undefined,
     getPack,
