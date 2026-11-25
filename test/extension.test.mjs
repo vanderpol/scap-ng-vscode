@@ -193,6 +193,9 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /pinned SCAP-NG schema/);
   assert.match(welcomeSource, /Review saved AI drafts/);
   assert.match(extensionSource, /case 'waiting-provider': return 'Waiting for provider'/);
+  assert.match(extensionSource, /Waiting for independent verification response/);
+  assert.match(extensionSource, /function ensureElapsedTimer/);
+  assert.match(extensionSource, /setInterval\(\(\)=>/);
   assert.match(extensionSource, /Only currently unautomated Rules in this page scope are included/);
   assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);
   assert.match(extensionSource, /openBenchmarkBatchAutomationPanel/);
