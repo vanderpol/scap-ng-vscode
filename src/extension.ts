@@ -636,11 +636,13 @@ async function openBenchmarkBatchAutomationPanel(extensionContext: vscode.Extens
     const currentRule = new SourceBuffer(document.getText()).json() as any;
     if (currentRule?.rule?.assessment_choices?.automated?.assessment) throw new Error('This Rule now has an automated Assessment; existing automation was left unchanged.');
     if (index.get(entry.uri)?.automationDisposition === 'manual-only') throw new Error('This Rule was marked manual-only while the batch was running; no automation was linked.');
-    let candidateDocument = entry.result.document;
-    if (!candidateDocument && typeof entry.result.yaml === 'string') candidateDocument = new SourceBuffer(entry.result.yaml).json();
+    if (typeof entry.result.yaml !== 'string' || !entry.result.yaml.trim()) throw new Error('The cached Assessment draft has no YAML to approve.');
+    // Reparse the exact bytes that will be written. Never trust a cached
+    // parsed-document companion over the YAML payload itself.
+    const candidateDocument = new SourceBuffer(entry.result.yaml).json();
     const assessmentErrors = pack.validate(schemaBase + 'assessment.schema.json', candidateDocument);
     if (assessmentErrors.length) throw new Error('The cached Assessment draft no longer satisfies the pinned SCAP-NG schema: ' + assessmentErrors.slice(0, 8).join('; '));
-    const generatedId = String(candidateDocument?.assessment?.id ?? '');
+    const generatedId = String((candidateDocument as any)?.assessment?.id ?? '');
     if (!generatedId) throw new Error('The generated Assessment has no safe ID.');
     if (confirm) {
       const choice = await api.window.showWarningMessage(`Approve “${entry.title}” and save/link automated Assessment “${generatedId}”?`, { modal: true }, 'Save and link');
