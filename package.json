@@ -87,7 +87,8 @@
     "onCommand:scapNg.analyzeBenchmarkAutomation",
     "onCommand:scapNg.openAiConfiguration",
     "onCommand:scapNg.openEditorOptions",
-    "onCommand:scapNg.testAiAuthoring"
+    "onCommand:scapNg.testAiAuthoring",
+    "onCommand:scapNg.openBatchReviewQueue"
   ],
   "contributes": {
     "commands": [
@@ -218,6 +219,10 @@
       {
         "command": "scapNg.testAiAuthoring",
         "title": "SCAP-NG: Test configured AI authoring"
+      },
+      {
+        "command": "scapNg.openBatchReviewQueue",
+        "title": "SCAP-NG: Review saved AI drafts"
       }
     ],
     "viewsContainers": {

@@ -27,6 +27,8 @@ test('P0 extension manifest exposes offline Assessment Studio and exact pin desc
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAssessmentFile'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openAiConfiguration'));
   assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openEditorOptions'));
+  assert.ok(packageJson.contributes.commands.some(command => command.command === 'scapNg.openBatchReviewQueue'));
+  assert.ok(packageJson.activationEvents.includes('onCommand:scapNg.openBatchReviewQueue'));
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open an Assessment File/);
   assert.doesNotMatch(packageJson.contributes.viewsWelcome[0].contents, /Open Authoring tools/);
   assert.match(packageJson.contributes.viewsWelcome[0].contents, /Open SCAP-NG Home/);
@@ -172,6 +174,13 @@ test('Benchmark counters use dedicated searchable source navigation and editable
   assert.match(extensionSource, /case 'queued': return 'Queued'/);
   assert.match(extensionSource, /stage\?: 'generation' \| 'verification'/);
   assert.match(extensionSource, /stage: entry\.stage/);
+  assert.match(extensionSource, /intentionalClose/);
+  assert.match(extensionSource, /Reopen batch review/);
+  assert.match(extensionSource, /attachReplacementPanel/);
+  assert.match(extensionSource, /scapNg\.aiReviewQueue/);
+  assert.match(extensionSource, /cachedAiReviewBatches/);
+  assert.match(extensionSource, /pinned SCAP-NG schema/);
+  assert.match(welcomeSource, /Review saved AI drafts/);
   assert.match(extensionSource, /case 'waiting-provider': return 'Waiting for provider'/);
   assert.match(extensionSource, /Only currently unautomated Rules in this page scope are included/);
   assert.match(extensionSource, /Generation does not save YAML, create Assessments, link Rules, or mark Rules manual-only/);

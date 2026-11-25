@@ -53,4 +53,7 @@ test('batch automation webview script is executable with source text containing 
   assert.match(match[1], /stage==='verification'/);
   assert.doesNotMatch(html, /id="progress"/);
   assert.match(match[1], /node=\$\('batchMeta'\)/);
+  assert.match(html, /Cancel and close/);
+  assert.match(html, /Discard saved drafts/);
+  assert.match(html, /data\.aiAvailable/);
 });
