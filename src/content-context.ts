@@ -340,6 +340,7 @@ export function benchmarkContextPlatform(context: BenchmarkContextSummary | unde
   if (/rhel|red\s+hat/.test(identity)) return 'rhel';
   if (/(?:^|[_\s-])windows[_\s-]*11(?:$|[_\s-])/.test(identity)) return 'windows_11';
   if (/(?:^|[_\s-])windows[_\s-]*10(?:$|[_\s-])/.test(identity)) return 'windows_10';
+  if (/windows.*server.*2012.*2012.*r2.*member\s+server|windows.*2012.*member\s+server/.test(identity)) return 'windows_server_2012_member_server';
   if (/windows.*server.*2016/.test(identity)) return 'windows_server_2016';
   if (/windows.*server.*2019/.test(identity)) return 'windows_server_2019';
   if (/windows.*server.*2022/.test(identity)) return 'windows_server_2022';

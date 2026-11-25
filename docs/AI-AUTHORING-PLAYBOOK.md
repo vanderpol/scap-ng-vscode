@@ -15,6 +15,25 @@ authoritative.
 3. Map each objective collection step to an existing capability mapping. Derive
    the Object selectors from the procedure and the selected capability schema;
    never select a capability because it appeared in an example.
+
+**Fixed source values are not organizational Inputs.** If the procedure supplies a
+concrete literal (for example `Value: 1`, `Value: 0x00000002`, a named service,
+or an explicit fixed regex/value), serialize that literal directly in the Test.
+Do not wrap it in an Assessment Input, add an `allowed` constraint, or describe it
+as organization-controlled merely because policy binding exists in the general
+contract. Declare an Assessment Input only when this supplied procedure explicitly
+leaves the value, set, endpoint, account population, or policy parameter unknown
+(`organization-approved`, `site-defined`, `<placeholder>`, and equivalent wording).
+If a fixed value is converted to an Input, treat that as an authoring error and
+correct it before returning the candidate.
+
+When a Benchmark title or target context explicitly identifies a platform role or
+version (for example Windows Server 2012/2012 R2 Member Server), use that context
+to select the corresponding branch in a procedure that documents multiple roles.
+Do not make a correct role-specific conversion manual merely because the procedure
+also contains instructions for other roles; preserve only the applicable branch and
+record the context assumption. Do not infer a role when the Benchmark context does
+not provide one.
 4. Write one or more complete Tests. A Test's Object selects Items; its Require
    expresses Item existence/satisfaction and field predicates. Do not replace a
    missing predicate with an empty Object or a presence-only placeholder.
@@ -54,6 +73,15 @@ human may approve an exception. Use `not_evaluated` only when the technical chec
 cannot run or required evidence is genuinely unavailable.
 
 A known negative result must never be made informational by an Evaluate branch.
+
+**Manual-exception decision boundary:** Never return manual-only solely because a
+procedure contains an ISSO/ISSM/SA/AO exception, documentation requirement, or
+post-evaluation approval path. If the same procedure gives a concrete registry
+Hive/Path/Name/Type/Value, command/output predicate, package, service, or file
+population, generate the objective Test and preserve the exception as an
+unresolved review note. Manual-only is reserved for a missing objective collector,
+an unrepresentable population relationship, or a predicate that cannot be made
+objective from the supplied source.
 A branch may be `not_applicable` only for genuine inapplicability and may be
 `not_evaluated` only for an unavailable/unfinished technical assessment.
 

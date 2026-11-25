@@ -300,3 +300,9 @@ test('Benchmark context reports inherited applicability from the converter cover
     catalogCount: 1
   });
 });
+
+test('benchmark context preserves explicit Windows member-server role for AI branch selection', () => {
+  const base = { packagePath: '/workspace', profiles: [], catalogUris: [], ruleCount: 0, assessmentCount: 0, applicabilityCount: 0, conditionCount: 0, rules: [], assessments: [], applicability: [] };
+  const context = { ...base, key: 'windows-member-server', benchmark: { uri: '', path: '', title: 'Microsoft Windows Server 2012/2012 R2 Member Server STIG SCAP Benchmark' } };
+  assert.equal(benchmarkContextPlatform(context), 'windows_server_2012_member_server');
+});

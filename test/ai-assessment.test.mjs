@@ -615,3 +615,87 @@ test('AI candidates with a required organizational input are classified separate
   assert.equal(result.automationClass, 'organizational-input');
   assert.equal(result.diagnostics.length, 0);
 });
+
+test('AI knowledge does not mistake converted XML discussion tags for organizational placeholders', () => {
+  const knowledge = JSON.parse(buildScapNgKnowledge(pack, process.cwd(), {
+    platform: 'windows_server_2012_member_server',
+    checkText: '<VulnDiscussion>A fixed registry Value: 1 must be enabled.</VulnDiscussion>'
+  }));
+  assert.ok(knowledge);
+});
+
+test('AI rejects an unnecessary organizational Input when the source supplies a fixed registry literal', async () => {
+  const source = createAssistedAssessment(pack, {
+    title: 'Fixed registry setting',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1'
+  });
+  const value = parseDocument(source.yaml).toJS();
+  const testId = Object.keys(value.assessment.tests)[0];
+  const test = value.assessment.tests[testId];
+  value.assessment.inputs = { 'fixed-setting-input': { datatype: 'integer', cardinality: 'exactly_one', required: true } };
+  test.require.field_requirement = { values_found: 'one_or_more', values_matching: 'every' };
+  test.require.fields = { value: { equals: { input: 'fixed-setting-input' }, value_match: 'one_or_more' } };
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Candidate.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check fixed registry value', represented: true, tests: [testId] }], path_patterns: [] }
+  };
+  const { result } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-fixed-input', {
+    ruleId: 'fixed-registry-rule', title: 'Fixed registry setting', checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1'
+  }));
+  assert.ok(result.diagnostics.some(message => /concrete registry Value literal.*Input/i.test(message)));
+});
+
+test('AI does not treat a command wildcard as a filesystem path set', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Command population.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Inspect command results', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-command-wildcard', {
+    ruleId: 'command-wildcard-rule', title: 'Inspect accounts',
+    checkText: 'Run Get-ADUser -Filter * and if any returned records are a finding, report it.'
+  }));
+  assert.doesNotMatch(result.diagnostics.join('\n'), /path set|wildcard.*complete population/i);
+});
+
+test('AI rejects a generic finding-state query inversion', async () => {
+  const value = parseDocument(validYaml).toJS();
+  const testId = Object.keys(value.assessment.tests)[0];
+  const candidate = value.assessment.tests[testId];
+  candidate.capability = 'windows.wmi.query';
+  candidate.object = { namespace: 'root\\cimv2', query: 'SELECT Name, PasswordRequired FROM Win32_UserAccount WHERE PasswordRequired = False' };
+  candidate.require = {
+    item_requirement: { items_found: 'one_or_more', items_satisfying: 'every' },
+    field_requirement: { values_found: 'one_or_more', values_matching: 'every' },
+    fields: { PasswordRequired: { equals: true } }
+  };
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Candidate.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Returned noncompliant records are findings', represented: true, tests: [testId] }], path_patterns: [] }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-query-inversion', {
+    ruleId: 'query-inversion-rule', title: 'Accounts require passwords',
+    checkText: 'If any account records are returned with PasswordRequired False, this is a finding.'
+  }));
+  assert.ok(result.diagnostics.some(message => /filters query results.*False.*requires.*True|inverts a finding-state query/i.test(message)));
+});
+
+test('AI gets a correction opportunity when it over-applies a human exception to a concrete registry check', async () => {
+  const repaired = JSON.stringify({
+    generated_mode: 'automated', confidence: 'medium', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: ['Review the human exception after technical evaluation.'], citations: [], rationale: 'Objective test retained.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check the fixed registry predicate', represented: true, tests: ['check-the-passwd-file-test'] }], path_patterns: [] }
+  });
+  let calls = 0;
+  const { result, requests } = await withFetch(() => response(calls++ === 0 ? JSON.stringify({
+    generated_mode: 'manual-only', confidence: 'low', assessment_yaml: '', assumptions: ['ISSO review is required.'], unresolved_questions: ['Exception review.'], citations: [], rationale: 'Manual.'
+  }) : repaired), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.example.test/v1', 'key', 'model-manual-exception', {
+    ruleId: 'fixed-registry-exception-rule', title: 'Fixed registry setting',
+    checkText: 'Registry Hive: HKEY_LOCAL_MACHINE\nRegistry Path: \\Software\\Policies\\Example\nValue Name: Setting\nType: REG_DWORD\nValue: 1\nIf an ISSO exception exists, document it.'
+  }));
+  assert.equal(requests.length, 2);
+  assert.equal(result.generatedMode, 'automated');
+  assert.equal(result.diagnostics.length, 0);
+});
