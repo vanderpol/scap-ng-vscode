@@ -474,9 +474,13 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   }
   assert.match(extensionSource, /Expected Assessment version/);
   assert.match(extensionSource, /Input bindings/);
-  assert.match(extensionSource, /Linked '\+\(linked\.mode==='automated'\?'automated':'manual'\)/);
+  assert.match(extensionSource, /picker-actions/);
+  assert.match(extensionSource, /assessmentLinks:true/);
   assert.match(extensionSource, /type:'openAssessment'/);
   assert.match(extensionSource, /That Assessment is not linked from this Rule/);
+  assert.match(extensionSource, /max-width:100%;overflow:auto/);
+  assert.match(extensionSource, /@media\(max-width:760px\)/);
+  assert.match(extensionSource, /grid-template-columns:minmax\(0,1fr\) minmax\(0,2fr\)/);
 });
 
 test('Graphical Rule context shows inherited applicability from coverage without duplicating it into Rule YAML', () => {
