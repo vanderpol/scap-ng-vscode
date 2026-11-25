@@ -73,6 +73,7 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.ok(knowledge.authoring_invariants.some(item => /not_applicable is a leaf outcome/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /(?:Do not|never) emit OVAL spellings such as at_least_one/i.test(item)));
   assert.ok(knowledge.authoring_invariants.some(item => /pattern_match is not a SCAP-NG operator/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /Never copy collected result\/state fields into an Object selector/i.test(item)));
   assert.match(knowledge.current_authoring_examples.applicability_gate_with_failure, /not_applicable/);
   assert.match(knowledge.editor_documents['SCAP-NG-PRIMER.md'], /Assessment.*Rule|Rule.*Assessment/i);
   assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /population gate|technical Test/i);
@@ -299,6 +300,25 @@ test('AI drafts with partial applicability or path coverage are visibly rejected
   assert.equal(result.confidence, 'low');
   assert.ok(result.diagnostics.some(item => /Not Applicable|conditional branch/i.test(item)));
   assert.ok(result.diagnostics.some(item => /path set|wildcard|complete population/i.test(item)));
+});
+
+test('AI coverage does not require an unexecutable OCIL/manual alternative', async () => {
+  const payload = JSON.stringify({
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: validYaml,
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Technical check is represented.',
+    coverage: {
+      applicability: 'not-needed',
+      procedure_steps: [
+        { summary: 'Check the file presence', represented: true, tests: ['check-the-passwd-file-test'] },
+        { summary: 'Complete the source OCIL manual questionnaire', represented: false, tests: [] }
+      ],
+      path_patterns: []
+    }
+  });
+  const { result } = await withFetch(() => response(payload), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.coverage.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test('AI coverage cannot reference a Test that the Assessment does not author', async () => {
@@ -543,6 +563,30 @@ test('provider Assessment IDs are normalized generically before correction when 
   assert.equal(result.diagnostics.length, 0);
   assert.equal(result.document.assessment.id, 'check-file-assessment');
   assert.ok(result.assumptions.some(item => /normalized.*identity limit/i.test(item)));
+});
+
+test('provider Test IDs and coverage references are normalized generically before schema validation', async () => {
+  const value = parseDocument(validYaml).toJS();
+  const originalId = Object.keys(value.assessment.tests)[0];
+  const longId = 'windows-server-security-policy-check-with-an-intentionally-overlong-provider-generated-name-test';
+  value.assessment.tests[longId] = value.assessment.tests[originalId];
+  delete value.assessment.tests[originalId];
+  value.assessment.evaluate = { test: longId };
+  const payload = {
+    generated_mode: 'automated', confidence: 'high', assessment_yaml: stringify(value),
+    assumptions: [], unresolved_questions: [], citations: [], rationale: 'Complete.',
+    coverage: { applicability: 'not-needed', procedure_steps: [{ summary: 'Check file presence', represented: true, tests: [longId] }], path_patterns: [] }
+  };
+  const { result, requests } = await withFetch(() => response(JSON.stringify(payload)), () => createAiAssessmentDraft(pack, process.cwd(), 'https://api.test-id.example/v1', 'key', 'model', {
+    ruleId: 'check-file-rule', title: 'Check the passwd file', checkText: 'Verify that the file /etc/passwd is present.'
+  }));
+  assert.equal(requests.length, 1);
+  assert.equal(result.diagnostics.length, 0);
+  const [normalizedId] = Object.keys(result.document.assessment.tests);
+  assert.match(normalizedId, /^[a-z0-9]+(?:-[a-z0-9]+)*-test$/);
+  assert.ok(normalizedId.length <= 64);
+  assert.deepEqual(result.document.assessment.evaluate, { test: normalizedId });
+  assert.match(result.assumptions.find(item => /Normalized provider Test ID/i.test(item)), /→/);
 });
 
 test('provider Assessment Input names are normalized generically before schema validation', async () => {
