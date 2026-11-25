@@ -475,6 +475,10 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.match(extensionSource, /Expected Assessment version/);
   assert.match(extensionSource, /Input bindings/);
   assert.match(extensionSource, /picker-actions/);
+  assert.match(extensionSource, /picker-control-row/);
+  assert.match(extensionSource, /workspace\{min-height:0;display:block/);
+  assert.doesNotMatch(extensionSource, /class=\"rail\"/);
+  assert.doesNotMatch(extensionSource, /id=\"nav\"/);
   assert.match(extensionSource, /assessmentLinks:true/);
   assert.match(extensionSource, /type:'openAssessment'/);
   assert.match(extensionSource, /That Assessment is not linked from this Rule/);
