@@ -480,6 +480,9 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.doesNotMatch(extensionSource, /class=\"rail\"/);
   assert.doesNotMatch(extensionSource, /id=\"nav\"/);
   assert.match(extensionSource, /assessmentLinks:true/);
+  assert.match(extensionSource, /assessmentUri: target\.uri/);
+  assert.match(extensionSource, /Select applicable Assessment files/);
+  assert.match(extensionSource, /Applicable Assessment files/);
   assert.match(extensionSource, /type:'openAssessment'/);
   assert.match(extensionSource, /That Assessment is not linked from this Rule/);
   assert.match(extensionSource, /height:100%;overflow:hidden;display:block/);
