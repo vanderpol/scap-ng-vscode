@@ -476,13 +476,14 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.match(extensionSource, /Input bindings/);
   assert.match(extensionSource, /picker-actions/);
   assert.match(extensionSource, /picker-control-row/);
-  assert.match(extensionSource, /workspace\{min-height:0;display:block/);
+  assert.match(extensionSource, /workspace\{min-height:0;height:100%;overflow:hidden;display:block/);
   assert.doesNotMatch(extensionSource, /class=\"rail\"/);
   assert.doesNotMatch(extensionSource, /id=\"nav\"/);
   assert.match(extensionSource, /assessmentLinks:true/);
   assert.match(extensionSource, /type:'openAssessment'/);
   assert.match(extensionSource, /That Assessment is not linked from this Rule/);
-  assert.match(extensionSource, /max-width:100%;overflow:auto/);
+  assert.match(extensionSource, /height:100%;overflow:hidden;display:block/);
+  assert.match(extensionSource, /height:100%;min-width:0;max-width:100%;overflow-y:auto;overflow-x:hidden/);
   assert.match(extensionSource, /@media\(max-width:760px\)/);
   assert.match(extensionSource, /grid-template-columns:minmax\(0,1fr\) minmax\(0,2fr\)/);
 });
