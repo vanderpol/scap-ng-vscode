@@ -473,6 +473,11 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.match(extensionSource, /Optional and advanced Rule fields/);
   assert.match(extensionSource, /const advancedOpen=/);
   assert.match(extensionSource, /function details\(parent,title,open=false\)/);
+  assert.match(extensionSource, /Assessment linkage options/);
+  assert.match(extensionSource, /if\(model\.inheritedApplicability\?\.length\)\{const inherited=details\(editor,'Inherited applicability',false\)/);
+  assert.match(extensionSource, /function applicabilitySelect\(parent,path,value,items\)/);
+  assert.match(extensionSource, /applicability-select/);
+  assert.match(extensionSource, /No applicable Assessment files are indexed for this Benchmark/);
   for (const field of ['rationale', 'parameters', 'references', 'remediation', 'identifiers', 'extensions', 'warnings', 'organizationalInputRequirements']) {
     assert.match(extensionSource, new RegExp(`model\\.${field}`), field);
   }
