@@ -471,6 +471,10 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.match(extensionSource, /window\.addEventListener\('unhandledrejection'/);
   assert.match(extensionSource, /function hasContent\(value\)/);
   assert.match(extensionSource, /Optional and advanced Rule fields/);
+  assert.match(extensionSource, /Authoring metadata/);
+  assert.match(extensionSource, /const automation=details\(editor,'Authoring metadata'/);
+  assert.match(extensionSource, /Rule content/);
+  assert.match(extensionSource, /#identity\{display:grid/);
   assert.match(extensionSource, /const advancedOpen=/);
   assert.match(extensionSource, /function details\(parent,title,open=false\)/);
   assert.match(extensionSource, /if\(model\.inheritedApplicability\?\.length\)\{const inherited=details\(editor,'Inherited applicability',false\)/);
