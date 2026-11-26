@@ -469,6 +469,10 @@ test('direct 0.4.1 applicability expressions are displayed read-only instead of 
 test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkage surface', () => {
   assert.ok(extensionSource.includes("values.textContent=(level.conditions||[]).join('\\\\n')"), 'embedded webview newline must remain escaped in the outer template');
   assert.match(extensionSource, /window\.addEventListener\('unhandledrejection'/);
+  assert.match(extensionSource, /function hasContent\(value\)/);
+  assert.match(extensionSource, /Optional and advanced Rule fields/);
+  assert.match(extensionSource, /const advancedOpen=/);
+  assert.match(extensionSource, /function details\(parent,title,open=false\)/);
   for (const field of ['rationale', 'parameters', 'references', 'remediation', 'identifiers', 'extensions', 'warnings', 'organizationalInputRequirements']) {
     assert.match(extensionSource, new RegExp(`model\\.${field}`), field);
   }
