@@ -475,6 +475,9 @@ test('Graphical Rule webview is syntax-safe and exposes the complete Rule/linkag
   assert.match(extensionSource, /function details\(parent,title,open=false\)/);
   assert.match(extensionSource, /if\(model\.inheritedApplicability\?\.length\)\{const inherited=details\(editor,'Inherited applicability',false\)/);
   assert.match(extensionSource, /function applicabilitySelect\(parent,path,value,items\)/);
+  assert.match(extensionSource, /const inspector=document\.querySelector\('.inspector'\)/);
+  assert.match(extensionSource, /const scrollTop=inspector\?\.scrollTop\?\?0/);
+  assert.match(extensionSource, /inspector\.scrollTop=scrollTop/);
   assert.match(extensionSource, /applicability-select/);
   assert.match(extensionSource, /No applicable Assessment files are indexed for this Benchmark/);
   for (const field of ['rationale', 'parameters', 'references', 'remediation', 'identifiers', 'extensions', 'warnings', 'organizationalInputRequirements']) {
