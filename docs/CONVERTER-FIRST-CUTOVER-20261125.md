@@ -87,3 +87,28 @@ no invented automated Assessment.
 6. Only after those gates, update editor pins and begin lifecycle/import work.
 
 No generated content or editor pin was modified by this checkpoint.
+
+## Live mainline check
+
+The live default branches currently resolve to:
+
+```text
+scap-ng       58918a32bfa241dcafb16eecfed5931dad076100
+scap-ng-tools d119f0d03e7e6dfe8ea52591364415c90adf4744
+```
+
+The current SCAP-NG `main` schema tree has the same 147-resource aggregate
+family as the Tools main pin:
+
+```text
+dc650646a24e727e68de242027cca3058683accc531f07bf6ace217609755b24
+```
+
+Thus the latest schema content is effectively the `2d983fc` family even though
+SCAP-NG `main` has advanced with documentation/policy commits. The direct-slice
+identity correction is merged in Tools PR #124, but the converter is not yet a
+release-complete consumer dependency. Tools #71, #83, #86 and #120 remain open;
+notably, standalone XCCDF manual conversion, portable offline packaging and
+complete converter qualification are still outstanding. Open converter work
+also includes the unmerged generic `time_difference`, external Variable and
+canonical Variable-operation changes (Tools PRs #67, #99 and #105).
