@@ -1,10 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { parseDocument } from 'yaml';
 import { SourceBuffer,sha256,sourceRevisionMatches,previewRegex,previewRegexSafe } from '../dist/index.js';
 
 test('byte-identical open/save with Unicode, BOM, CRLF, comments, anchors and flow style',()=>{
  for(const raw of ['# note\na: { b: "old", c: 2 } # end\n','\ufeff# π\r\na: \'old\'\r\n','a: &anchor old\nb: *anchor\n','a: |\n  multiline\n','a: [\n malformed'])assert.equal(new SourceBuffer(raw).openOrSave(),raw);
 });
+test('typed empty values and aliases remain source-preserving authoring data',()=>{
+ const raw=`assessment:
+  variables:
+    empty-variable:
+      kind: constant
+      expression:
+        literal: {datatype: string, value: []}
+    alias-variable:
+      kind: local
+      expression: {variable: empty-variable}
+`;
+ const source=new SourceBuffer(raw);
+ assert.equal(source.openOrSave(),raw);
+ const parsed = parseDocument(raw, {uniqueKeys:true}).toJS();
+ assert.deepEqual(parsed.assessment.variables['empty-variable'].expression.literal.value,[]);
+ assert.equal(parsed.assessment.variables['alias-variable'].expression.variable,'empty-variable');
+});
+
 test('target scalar splice preserves surrounding bytes and undo; stale changes rejected',()=>{
  const raw='# note\r\na: { b: "old", c: 2 } # end\r\n';const source=new SourceBuffer(raw);
  const edit=source.editScalar(['a','b'],'new',sha256(raw));assert.equal(edit.document.text,raw.replace('"old"','"new"'));assert.equal(edit.undo().text,raw);assert.equal(edit.document.json().a.b,'new');
@@ -225,6 +244,39 @@ test('P1B resolves only the enclosing Object capability and explains sample sele
  const result = await evaluateObjectSamples(context.object, context.capability, samples);
  assert.deepEqual(result.selectedItemIndices, [0]); assert.equal(result.items[0].status, 'matched'); assert.equal(result.items[1].items?.length, undefined);
  assert.equal(result.items[1].selectors[0].status, 'missing'); assert.ok(result.warnings.some(x => /offline sample/i.test(x)));
+});
+
+test('P1B models complete empty populations separately from missing, scalar-empty, and failed evidence', async () => {
+ const { evaluateObjectSamples } = await import('../dist/sample-object.js');
+ const empty = await evaluateObjectSamples({}, 'independent.shellcommand', '[]', undefined, {item_requirement:{items_found:'one_or_more',items_satisfying:'every'}});
+ assert.equal(empty.population.state, 'complete'); assert.equal(empty.population.itemsFound, 0);
+ assert.equal(empty.requirement.item.status, 'mismatched'); assert.equal(empty.requirement.itemsSatisfying.status, 'matched');
+ for (const [cardinality, expected] of [['none','matched'],['exactly_one','mismatched'],['one_or_more','mismatched'],['every','matched']]) {
+   const check = await evaluateObjectSamples({}, 'independent.shellcommand', '[]', undefined, {item_requirement:{items_found:cardinality}});
+   assert.equal(check.requirement.item.status, expected, cardinality);
+ }
+ const emptyField = await evaluateObjectSamples({}, 'variable.value', JSON.stringify({id:'empty-field',capability:'variable.value',status:'exists',fields:{value:[]},provenance:{}}), undefined, {item_requirement:{items_found:'one_or_more'},field_requirement:{values_found:'none',values_matching:'every'},fields:{value:{equals:'x'}}});
+ assert.equal(emptyField.requirement.fields[0].valuesFound.status, 'matched');
+ assert.equal(emptyField.requirement.fields[0].valuesMatching.status, 'matched');
+ const mixed = await evaluateObjectSamples({}, 'variable.value', JSON.stringify({id:'mixed',capability:'variable.value',status:'exists',fields:{value:[{datatype:'string',status:'does_not_exist'},{datatype:'string',status:'exists',value:'22'}]},provenance:{}}), undefined, {item_requirement:{items_found:'one_or_more'},field_requirement:{values_found:'one_or_more',values_matching:'every'},fields:{value:{equals:'22'}}});
+ assert.equal(mixed.requirement.fields[0].valuesFound.observed, 1); assert.equal(mixed.requirement.fields[0].valuesMatching.status, 'matched');
+ const scalar = await evaluateObjectSamples({value:{equals:''}}, 'variable.value', JSON.stringify({id:'scalar',capability:'variable.value',status:'exists',fields:{value:{datatype:'string',status:'exists',value:''}},provenance:{}}));
+ assert.equal(scalar.items[0].status, 'matched'); assert.equal(scalar.items[0].selectors[0].status, 'matched');
+ const absent = await evaluateObjectSamples({value:{values_found:'none'}}, 'variable.value', JSON.stringify({id:'absent',capability:'variable.value',status:'exists',fields:{value:{datatype:'string',status:'does_not_exist'}},provenance:{}}));
+ assert.equal(absent.items[0].selectors[0].status, 'matched');
+ const missing = await evaluateObjectSamples({value:{equals:'x'}}, 'variable.value', JSON.stringify({id:'missing',capability:'variable.value',status:'exists',fields:{},provenance:{}}));
+ assert.equal(missing.items[0].selectors[0].status, 'missing');
+ const failed = await evaluateObjectSamples({}, 'independent.shellcommand', JSON.stringify({id:'failed',capability:'independent.shellcommand',status:'error',fields:{},provenance:{}}), undefined, {item_requirement:{items_found:'one_or_more'}});
+ assert.equal(failed.population.state, 'error'); assert.equal(failed.requirement.item.status, 'indeterminate');
+});
+
+test('P1B previews shellcommand Item existence independently from zero captures', async () => {
+ const { evaluateObjectSamples } = await import('../dist/sample-object.js');
+ const result = await evaluateObjectSamples({}, 'independent.shellcommand', JSON.stringify({id:'shell',capability:'independent.shellcommand',status:'exists',fields:{stdout_line:{datatype:'string',status:'does_not_exist'}},provenance:{}}), undefined, {
+   item_requirement:{items_found:'one_or_more'}, field_requirement:{values_found:'none'}, fields:{stdout_line:{values_found:'none'}}
+ });
+ assert.equal(result.population.state, 'complete'); assert.equal(result.requirement.item.status, 'matched');
+ assert.equal(result.requirement.fields[0].valuesFound.status, 'matched'); assert.equal(result.requirement.fields[0].valuesFound.observed, 0);
 });
 
 test('P1B makes Variable-backed starter samples explicit instead of inventing field values', async () => {

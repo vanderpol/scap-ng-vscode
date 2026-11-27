@@ -79,7 +79,10 @@ test('AI knowledge pack carries canonical 0.4.1 provenance, examples, and releva
   assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /population gate|technical Test/i);
   assert.match(knowledge.editor_documents['AI-AUTHORING-PLAYBOOK.md'], /HKEY_CURRENT_USER[\s\S]*windows\.ntuser|windows\.ntuser[\s\S]*NTUSER/i);
   assert.match(knowledge.current_authoring_examples.shellcommand_existence, /field_requirement/);
-  assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /always creates an Item/);
+  assert.match(knowledge.current_authoring_examples.shellcommand_filtered_absence, /successful command Item|complete zero-capture/i);
+  assert.ok(knowledge.authoring_invariants.some(item => /Complete empty populations are valid evidence/i.test(item)));
+  assert.ok(knowledge.authoring_invariants.some(item => /regex_capture function exception.*empty-string scalar/i.test(item)));
+  assert.doesNotMatch(knowledge.authoring_invariants.join('\n'), /always creates one Item so empty stdout is a field absence/i);
   // Keep the outbound prompt bounded enough for an enterprise gateway while
   // retaining schema/mapping/history context.
   assert.ok(JSON.stringify(knowledge).length < 250_000);

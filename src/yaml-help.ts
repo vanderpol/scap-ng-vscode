@@ -217,6 +217,17 @@ function schemaEnumValues(pack: MetadataPack, uri: string): string[] {
   return sharedSchemaEnumValues(pack, sharedSchemaNodes(pack, uri));
 }
 
+function cardinalitySemanticHelp(path: string[], key: string): string | undefined {
+  const parent = path.at(-2);
+  if (parent === 'item_requirement' && key === 'items_found') return 'Cardinality is evaluated over the complete collected Item population. A known complete zero-Item population is valid evidence: none/zero_or_more are true, while exactly_one/one_or_more are false. Missing, incomplete, unsupported, or failed collection is not successful emptiness.';
+  if (parent === 'item_requirement' && key === 'items_satisfying') return 'Matching cardinality is independent from Item existence. For a complete zero-Item population, every/none is vacuously true, but a separate positive items_found requirement still fails.';
+  if (parent === 'field_requirement' && key === 'values_found') return 'Count observed field values, not Items. A typed does_not_exist field or complete empty value set contributes zero values; an omitted field, not_collected value, or acquisition error is not proof of absence.';
+  if (parent === 'field_requirement' && key === 'values_matching') return 'Matching cardinality uses finite-population semantics: none/every are true for zero complete values, while exactly_one/one_or_more are false. This does not waive the independent values_found requirement.';
+  if (key === 'value_match' && path.includes('fields')) return 'This quantifies values of the expected operand or Variable. Preserve a typed empty collection as zero values; do not replace it with an empty string or a synthetic value. A scalar empty string remains one value.';
+  if (key === 'status' && path.includes('fields')) return 'Evidence status distinguishes exists, typed does_not_exist, not_collected, and error. Only an authoritative complete empty population may participate in vacuous cardinality; missing or failed evidence is not empty.';
+  return undefined;
+}
+
 function schemaHelp(pack: MetadataPack, target: SchemaTarget) {
   const cache = helpCache.get(pack) ?? new Map<string, { title: string; markdown: string } | undefined>();
   helpCache.set(pack, cache);
@@ -239,7 +250,8 @@ function schemaHelp(pack: MetadataPack, target: SchemaTarget) {
   const fieldIndex = target.path.lastIndexOf('fields');
   const fieldPrefix = fieldIndex >= 0 && target.path.length > fieldIndex + 1 ? `Collected field \`${String(target.path[fieldIndex + 1])}\`. ` : '';
   const schemaFacts = `${types.length ? `Schema type: ${types.map(type => `\`${type}\``).join(' or ')}. ` : ''}${constraints.length ? `${constraints.join('. ')}. ` : ''}`;
-  const description = `${fieldPrefix}${vocabulary?.description || exact?.description || help.description || `Schema-defined ${fallbackTitle.toLowerCase()} value.`} ${schemaFacts}`.trim();
+  const semantic = cardinalitySemanticHelp(target.path, target.key);
+  const description = `${fieldPrefix}${vocabulary?.description || exact?.description || help.description || `Schema-defined ${fallbackTitle.toLowerCase()} value.`} ${schemaFacts}${semantic ? ` ${semantic}` : ''}`.trim();
   const schemaChoices = help.choices.length ? help.choices : schemaEnumValues(pack, target.uri);
   const choices = vocabulary && Object.hasOwn(vocabulary, 'choices') ? vocabulary.choices : schemaChoices;
   const allowed = choices.length ? `\n\n**Allowed values:** ${choices.map((value: unknown) => `\`${String(value)}\``).join(', ')}` : '';

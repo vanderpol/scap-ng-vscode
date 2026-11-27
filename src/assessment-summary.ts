@@ -81,13 +81,14 @@ function objectDescription(test: any): string {
   return clauses.map(([field, spec]) => predicate(field, spec)).join(' and ');
 }
 
-function cardinality(value: unknown, kind: 'item' | 'field'): string {
+function cardinality(value: unknown, noun: 'item' | 'field value' | 'matching item' | 'matching field value'): string {
   const token = String(value ?? '');
-  if (token === 'none') return kind === 'item' ? 'no items' : 'no values';
-  if (token === 'one') return kind === 'item' ? 'exactly one item' : 'exactly one value';
-  if (token === 'zero_or_more') return kind === 'item' ? 'zero or more items' : 'zero or more values';
-  if (token === 'one_or_more') return kind === 'item' ? 'at least one item' : 'at least one value';
-  return kind === 'item' ? 'the required number of items' : 'the required number of values';
+  if (token === 'none') return noun.startsWith('matching') ? `no ${noun}` : `no ${noun}s`;
+  if (token === 'exactly_one') return `exactly one ${noun}`;
+  if (token === 'zero_or_more') return `zero or more ${noun}s`;
+  if (token === 'one_or_more') return `at least one ${noun}`;
+  if (token === 'every') return `every ${noun}`;
+  return `the required number of ${noun}s`;
 }
 
 function requirementDescription(requirement: any): string {
@@ -106,9 +107,9 @@ function requirementDescription(requirement: any): string {
     ? Object.entries(requirement.fields as Record<string, unknown>).map(([name, spec]) => predicate(name, spec))
     : [];
   const itemText = item?.items_found ? cardinality(item.items_found, 'item') : undefined;
-  const itemScope = itemText ? `${itemText}${item?.items_satisfying === 'every' ? ', with every matching item satisfying the field requirement' : ''}` : undefined;
-  const fieldText = field?.values_found ? cardinality(field.values_found, 'field') : undefined;
-  const fieldScope = fieldText ? `${fieldText}${field?.values_matching === 'every' ? ', with every field value matching' : ''}` : undefined;
+  const itemScope = itemText ? `${itemText}${item?.items_satisfying ? `, with ${cardinality(item.items_satisfying, 'matching item')}` : ''}` : undefined;
+  const fieldText = field?.values_found ? cardinality(field.values_found, 'field value') : undefined;
+  const fieldScope = fieldText ? `${fieldText}${field?.values_matching ? `, with ${cardinality(field.values_matching, 'matching field value')}` : ''}` : undefined;
   const scopes = [itemScope, fieldScope].filter((value): value is string => Boolean(value));
   if (!scopes.length && !fields.length) return 'uses the authored requirement';
   const scopeText = scopes.length ? `requires ${scopes.join(' and ')}` : 'checks the collected fields';
